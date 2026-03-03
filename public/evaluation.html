@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Evaluation Results - Fitness Evaluator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@4.4.20/dist/full.min.css" rel="stylesheet" type="text/css" />
+</head>
+<body class="bg-base-200">
+    <div class="min-h-screen">
+        <!-- Navbar -->
+        <div class="navbar bg-base-100 shadow-md">
+            <div class="flex-1">
+                <a href="index.html" class="btn btn-ghost text-xl">💪 Fitness Evaluator</a>
+            </div>
+            <div class="flex-none">
+                <a href="index.html" class="btn btn-ghost">← Back to Dashboard</a>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="container mx-auto p-4 max-w-6xl">
+            <h1 class="text-4xl font-bold mb-6">📈 Evaluation Results</h1>
+
+            <!-- Evaluation Header -->
+            <div id="eval-header" class="mb-6">
+                <div class="card bg-base-100 shadow-xl">
+                    <div class="card-body">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <h2 class="text-2xl font-bold">Week of <span id="eval-week-display">--</span></h2>
+                                <p class="text-base-content/70 mt-1">Generated on <span id="eval-date-display">--</span></p>
+                            </div>
+                            <div class="text-right">
+                                <div class="text-5xl font-bold" id="overall-score">--</div>
+                                <p class="text-lg mt-2" id="score-badge">Loading...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Main Grid -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+                <!-- Analysis Summary -->
+                <div class="lg:col-span-2">
+                    <div class="card bg-base-100 shadow-xl">
+                        <div class="card-body">
+                            <h2 class="card-title">Summary Analysis</h2>
+                            <div id="summary-text" class="prose prose-sm max-w-none text-base-content">
+                                <p class="text-base-content/60">Loading analysis...</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Detailed Analysis -->
+                    <div class="mt-6">
+                        <h2 class="text-2xl font-bold mb-4">Detailed Analysis</h2>
+                        <div id="detailed-analysis" class="space-y-4">
+                            <!-- Will be populated by JavaScript -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Scores & Metrics -->
+                <div class="lg:col-span-1 space-y-6">
+                    <!-- Score Breakdown -->
+                    <div class="card bg-base-100 shadow-xl">
+                        <div class="card-body">
+                            <h2 class="card-title text-lg">Score Breakdown</h2>
+                            <div id="scores-breakdown" class="space-y-3">
+                                <div class="skeleton h-24"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Key Metrics -->
+                    <div class="card bg-base-100 shadow-xl">
+                        <div class="card-body">
+                            <h2 class="card-title text-lg">Key Metrics</h2>
+                            <div id="key-metrics" class="space-y-2 text-sm">
+                                <div class="flex justify-between">
+                                    <span>Total Logs</span>
+                                    <span class="font-bold" id="metric-logs">--</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span>Avg Adherence</span>
+                                    <span class="font-bold" id="metric-adherence">--</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span>Activities</span>
+                                    <span class="font-bold" id="metric-activities">--</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span>Measurements</span>
+                                    <span class="font-bold" id="metric-measurements">--</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Recommendations -->
+                    <div class="card bg-base-100 shadow-xl">
+                        <div class="card-body">
+                            <h2 class="card-title text-lg">Recommendations</h2>
+                            <div id="recommendations" class="space-y-2">
+                                <div class="skeleton h-20"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Actions -->
+                    <div class="card bg-base-100 shadow-xl">
+                        <div class="card-body">
+                            <h2 class="card-title text-lg">Actions</h2>
+                            <div class="space-y-2">
+                                <button onclick="refreshEvaluation()" class="btn btn-sm btn-primary w-full">🔄 Refresh</button>
+                                <button onclick="downloadReport()" class="btn btn-sm btn-secondary w-full">📥 Download</button>
+                                <a href="index.html" class="btn btn-sm btn-ghost w-full">← Back Home</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Evidence -->
+            <div class="card bg-base-100 shadow-xl">
+                <div class="card-body">
+                    <h2 class="card-title mb-4">Supporting Evidence</h2>
+                    <div id="evidence-section" class="space-y-4">
+                        <!-- Daily Logs -->
+                        <div>
+                            <h3 class="font-semibold mb-3">📝 Daily Logs</h3>
+                            <div id="evidence-logs" class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <p class="text-base-content/60 col-span-2">Loading...</p>
+                            </div>
+                        </div>
+
+                        <!-- Strava Activities -->
+                        <div class="divider"></div>
+                        <div>
+                            <h3 class="font-semibold mb-3">⚡ Strava Activities</h3>
+                            <div id="evidence-strava" class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <p class="text-base-content/60 col-span-2">No activities this week.</p>
+                            </div>
+                        </div>
+
+                        <!-- Weekly Measurements -->
+                        <div class="divider"></div>
+                        <div>
+                            <h3 class="font-semibold mb-3">📊 Weekly Measurements</h3>
+                            <div id="evidence-measurements" class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <p class="text-base-content/60 col-span-2">No measurements this week.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/api.js"></script>
+    <script src="js/utils.js"></script>
+    <script>
+        const api = new APIClient();
+
+        function initPage() {
+            const params = new URLSearchParams(window.location.search);
+            const week = params.get('week');
+            
+            if (week) {
+                loadEvaluation(week);
+            } else {
+                // Load latest evaluation
+                loadLatestEvaluation();
+            }
+        }
+
+        async function loadLatestEvaluation() {
+            try {
+                const evals = await api.listEvaluations();
+                if (evals.length === 0) {
+                    showError('No evaluations found. Please generate one first.');
+                    setTimeout(() => window.location.href = 'index.html', 2000);
+                    return;
+                }
+                loadEvaluation(evals[0].week_start_date);
+            } catch (error) {
+                showError(error);
+            }
+        }
+
+        async function loadEvaluation(weekStart) {
+            try {
+                const evaluation = await api.getEvaluation(weekStart);
+                if (!evaluation) {
+                    showError('Evaluation not found.');
+                    return;
+                }
+
+                displayEvaluation(evaluation);
+                await loadEvidenceData(weekStart);
+            } catch (error) {
+                showError(error);
+            }
+        }
+
+        function displayEvaluation(evaluation) {
+            const eval = evaluation.evaluation;
+            
+            // Header
+            document.getElementById('eval-week-display').textContent = formatDateDisplay(evaluation.week_start_date);
+            document.getElementById('eval-date-display').textContent = formatDateDisplay(evaluation.created_at);
+            
+            // Overall Score
+            const score = eval.overall_score;
+            document.getElementById('overall-score').textContent = `${score}/10`;
+            document.getElementById('score-badge').innerHTML = getScoreBadge(score);
+            
+            // Summary
+            document.getElementById('summary-text').innerHTML = `
+                <p>${eval.summary_analysis || 'No summary available'}</p>
+            `;
+
+            // Detailed Analysis
+            const detailedDiv = document.getElementById('detailed-analysis');
+            if (eval.analysis && eval.analysis.length > 0) {
+                detailedDiv.innerHTML = eval.analysis.map((analysis, idx) => `
+                    <div class="card bg-base-100 shadow">
+                        <div class="card-body">
+                            <h3 class="card-title text-lg flex justify-between items-center">
+                                <span>${analysis.category}</span>
+                                <span class="badge ${getScoreClass(analysis.score)}">
+                                    ${analysis.score}/10
+                                </span>
+                            </h3>
+                            <p class="text-base-content/80">${analysis.analysis}</p>
+                            ${analysis.recommendations ? `
+                                <div class="mt-3 pt-3 border-t">
+                                    <p class="font-semibold mb-2">💡 Recommendations:</p>
+                                    <ul class="list-disc list-inside text-sm space-y-1">
+                                        ${analysis.recommendations.split('•').filter(r => r.trim()).map(r => `
+                                            <li>${r.trim()}</li>
+                                        `).join('')}
+                                    </ul>
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                `).join('');
+            }
+
+            // Score Breakdown
+            const scoresDiv = document.getElementById('scores-breakdown');
+            if (eval.analysis && eval.analysis.length > 0) {
+                scoresDiv.innerHTML = eval.analysis.map(analysis => `
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm">${analysis.category}</span>
+                        <div class="flex items-center gap-2">
+                            <progress class="progress w-24" value="${analysis.score}" max="10"></progress>
+                            <span class="text-sm font-bold w-12 text-right">${analysis.score}/10</span>
+                        </div>
+                    </div>
+                `).join('');
+            }
+
+            // Recommendations
+            const recsDiv = document.getElementById('recommendations');
+            if (eval.detailed_feedback) {
+                recsDiv.innerHTML = `<p class="text-sm">${eval.detailed_feedback}</p>`;
+            } else {
+                recsDiv.innerHTML = '<p class="text-base-content/60">No specific recommendations at this time.</p>';
+            }
+        }
+
+        async function loadEvidenceData(weekStart) {
+            try {
+                const weekEnd = new Date(new Date(weekStart).getTime() + 6 * 24 * 60 * 60 * 1000);
+                
+                // Get weekly data
+                const logs = await api.listDailyLogs();
+                const activities = await api.getStravaActivities();
+                const measurements = await api.listWeeklyMeasurements();
+
+                // Filter for this week
+                const weekLogs = logs.filter(log => {
+                    const logDate = new Date(log.log_date);
+                    return logDate >= new Date(weekStart) && logDate <= weekEnd;
+                });
+
+                const weekActivities = activities.filter(act => {
+                    const actDate = new Date(act.activity_date);
+                    return actDate >= new Date(weekStart) && actDate <= weekEnd;
+                });
+
+                const weekMeasurements = measurements.filter(m => m.week_start_date === weekStart);
+
+                // Display Logs
+                if (weekLogs.length > 0) {
+                    const logsDiv = document.getElementById('evidence-logs');
+                    logsDiv.innerHTML = weekLogs.map(log => `
+                        <div class="bg-base-200 p-3 rounded">
+                            <div class="font-semibold">${formatDateDisplay(log.log_date)}</div>
+                            <div class="text-sm mt-2 space-y-1">
+                                ${log.calories_in ? `<div>Calories: ${log.calories_in} kcal</div>` : ''}
+                                ${log.adherence_score ? `<div>Adherence: ${log.adherence_score}/10</div>` : ''}
+                                ${log.sleep_hours ? `<div>Sleep: ${log.sleep_hours}h</div>` : ''}
+                            </div>
+                        </div>
+                    `).join('');
+                    document.getElementById('metric-logs').textContent = weekLogs.length;
+                    const avgAdherence = (weekLogs.reduce((sum, log) => sum + (log.adherence_score || 0), 0) / weekLogs.length).toFixed(1);
+                    document.getElementById('metric-adherence').textContent = weekLogs.length > 0 ? avgAdherence : '--';
+                }
+
+                // Display Activities
+                if (weekActivities.length > 0) {
+                    const stravasDiv = document.getElementById('evidence-strava');
+                    stravasDiv.innerHTML = weekActivities.map(act => `
+                        <div class="bg-base-200 p-3 rounded">
+                            <div class="font-semibold">${act.activity_type} - ${formatDateDisplay(act.activity_date)}</div>
+                            <div class="text-sm mt-2 space-y-1">
+                                ${act.distance_miles ? `<div>Distance: ${act.distance_miles} mi</div>` : ''}
+                                ${act.duration_minutes ? `<div>Duration: ${Math.floor(act.duration_minutes / 60)}h ${act.duration_minutes % 60}m</div>` : ''}
+                                ${act.avg_heart_rate ? `<div>Avg HR: ${act.avg_heart_rate} bpm</div>` : ''}
+                            </div>
+                        </div>
+                    `).join('');
+                    document.getElementById('metric-activities').textContent = weekActivities.length;
+                } else {
+                    document.getElementById('metric-activities').textContent = '0';
+                }
+
+                // Display Measurements
+                if (weekMeasurements.length > 0) {
+                    const measurement = weekMeasurements[0];
+                    const measDiv = document.getElementById('evidence-measurements');
+                    measDiv.innerHTML = `
+                        <div class="bg-base-200 p-3 rounded">
+                            <div class="font-semibold">Week of ${formatDateDisplay(measurement.week_start_date)}</div>
+                            <div class="text-sm mt-2 space-y-1">
+                                ${measurement.weight_lbs ? `<div>Weight: ${measurement.weight_lbs} lbs</div>` : ''}
+                                ${measurement.body_fat_percent ? `<div>Body Fat: ${measurement.body_fat_percent}%</div>` : ''}
+                                ${measurement.avg_sleep_hours ? `<div>Avg Sleep: ${measurement.avg_sleep_hours}h</div>` : ''}
+                            </div>
+                        </div>
+                    `;
+                    document.getElementById('metric-measurements').textContent = '1';
+                }
+            } catch (error) {
+                console.error('Error loading evidence:', error);
+            }
+        }
+
+        async function refreshEvaluation() {
+            try {
+                const params = new URLSearchParams(window.location.search);
+                const week = params.get('week');
+                
+                const button = event.target;
+                button.disabled = true;
+                button.textContent = '⏳ Refreshing...';
+
+                const result = await api.refreshEvaluation(week);
+                showSuccess('Evaluation refreshed!');
+                
+                button.disabled = false;
+                button.textContent = '🔄 Refresh';
+                
+                // Reload page
+                setTimeout(() => location.reload(), 1000);
+            } catch (error) {
+                showError(error);
+                event.target.disabled = false;
+                event.target.textContent = '🔄 Refresh';
+            }
+        }
+
+        function downloadReport() {
+            const week = new URLSearchParams(window.location.search).get('week');
+            const filename = `fitness-eval-${week}.txt`;
+            const text = window.document.body.innerText;
+            
+            const element = document.createElement('a');
+            element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(text));
+            element.setAttribute('download', filename);
+            element.style.display = 'none';
+            document.body.appendChild(element);
+            element.click();
+            document.body.removeChild(element);
+            
+            showSuccess('Report downloaded!');
+        }
+
+        function getScoreClass(score) {
+            if (score >= 8) return 'badge-success';
+            if (score >= 6) return 'badge-warning';
+            if (score >= 4) return 'badge-info';
+            return 'badge-error';
+        }
+
+        document.addEventListener('DOMContentLoaded', initPage);
+    </script>
+</body>
+</html>

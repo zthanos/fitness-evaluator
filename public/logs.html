@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Daily Logs - Fitness Evaluator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@4.4.20/dist/full.min.css" rel="stylesheet" type="text/css" />
+</head>
+<body class="bg-base-200">
+    <div class="min-h-screen">
+        <!-- Navbar -->
+        <div class="navbar bg-base-100 shadow-md">
+            <div class="flex-1">
+                <a href="index.html" class="btn btn-ghost text-xl">💪 Fitness Evaluator</a>
+            </div>
+            <div class="flex-none">
+                <a href="index.html" class="btn btn-ghost">← Back to Dashboard</a>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="container mx-auto p-4 max-w-4xl">
+            <h1 class="text-4xl font-bold mb-6">📝 Daily Logs</h1>
+
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- Log Entry Form -->
+                <div class="lg:col-span-2">
+                    <div class="card bg-base-100 shadow-xl">
+                        <div class="card-body">
+                            <h2 class="card-title">Add Today's Log</h2>
+                            
+                            <form id="log-form" class="space-y-4">
+                                <div class="form-control">
+                                    <label class="label">
+                                        <span class="label-text font-semibold">Date</span>
+                                    </label>
+                                    <input type="date" id="log-date" class="input input-bordered" required />
+                                </div>
+
+                                <div class="form-control">
+                                    <label class="label">
+                                        <span class="label-text font-semibold">Calories In</span>
+                                        <span class="label-text-alt">kcal</span>
+                                    </label>
+                                    <input type="number" id="calories-in" class="input input-bordered" placeholder="2000" min="0" />
+                                    <label class="label">
+                                        <span class="label-text-alt">Total daily caloric intake</span>
+                                    </label>
+                                </div>
+
+                                <div class="form-control">
+                                    <label class="label">
+                                        <span class="label-text font-semibold">Adherence Score</span>
+                                        <span class="label-text-alt">0-10</span>
+                                    </label>
+                                    <input type="range" id="adherence-score" min="0" max="10" class="range" />
+                                    <div class="flex justify-between text-xs px-2">
+                                        <span>0 - No adherence</span>
+                                        <span id="score-display" class="font-bold text-primary">5</span>
+                                        <span>10 - Perfect</span>
+                                    </div>
+                                </div>
+
+                                <div class="form-control">
+                                    <label class="label">
+                                        <span class="label-text font-semibold">Sleep Hours</span>
+                                    </label>
+                                    <input type="number" id="sleep-hours" class="input input-bordered" placeholder="8" step="0.5" min="0" max="24" />
+                                </div>
+
+                                <div class="form-control">
+                                    <label class="label">
+                                        <span class="label-text font-semibold">Energy Level</span>
+                                        <span class="label-text-alt">1-10</span>
+                                    </label>
+                                    <input type="range" id="energy-level" min="1" max="10" class="range" />
+                                    <div class="flex justify-between text-xs px-2">
+                                        <span>1 - Exhausted</span>
+                                        <span id="energy-display" class="font-bold text-success">5</span>
+                                        <span>10 - Energized</span>
+                                    </div>
+                                </div>
+
+                                <div class="form-control">
+                                    <label class="label">
+                                        <span class="label-text font-semibold">Notes</span>
+                                    </label>
+                                    <textarea id="log-notes" class="textarea textarea-bordered" placeholder="Any additional notes about your day..."></textarea>
+                                </div>
+
+                                <div class="form-control mt-6">
+                                    <button type="submit" class="btn btn-primary">Save Log Entry</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Recent Logs Sidebar -->
+                <div class="lg:col-span-1">
+                    <div class="card bg-base-100 shadow-xl">
+                        <div class="card-body">
+                            <h2 class="card-title text-lg">Recent Entries</h2>
+                            <div id="recent-logs" class="space-y-2">
+                                <p class="text-base-content/60 text-sm">Loading...</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="divider"></div>
+
+                    <!-- Statistics -->
+                    <div class="card bg-base-100 shadow-xl">
+                        <div class="card-body">
+                            <h2 class="card-title text-lg">This Week</h2>
+                            <div class="space-y-3 text-sm">
+                                <div class="flex justify-between">
+                                    <span>Avg Calories</span>
+                                    <span class="font-bold" id="avg-calories">--</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span>Avg Adherence</span>
+                                    <span class="font-bold" id="avg-adherence">--</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span>Avg Sleep</span>
+                                    <span class="font-bold" id="avg-sleep">--</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span>Avg Energy</span>
+                                    <span class="font-bold" id="avg-energy">--</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/api.js"></script>
+    <script src="js/utils.js"></script>
+    <script>
+        const api = new APIClient();
+
+        function initPage() {
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('log-date').value = today;
+
+            // Update score displays on slider change
+            document.getElementById('adherence-score').addEventListener('change', (e) => {
+                document.getElementById('score-display').textContent = e.target.value;
+            });
+            document.getElementById('energy-level').addEventListener('change', (e) => {
+                document.getElementById('energy-display').textContent = e.target.value;
+            });
+
+            // Form submission
+            document.getElementById('log-form').addEventListener('submit', saveDailyLog);
+
+            // Load recent logs
+            loadRecentLogs();
+        }
+
+        async function saveDailyLog(e) {
+            e.preventDefault();
+
+            try {
+                const logData = {
+                    log_date: document.getElementById('log-date').value,
+                    calories_in: parseInt(document.getElementById('calories-in').value) || null,
+                    adherence_score: parseInt(document.getElementById('adherence-score').value) || null,
+                    sleep_hours: parseFloat(document.getElementById('sleep-hours').value) || null,
+                    energy_level: parseInt(document.getElementById('energy-level').value) || null,
+                    notes: document.getElementById('log-notes').value || null
+                };
+
+                const button = event.target.querySelector('button[type="submit"]');
+                button.disabled = true;
+                button.textContent = 'Saving...';
+
+                const result = await api.createDailyLog(logData);
+                showSuccess('Daily log saved successfully!');
+
+                // Reset form
+                document.getElementById('log-form').reset();
+                const today = new Date().toISOString().split('T')[0];
+                document.getElementById('log-date').value = today;
+                document.getElementById('adherence-score').value = 5;
+                document.getElementById('energy-level').value = 5;
+                document.getElementById('score-display').textContent = '5';
+                document.getElementById('energy-display').textContent = '5';
+
+                // Reload recent logs
+                await loadRecentLogs();
+
+                button.disabled = false;
+                button.textContent = 'Save Log Entry';
+            } catch (error) {
+                showError(error);
+                event.target.querySelector('button[type="submit"]').disabled = false;
+            }
+        }
+
+        async function loadRecentLogs() {
+            try {
+                const logs = await api.listDailyLogs();
+                const recentDiv = document.getElementById('recent-logs');
+                
+                if (logs.length === 0) {
+                    recentDiv.innerHTML = '<p class="text-base-content/60 text-sm">No logs yet</p>';
+                    return;
+                }
+
+                // Calculate statistics
+                let totalCalories = 0;
+                let totalAdherence = 0;
+                let totalSleep = 0;
+                let totalEnergy = 0;
+                let count = 0;
+
+                recentDiv.innerHTML = logs.slice(0, 5).map(log => `
+                    <div class="bg-base-200 p-3 rounded-lg">
+                        <div class="font-semibold text-sm">${formatDateDisplay(log.log_date)}</div>
+                        <div class="text-xs text-base-content/70 mt-1">
+                            ${log.calories_in ? `Cal: ${log.calories_in}<br>` : ''}
+                            ${log.adherence_score ? `Adh: ${log.adherence_score}/10<br>` : ''}
+                            ${log.sleep_hours ? `Sleep: ${log.sleep_hours}h` : ''}
+                        </div>
+                    </div>
+                `).join('');
+
+                // Calculate averages for logs from this week
+                const weekStart = getWeekStart();
+                const weekLogs = logs.filter(log => {
+                    const logDate = new Date(log.log_date);
+                    return logDate >= weekStart;
+                });
+
+                if (weekLogs.length > 0) {
+                    weekLogs.forEach(log => {
+                        if (log.calories_in) totalCalories += log.calories_in;
+                        if (log.adherence_score) totalAdherence += log.adherence_score;
+                        if (log.sleep_hours) totalSleep += log.sleep_hours;
+                        if (log.energy_level) totalEnergy += log.energy_level;
+                        count++;
+                    });
+
+                    document.getElementById('avg-calories').textContent = totalCalories > 0 ? Math.round(totalCalories / weekLogs.length) : '--';
+                    document.getElementById('avg-adherence').textContent = totalAdherence > 0 ? (totalAdherence / weekLogs.length).toFixed(1) : '--';
+                    document.getElementById('avg-sleep').textContent = totalSleep > 0 ? (totalSleep / weekLogs.length).toFixed(1) : '--';
+                    document.getElementById('avg-energy').textContent = totalEnergy > 0 ? (totalEnergy / weekLogs.length).toFixed(1) : '--';
+                }
+            } catch (error) {
+                console.error('Error loading recent logs:', error);
+            }
+        }
+
+        function formatDateDisplay(dateStr) {
+            const date = new Date(dateStr);
+            return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+        }
+
+        document.addEventListener('DOMContentLoaded', initPage);
+    </script>
+</body>
+</html>

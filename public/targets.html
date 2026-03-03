@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Plan Targets - Fitness Evaluator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@4.4.20/dist/full.min.css" rel="stylesheet" type="text/css" />
+</head>
+<body class="bg-base-200">
+    <div class="min-h-screen">
+        <!-- Navbar -->
+        <div class="navbar bg-base-100 shadow-md">
+            <div class="flex-1">
+                <a href="index.html" class="btn btn-ghost text-xl">💪 Fitness Evaluator</a>
+            </div>
+            <div class="flex-none">
+                <a href="index.html" class="btn btn-ghost">← Back to Dashboard</a>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="container mx-auto p-4 max-w-4xl">
+            <h1 class="text-4xl font-bold mb-6">🎯 Plan Targets</h1>
+
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- Target Form -->
+                <div class="lg:col-span-2">
+                    <div class="card bg-base-100 shadow-xl">
+                        <div class="card-body">
+                            <h2 class="card-title">Create New Target</h2>
+                            
+                            <form id="target-form" class="space-y-4">
+                                <div class="form-control">
+                                    <label class="label">
+                                        <span class="label-text font-semibold">Target Week (Monday)</span>
+                                    </label>
+                                    <input type="date" id="target-week" class="input input-bordered" required />
+                                </div>
+
+                                <div class="form-control">
+                                    <label class="label">
+                                        <span class="label-text font-semibold">Target Name</span>
+                                    </label>
+                                    <input type="text" id="target-name" class="input input-bordered" placeholder="e.g., Weekly Calorie Goal" required />
+                                </div>
+
+                                <div class="form-control">
+                                    <label class="label">
+                                        <span class="label-text font-semibold">Category</span>
+                                    </label>
+                                    <select id="target-category" class="select select-bordered" required>
+                                        <option value="">Select a category...</option>
+                                        <option value="nutrition">🍎 Nutrition</option>
+                                        <option value="training">💪 Training</option>
+                                        <option value="recovery">😴 Recovery</option>
+                                        <option value="body_composition">📏 Body Composition</option>
+                                        <option value="performance">⚡ Performance</option>
+                                    </select>
+                                </div>
+
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div class="form-control">
+                                        <label class="label">
+                                            <span class="label-text font-semibold">Target Value</span>
+                                        </label>
+                                        <input type="number" id="target-value" class="input input-bordered" placeholder="2000" step="0.1" required />
+                                    </div>
+
+                                    <div class="form-control">
+                                        <label class="label">
+                                            <span class="label-text font-semibold">Unit</span>
+                                        </label>
+                                        <input type="text" id="target-unit" class="input input-bordered" placeholder="kcal, lbs, hours, %" required />
+                                    </div>
+                                </div>
+
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div class="form-control">
+                                        <label class="label">
+                                            <span class="label-text font-semibold">Minimum Value</span>
+                                        </label>
+                                        <input type="number" id="min-value" class="input input-bordered" step="0.1" />
+                                    </div>
+
+                                    <div class="form-control">
+                                        <label class="label">
+                                            <span class="label-text font-semibold">Maximum Value</span>
+                                        </label>
+                                        <input type="number" id="max-value" class="input input-bordered" step="0.1" />
+                                    </div>
+                                </div>
+
+                                <div class="form-control">
+                                    <label class="label">
+                                        <span class="label-text font-semibold">Description</span>
+                                    </label>
+                                    <textarea id="target-description" class="textarea textarea-bordered" placeholder="What does this target measure?"></textarea>
+                                </div>
+
+                                <div class="form-control mt-6">
+                                    <button type="submit" class="btn btn-primary">Create Target</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Targets List -->
+                <div class="lg:col-span-1">
+                    <div class="card bg-base-100 shadow-xl">
+                        <div class="card-body">
+                            <h2 class="card-title text-lg">Active Targets</h2>
+                            <div id="targets-list" class="space-y-2">
+                                <p class="text-base-content/60 text-sm">Loading...</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="divider"></div>
+
+                    <!-- Target Categories -->
+                    <div class="card bg-base-100 shadow-xl">
+                        <div class="card-body">
+                            <h2 class="card-title text-lg">By Category</h2>
+                            <div class="space-y-2 text-sm">
+                                <div class="flex justify-between">
+                                    <span>🍎 Nutrition</span>
+                                    <span class="font-bold" id="cat-nutrition">0</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span>💪 Training</span>
+                                    <span class="font-bold" id="cat-training">0</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span>😴 Recovery</span>
+                                    <span class="font-bold" id="cat-recovery">0</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span>📏 Body Comp</span>
+                                    <span class="font-bold" id="cat-body">0</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span>⚡ Performance</span>
+                                    <span class="font-bold" id="cat-perf">0</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/api.js"></script>
+    <script src="js/utils.js"></script>
+    <script>
+        const api = new APIClient();
+
+        function initPage() {
+            // Set this week's date
+            const weekStart = getWeekStart();
+            document.getElementById('target-week').value = formatDate(weekStart);
+
+            // Form submission
+            document.getElementById('target-form').addEventListener('submit', createTarget);
+
+            // Load targets
+            loadTargets();
+        }
+
+        async function createTarget(e) {
+            e.preventDefault();
+
+            try {
+                const targetData = {
+                    week_start_date: document.getElementById('target-week').value,
+                    target_name: document.getElementById('target-name').value,
+                    category: document.getElementById('target-category').value,
+                    target_value: parseFloat(document.getElementById('target-value').value),
+                    unit: document.getElementById('target-unit').value,
+                    min_value: parseFloat(document.getElementById('min-value').value) || null,
+                    max_value: parseFloat(document.getElementById('max-value').value) || null,
+                    description: document.getElementById('target-description').value || null
+                };
+
+                const button = event.target.querySelector('button[type="submit"]');
+                button.disabled = true;
+                button.textContent = 'Creating...';
+
+                await api.createPlanTarget(targetData);
+                showSuccess('Target created successfully!');
+
+                // Reset form
+                document.getElementById('target-form').reset();
+                const weekStart = getWeekStart();
+                document.getElementById('target-week').value = formatDate(weekStart);
+
+                // Reload targets
+                await loadTargets();
+
+                button.disabled = false;
+                button.textContent = 'Create Target';
+            } catch (error) {
+                showError(error);
+                event.target.querySelector('button[type="submit"]').disabled = false;
+            }
+        }
+
+        async function loadTargets() {
+            try {
+                const targets = await api.listPlanTargets();
+                const listDiv = document.getElementById('targets-list');
+                
+                if (targets.length === 0) {
+                    listDiv.innerHTML = '<p class="text-base-content/60 text-sm">No targets yet</p>';
+                    return;
+                }
+
+                // Group by category
+                const categories = {
+                    nutrition: 0,
+                    training: 0,
+                    recovery: 0,
+                    body_composition: 0,
+                    performance: 0
+                };
+
+                const icons = {
+                    nutrition: '🍎',
+                    training: '💪',
+                    recovery: '😴',
+                    body_composition: '📏',
+                    performance: '⚡'
+                };
+
+                listDiv.innerHTML = targets.slice(0, 5).map(target => {
+                    categories[target.category]++;
+                    const icon = icons[target.category] || '📌';
+                    return `
+                        <div class="bg-base-200 p-3 rounded-lg">
+                            <div class="font-semibold text-sm">${icon} ${target.target_name}</div>
+                            <div class="text-xs text-base-content/70 mt-1">
+                                <div>Target: ${target.target_value} ${target.unit}</div>
+                                ${target.min_value ? `<div>Min: ${target.min_value}</div>` : ''}
+                                ${target.max_value ? `<div>Max: ${target.max_value}</div>` : ''}
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+
+                // Update category counts
+                document.getElementById('cat-nutrition').textContent = categories.nutrition;
+                document.getElementById('cat-training').textContent = categories.training;
+                document.getElementById('cat-recovery').textContent = categories.recovery;
+                document.getElementById('cat-body').textContent = categories.body_composition;
+                document.getElementById('cat-perf').textContent = categories.performance;
+            } catch (error) {
+                console.error('Error loading targets:', error);
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', initPage);
+    </script>
+</body>
+</html>

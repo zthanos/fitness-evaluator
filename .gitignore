@@ -1,0 +1,98 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Virtual environments
+.venv
+venv/
+ENV/
+env/
+
+# Environment files (IMPORTANT - NEVER commit!)
+.env
+.env.local
+.env.*.local
+.env.production
+.env.staging
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+fitness_eval.db
+fitness_eval.*.db
+fitness_eval.*.backup
+
+# Data directories
+data/
+backups/
+.ollama/
+ollama_models/
+
+# Docker
+docker-compose.override.yml
+.dockerignore
+
+# IDE & Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+*.sublime-project
+*.sublime-workspace
+.project
+.pydevproject
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
+
+# Logs
+*.log
+logs/
+
+# OS files
+Thumbs.db
+.AppleDouble
+.LSOverride
+._*
+
+# Node (if applicable)
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.bak
+
+# Python
+.mypy_cache/
+.pylint_cache/
