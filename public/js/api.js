@@ -80,6 +80,11 @@ class APIClient {
     return this.request('POST', '/logs/targets', targets);
   }
 
+  // Backwards-compatible alias for single-target creation
+  async createPlanTarget(target) {
+    return this.createPlanTargets(target);
+  }
+
   async getPlanTargets(targetId) {
     return this.request('GET', `/logs/targets/${targetId}`);
   }

@@ -178,7 +178,7 @@ async def create_plan_targets(targets: PlanTargetsCreate, db: Session = Depends(
     return db_targets
 
 
-@router.get("/targets/{target_id}", response_model=PlanTargetsResponse, summary="Get plan targets by ID")
+@router.get("/targets/by-id/{target_id}", response_model=PlanTargetsResponse, summary="Get plan targets by ID")
 async def get_plan_targets(target_id: UUID, db: Session = Depends(get_db)):
     """
     Retrieve a specific plan targets entry by UUID.

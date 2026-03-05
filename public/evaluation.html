@@ -163,7 +163,6 @@
     <script src="js/api.js"></script>
     <script src="js/utils.js"></script>
     <script>
-        const api = new APIClient();
 
         function initPage() {
             const params = new URLSearchParams(window.location.search);
@@ -179,13 +178,9 @@
 
         async function loadLatestEvaluation() {
             try {
-                const evals = await api.listEvaluations();
-                if (evals.length === 0) {
-                    showError('No evaluations found. Please generate one first.');
-                    setTimeout(() => window.location.href = 'index.html', 2000);
-                    return;
-                }
-                loadEvaluation(evals[0].week_start_date);
+                // For now, redirect to dashboard if no week is specified
+                showError('No week specified. Use the dashboard to generate an evaluation.');
+                setTimeout(() => window.location.href = 'index.html', 2000);
             } catch (error) {
                 showError(error);
             }
@@ -280,7 +275,7 @@
                 
                 // Get weekly data
                 const logs = await api.listDailyLogs();
-                const activities = await api.getStravaActivities();
+                const activities = await api.getWeeklyActivities(weekStart);
                 const measurements = await api.listWeeklyMeasurements();
 
                 // Filter for this week
@@ -289,12 +284,9 @@
                     return logDate >= new Date(weekStart) && logDate <= weekEnd;
                 });
 
-                const weekActivities = activities.filter(act => {
-                    const actDate = new Date(act.activity_date);
-                    return actDate >= new Date(weekStart) && actDate <= weekEnd;
-                });
+                const weekActivities = activities.activities || [];
 
-                const weekMeasurements = measurements.filter(m => m.week_start_date === weekStart);
+                const weekMeasurements = measurements.filter(m => m.week_start === weekStart);
 
                 // Display Logs
                 if (weekLogs.length > 0) {
@@ -305,7 +297,7 @@
                             <div class="text-sm mt-2 space-y-1">
                                 ${log.calories_in ? `<div>Calories: ${log.calories_in} kcal</div>` : ''}
                                 ${log.adherence_score ? `<div>Adherence: ${log.adherence_score}/10</div>` : ''}
-                                ${log.sleep_hours ? `<div>Sleep: ${log.sleep_hours}h</div>` : ''}
+                                ${log.sleep_avg_hrs ? `<div>Sleep: ${log.sleep_avg_hrs}h</div>` : ''}
                             </div>
                         </div>
                     `).join('');
@@ -321,9 +313,9 @@
                         <div class="bg-base-200 p-3 rounded">
                             <div class="font-semibold">${act.activity_type} - ${formatDateDisplay(act.activity_date)}</div>
                             <div class="text-sm mt-2 space-y-1">
-                                ${act.distance_miles ? `<div>Distance: ${act.distance_miles} mi</div>` : ''}
-                                ${act.duration_minutes ? `<div>Duration: ${Math.floor(act.duration_minutes / 60)}h ${act.duration_minutes % 60}m</div>` : ''}
-                                ${act.avg_heart_rate ? `<div>Avg HR: ${act.avg_heart_rate} bpm</div>` : ''}
+                                ${act.distance_m ? `<div>Distance: ${formatDistance(act.distance_m)}</div>` : ''}
+                                ${act.moving_time_s ? `<div>Duration: ${formatDuration(act.moving_time_s)}</div>` : ''}
+                                ${act.avg_hr ? `<div>Avg HR: ${act.avg_hr} bpm</div>` : ''}
                             </div>
                         </div>
                     `).join('');
@@ -338,11 +330,11 @@
                     const measDiv = document.getElementById('evidence-measurements');
                     measDiv.innerHTML = `
                         <div class="bg-base-200 p-3 rounded">
-                            <div class="font-semibold">Week of ${formatDateDisplay(measurement.week_start_date)}</div>
+                            <div class="font-semibold">Week of ${formatDateDisplay(measurement.week_start)}</div>
                             <div class="text-sm mt-2 space-y-1">
-                                ${measurement.weight_lbs ? `<div>Weight: ${measurement.weight_lbs} lbs</div>` : ''}
-                                ${measurement.body_fat_percent ? `<div>Body Fat: ${measurement.body_fat_percent}%</div>` : ''}
-                                ${measurement.avg_sleep_hours ? `<div>Avg Sleep: ${measurement.avg_sleep_hours}h</div>` : ''}
+                                ${measurement.weight_kg ? `<div>Weight: ${measurement.weight_kg} kg</div>` : ''}
+                                ${measurement.body_fat_pct ? `<div>Body Fat: ${measurement.body_fat_pct}%</div>` : ''}
+                                ${measurement.sleep_avg_hrs ? `<div>Avg Sleep: ${measurement.sleep_avg_hrs}h</div>` : ''}
                             </div>
                         </div>
                     `;

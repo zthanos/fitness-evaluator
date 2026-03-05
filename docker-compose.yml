@@ -1,4 +1,5 @@
-version: '3.8'
+# Docker Compose configuration for Fitness Evaluator
+# Compose v2+ (no version field needed)
 
 services:
   # Ollama LLM Service
@@ -14,8 +15,13 @@ services:
     networks:
       - fitness-network
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 8g  # Prevent Ollama from starving other containers
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      # Use the built-in Ollama CLI for health checking instead of curl
+      test: ["CMD", "ollama", "list"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -32,37 +38,41 @@ services:
     environment:
       # Database
       DATABASE_URL: sqlite:///./data/fitness_eval.db
-      
-      # LLM Configuration - Ollama
-      LM_STUDIO_ENDPOINT: http://ollama:11434/api
-      LM_STUDIO_MODEL: mistral
+
+      # LLM Configuration - Ollama (OpenAI-compatible /v1 endpoint)
+      # Base URL should be host:port; client appends /v1/chat/completions
+      OLLAMA_ENDPOINT: http://ollama:11434
+      OLLAMA_MODEL: mistral
       LLM_TYPE: ollama
-      
-      # Strava OAuth (from .env or environment)
-      STRAVA_CLIENT_ID: ${STRAVA_CLIENT_ID:-}
-      STRAVA_CLIENT_SECRET: ${STRAVA_CLIENT_SECRET:-}
+
+      # Strava OAuth (must be provided via .env or environment)
+      STRAVA_CLIENT_ID: ${STRAVA_CLIENT_ID}
+      STRAVA_CLIENT_SECRET: ${STRAVA_CLIENT_SECRET}
       STRAVA_REDIRECT_URI: http://localhost:8000/api/auth/strava/callback
-      
+
       # API Configuration
       API_HOST: 0.0.0.0
       API_PORT: 8000
       API_RELOAD: "false"
     volumes:
+      # Only mount runtime data - don't overwrite image code
       - ./data:/app/data
-      - ./app:/app/app
-      - ./public:/app/public
     depends_on:
       ollama:
         condition: service_healthy
     networks:
       - fitness-network
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1g
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s
       timeout: 5s
       retries: 3
-      start_period: 10s
+      start_period: 30s  # Allow time for migrations and Ollama startup
 
 networks:
   fitness-network:

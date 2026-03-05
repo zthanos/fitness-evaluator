@@ -195,7 +195,6 @@
     <script src="js/api.js"></script>
     <script src="js/utils.js"></script>
     <script>
-        const api = new APIClient();
 
         function initPage() {
             // Set week start date
@@ -222,21 +221,16 @@
 
             try {
                 const measurementData = {
-                    week_start_date: document.getElementById('measurement-week').value,
-                    weight_lbs: parseFloat(document.getElementById('weight').value) || null,
-                    body_fat_percent: parseFloat(document.getElementById('body-fat-percent').value) || null,
-                    chest_inches: parseFloat(document.getElementById('chest').value) || null,
-                    waist_inches: parseFloat(document.getElementById('waist').value) || null,
-                    hips_inches: parseFloat(document.getElementById('hips').value) || null,
-                    thigh_inches: parseFloat(document.getElementById('thigh').value) || null,
-                    resting_heart_rate: parseInt(document.getElementById('resting-hr').value) || null,
-                    avg_sleep_hours: parseFloat(document.getElementById('avg-sleep').value) || null,
-                    avg_energy_level: parseInt(document.getElementById('avg-energy').value) || null,
-                    sleep_quality_score: parseInt(document.getElementById('sleep-quality').value) || null,
-                    notes: document.getElementById('measurement-notes').value || null
+                    week_start: document.getElementById('measurement-week').value,
+                    weight_kg: parseFloat(document.getElementById('weight').value) || null,
+                    body_fat_pct: parseFloat(document.getElementById('body-fat-percent').value) || null,
+                    waist_cm: parseFloat(document.getElementById('waist').value) || null,
+                    sleep_avg_hrs: parseFloat(document.getElementById('avg-sleep').value) || null,
+                    rhr_bpm: parseInt(document.getElementById('resting-hr').value) || null,
+                    energy_level_avg: parseFloat(document.getElementById('avg-energy').value) || null,
                 };
 
-                const button = event.target.querySelector('button[type="submit"]');
+                const button = e.target.querySelector('button[type="submit"]');
                 button.disabled = true;
                 button.textContent = 'Saving...';
 
@@ -255,7 +249,7 @@
                 button.textContent = 'Save Measurements';
             } catch (error) {
                 showError(error);
-                event.target.querySelector('button[type="submit"]').disabled = false;
+                e.target.querySelector('button[type="submit"]').disabled = false;
             }
         }
 
@@ -270,15 +264,15 @@
                 }
 
                 historyDiv.innerHTML = measurements.slice(0, 5).map(m => {
-                    const weekStart = new Date(m.week_start_date);
+                    const weekStart = new Date(m.week_start);
                     const weekLabel = weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
                     return `
                         <div class="bg-base-200 p-3 rounded-lg">
                             <div class="font-semibold text-sm">Week of ${weekLabel}</div>
                             <div class="text-xs text-base-content/70 mt-1">
-                                ${m.weight_lbs ? `Weight: ${m.weight_lbs}lbs<br>` : ''}
-                                ${m.body_fat_percent ? `BF: ${m.body_fat_percent}%<br>` : ''}
-                                ${m.avg_sleep_hours ? `Sleep: ${m.avg_sleep_hours}h` : ''}
+                                ${m.weight_kg ? `Weight: ${m.weight_kg}kg<br>` : ''}
+                                ${m.body_fat_pct ? `BF: ${m.body_fat_pct}%<br>` : ''}
+                                ${m.sleep_avg_hrs ? `Sleep: ${m.sleep_avg_hrs}h` : ''}
                             </div>
                         </div>
                     `;
@@ -289,14 +283,14 @@
                     const latest = measurements[0];
                     const previous = measurements[1];
                     
-                    if (latest.weight_lbs && previous.weight_lbs) {
-                        const diff = (latest.weight_lbs - previous.weight_lbs).toFixed(1);
+                    if (latest.weight_kg && previous.weight_kg) {
+                        const diff = (latest.weight_kg - previous.weight_kg).toFixed(1);
                         const sign = diff > 0 ? '+' : '';
                         document.getElementById('weight-change').textContent = `${sign}${diff} lbs`;
                     }
                     
-                    if (latest.body_fat_percent && previous.body_fat_percent) {
-                        const diff = (latest.body_fat_percent - previous.body_fat_percent).toFixed(1);
+                    if (latest.body_fat_pct && previous.body_fat_pct) {
+                        const diff = (latest.body_fat_pct - previous.body_fat_pct).toFixed(1);
                         const sign = diff > 0 ? '+' : '';
                         document.getElementById('fat-change').textContent = `${sign}${diff}%`;
                     }

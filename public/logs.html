@@ -142,7 +142,6 @@
     <script src="js/api.js"></script>
     <script src="js/utils.js"></script>
     <script>
-        const api = new APIClient();
 
         function initPage() {
             const today = new Date().toISOString().split('T')[0];
@@ -171,12 +170,12 @@
                     log_date: document.getElementById('log-date').value,
                     calories_in: parseInt(document.getElementById('calories-in').value) || null,
                     adherence_score: parseInt(document.getElementById('adherence-score').value) || null,
-                    sleep_hours: parseFloat(document.getElementById('sleep-hours').value) || null,
-                    energy_level: parseInt(document.getElementById('energy-level').value) || null,
+                    sleep_avg_hrs: parseFloat(document.getElementById('sleep-hours').value) || null,
+                    energy_level_avg: parseInt(document.getElementById('energy-level').value) || null,
                     notes: document.getElementById('log-notes').value || null
                 };
 
-                const button = event.target.querySelector('button[type="submit"]');
+                const button = e.target.querySelector('button[type="submit"]');
                 button.disabled = true;
                 button.textContent = 'Saving...';
 
@@ -199,7 +198,7 @@
                 button.textContent = 'Save Log Entry';
             } catch (error) {
                 showError(error);
-                event.target.querySelector('button[type="submit"]').disabled = false;
+                e.target.querySelector('button[type="submit"]').disabled = false;
             }
         }
 

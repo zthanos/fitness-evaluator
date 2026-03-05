@@ -155,7 +155,6 @@
     <script src="js/api.js"></script>
     <script src="js/utils.js"></script>
     <script>
-        const api = new APIClient();
 
         function initPage() {
             // Set this week's date
@@ -174,17 +173,30 @@
 
             try {
                 const targetData = {
-                    week_start_date: document.getElementById('target-week').value,
-                    target_name: document.getElementById('target-name').value,
-                    category: document.getElementById('target-category').value,
-                    target_value: parseFloat(document.getElementById('target-value').value),
-                    unit: document.getElementById('target-unit').value,
-                    min_value: parseFloat(document.getElementById('min-value').value) || null,
-                    max_value: parseFloat(document.getElementById('max-value').value) || null,
-                    description: document.getElementById('target-description').value || null
+                    // Map form fields into backend schema defined in PlanTargetsCreate
+                    effective_from: document.getElementById('target-week').value,
+                    target_calories: document.getElementById('target-category').value === 'nutrition'
+                        ? parseFloat(document.getElementById('target-value').value) || null
+                        : null,
+                    target_protein_g: document.getElementById('target-name').value.toLowerCase().includes('protein')
+                        ? parseFloat(document.getElementById('target-value').value) || null
+                        : null,
+                    target_fasting_hrs: document.getElementById('target-name').value.toLowerCase().includes('fast')
+                        ? parseFloat(document.getElementById('target-value').value) || null
+                        : null,
+                    target_run_km_wk: document.getElementById('target-category').value === 'performance'
+                        ? parseFloat(document.getElementById('target-value').value) || null
+                        : null,
+                    target_strength_sessions: document.getElementById('target-category').value === 'training'
+                        ? parseInt(document.getElementById('target-value').value) || null
+                        : null,
+                    target_weight_kg: document.getElementById('target-name').value.toLowerCase().includes('weight')
+                        ? parseFloat(document.getElementById('target-value').value) || null
+                        : null,
+                    notes: document.getElementById('target-description').value || null
                 };
 
-                const button = event.target.querySelector('button[type="submit"]');
+                const button = e.target.querySelector('button[type="submit"]');
                 button.disabled = true;
                 button.textContent = 'Creating...';
 
@@ -203,7 +215,7 @@
                 button.textContent = 'Create Target';
             } catch (error) {
                 showError(error);
-                event.target.querySelector('button[type="submit"]').disabled = false;
+                e.target.querySelector('button[type="submit"]').disabled = false;
             }
         }
 
@@ -211,20 +223,39 @@
             try {
                 const targets = await api.listPlanTargets();
                 const listDiv = document.getElementById('targets-list');
-                
+
                 if (targets.length === 0) {
                     listDiv.innerHTML = '<p class="text-base-content/60 text-sm">No targets yet</p>';
                     return;
                 }
 
-                // Group by category
-                const categories = {
-                    nutrition: 0,
-                    training: 0,
-                    recovery: 0,
-                    body_composition: 0,
-                    performance: 0
-                };
+                // Use the most recent targets entry
+                const latest = targets[0];
+
+                const metrics = [];
+                if (latest.target_calories != null) {
+                    metrics.push({ label: 'Daily Calories', value: `${latest.target_calories} kcal`, category: 'nutrition' });
+                }
+                if (latest.target_protein_g != null) {
+                    metrics.push({ label: 'Daily Protein', value: `${latest.target_protein_g} g`, category: 'nutrition' });
+                }
+                if (latest.target_fasting_hrs != null) {
+                    metrics.push({ label: 'Fasting Window', value: `${latest.target_fasting_hrs} hrs`, category: 'recovery' });
+                }
+                if (latest.target_run_km_wk != null) {
+                    metrics.push({ label: 'Weekly Run Distance', value: `${latest.target_run_km_wk} km`, category: 'performance' });
+                }
+                if (latest.target_strength_sessions != null) {
+                    metrics.push({ label: 'Strength Sessions / Week', value: `${latest.target_strength_sessions}`, category: 'training' });
+                }
+                if (latest.target_weight_kg != null) {
+                    metrics.push({ label: 'Target Weight', value: `${latest.target_weight_kg} kg`, category: 'body_composition' });
+                }
+
+                if (metrics.length === 0 && !latest.notes) {
+                    listDiv.innerHTML = '<p class="text-base-content/60 text-sm">Targets record has no numeric goals set yet.</p>';
+                    return;
+                }
 
                 const icons = {
                     nutrition: '🍎',
@@ -234,27 +265,29 @@
                     performance: '⚡'
                 };
 
-                listDiv.innerHTML = targets.slice(0, 5).map(target => {
-                    categories[target.category]++;
-                    const icon = icons[target.category] || '📌';
-                    return `
-                        <div class="bg-base-200 p-3 rounded-lg">
-                            <div class="font-semibold text-sm">${icon} ${target.target_name}</div>
-                            <div class="text-xs text-base-content/70 mt-1">
-                                <div>Target: ${target.target_value} ${target.unit}</div>
-                                ${target.min_value ? `<div>Min: ${target.min_value}</div>` : ''}
-                                ${target.max_value ? `<div>Max: ${target.max_value}</div>` : ''}
-                            </div>
+                listDiv.innerHTML = `
+                    <div class="bg-base-200 p-3 rounded-lg">
+                        <div class="font-semibold text-sm">Effective from ${latest.effective_from}</div>
+                        <div class="text-xs text-base-content/70 mt-2 space-y-1">
+                            ${metrics.map(m => `
+                                <div>${icons[m.category] || '📌'} ${m.label}: ${m.value}</div>
+                            `).join('')}
+                            ${latest.notes ? `<div class="mt-2 italic">Notes: ${latest.notes}</div>` : ''}
                         </div>
-                    `;
-                }).join('');
+                    </div>
+                `;
 
-                // Update category counts
-                document.getElementById('cat-nutrition').textContent = categories.nutrition;
-                document.getElementById('cat-training').textContent = categories.training;
-                document.getElementById('cat-recovery').textContent = categories.recovery;
-                document.getElementById('cat-body').textContent = categories.body_composition;
-                document.getElementById('cat-perf').textContent = categories.performance;
+                // Update category counts based on which metric types are present
+                document.getElementById('cat-nutrition').textContent =
+                    (latest.target_calories != null || latest.target_protein_g != null) ? 1 : 0;
+                document.getElementById('cat-training').textContent =
+                    latest.target_strength_sessions != null ? 1 : 0;
+                document.getElementById('cat-recovery').textContent =
+                    latest.target_fasting_hrs != null ? 1 : 0;
+                document.getElementById('cat-body').textContent =
+                    latest.target_weight_kg != null ? 1 : 0;
+                document.getElementById('cat-perf').textContent =
+                    latest.target_run_km_wk != null ? 1 : 0;
             } catch (error) {
                 console.error('Error loading targets:', error);
             }

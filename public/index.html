@@ -88,7 +88,7 @@
                         <svg class="inline-block w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                     </div>
                     <div class="stat-title">Plan Active</div>
-                    <div class="stat-value text-info" id="plan-status">⚠️ None</div>
+                    <div class="stat-value text-info text-sm" id="plan-status">⚠️ None</div>
                     <div class="stat-desc">Set up your targets</div>
                 </div>
             </div>
@@ -122,8 +122,13 @@
                     <div class="card-body">
                         <h2 class="card-title">⚡ Strava Integration</h2>
                         <p>Sync your running, cycling, and strength training activities.</p>
+                        <div id="strava-status" class="mb-2">
+                            <p class="text-sm text-base-content/60">Status: <span id="strava-connection-status">Not connected</span></p>
+                            <p id="strava-athlete-info" class="text-sm text-base-content/60" style="display: none;"></p>
+                        </div>
                         <div class="card-actions justify-end">
-                            <button onclick="syncStrava()" class="btn btn-success">Sync Activities</button>
+                            <button id="connect-strava-btn" onclick="connectStrava()" class="btn btn-primary">Connect Strava</button>
+                            <button onclick="syncStrava(event)" class="btn btn-success" style="display: none;" id="sync-strava-btn">Sync Activities</button>
                         </div>
                     </div>
                 </div>
@@ -166,7 +171,7 @@
 
             <div class="modal-action">
                 <button type="button" class="btn" onclick="document.getElementById('eval-modal').close()">Cancel</button>
-                <button onclick="generateEvaluation()" class="btn btn-warning">Generate</button>
+                <button onclick="generateEvaluation(event)" class="btn btn-warning">Generate</button>
             </div>
         </div>
         <form method="dialog" class="modal-backdrop">
@@ -183,16 +188,88 @@
             const weekStart = getWeekStart(today);
             document.getElementById('eval-week').value = formatDate(weekStart);
             
+            // Check for OAuth success in URL parameters
+            checkOAuthSuccess();
+            
             loadDashboardData();
+        }
+
+        function checkOAuthSuccess() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const success = urlParams.get('success');
+            const athleteName = urlParams.get('athlete_name');
+            const athleteId = urlParams.get('athlete_id');
+            
+            if (success === 'true' && athleteName) {
+                // Update UI to show connected status
+                document.getElementById('strava-connection-status').textContent = 'Connected';
+                document.getElementById('strava-athlete-info').textContent = `Athlete: ${athleteName} (ID: ${athleteId})`;
+                document.getElementById('strava-athlete-info').style.display = 'block';
+                
+                // Hide connect button, show sync button
+                document.getElementById('connect-strava-btn').style.display = 'none';
+                document.getElementById('sync-strava-btn').style.display = 'inline-block';
+                
+                // Show success message
+                showSuccess(`Successfully connected to Strava as ${athleteName}!`);
+                
+                // Clean up URL parameters
+                window.history.replaceState({}, document.title, window.location.pathname);
+            }
+        }
+
+        async function connectStrava() {
+            try {
+                // Fetch the authorization URL from the backend
+                const response = await fetch('/api/auth/strava');
+                if (!response.ok) {
+                    throw new Error('Failed to get authorization URL');
+                }
+                
+                const data = await response.json();
+                
+                // Redirect to Strava authorization page
+                window.location.href = data.authorization_url;
+            } catch (error) {
+                console.error('Error connecting to Strava:', error);
+                showError('Failed to connect to Strava. Please try again.');
+            }
         }
 
         async function loadDashboardData() {
             try {
-                // Load recent evaluations
                 const thisWeek = formatDate(getWeekStart());
-                await loadRecentActivity();
+                await Promise.all([
+                    loadRecentActivity(),
+                    loadPlanStatus(),
+                    loadStravaSummary(thisWeek)
+                ]);
             } catch (error) {
                 console.error('Error loading dashboard:', error);
+            }
+        }
+
+        async function loadStravaSummary(weekStart) {
+            try {
+                const activitiesResp = await api.getWeeklyActivities(weekStart);
+                const activities = activitiesResp.activities || [];
+                document.getElementById('total-activities').textContent = activities.length.toString();
+            } catch (error) {
+                console.warn('No Strava activities loaded for dashboard:', error);
+            }
+        }
+
+        async function loadPlanStatus() {
+            try {
+                const plan = await api.getCurrentPlanTargets();
+                if (plan && plan.effective_from) {
+                    document.getElementById('plan-status').textContent = `✅ From ${plan.effective_from}`;
+                    const descEl = document.querySelector('#plan-status').closest('.stat').querySelector('.stat-desc');
+                    descEl.textContent = 'Targets in effect';
+                }
+            } catch (error) {
+                // If there is no active plan (404), keep default "None" text
+                console.warn('No active plan targets found:', error);
             }
         }
 
@@ -231,8 +308,18 @@
             }
         }
 
-        async function syncStrava() {
+        async function syncStrava(event) {
             try {
+                // First check if we have tokens
+                const statusResponse = await fetch('/api/auth/strava/status');
+                if (statusResponse.ok) {
+                    const status = await statusResponse.json();
+                    if (!status.connected) {
+                        showError('Please connect to Strava first by clicking "Connect Strava"');
+                        return;
+                    }
+                }
+                
                 const weekStart = formatDate(getWeekStart());
                 const button = event.target;
                 button.disabled = true;
@@ -246,16 +333,27 @@
                 button.disabled = false;
                 button.textContent = 'Sync Activities';
             } catch (error) {
-                showError(error);
-                event.target.disabled = false;
-                event.target.textContent = 'Sync Activities';
+                const errorMessage = error.message || error.toString();
+                if (errorMessage.includes('No access token') || errorMessage.includes('invalid token')) {
+                    showError('Strava connection expired. Please reconnect by clicking "Connect Strava"');
+                    // Reset UI to show connect button
+                    document.getElementById('connect-strava-btn').style.display = 'inline-block';
+                    document.getElementById('sync-strava-btn').style.display = 'none';
+                    document.getElementById('strava-connection-status').textContent = 'Not connected';
+                } else {
+                    showError(errorMessage);
+                }
+                if (event && event.target) {
+                    event.target.disabled = false;
+                    event.target.textContent = 'Sync Activities';
+                }
             }
         }
 
-        async function generateEvaluation() {
+        async function generateEvaluation(e) {
             try {
                 const weekStart = document.getElementById('eval-week').value;
-                const button = event.target;
+                const button = e.target;
                 button.disabled = true;
                 button.textContent = 'Generating...';
                 
@@ -275,13 +373,32 @@
                 }, 1000);
             } catch (error) {
                 showError(error);
-                event.target.disabled = false;
-                event.target.textContent = 'Generate';
+                e.target.disabled = false;
+                e.target.textContent = 'Generate';
+            }
+        }
+
+        async function checkStravaConnection() {
+            try {
+                const response = await fetch('/api/auth/strava/status');
+                if (response.ok) {
+                    const status = await response.json();
+                    if (status.connected) {
+                        document.getElementById('strava-connection-status').textContent = 'Connected';
+                        document.getElementById('connect-strava-btn').style.display = 'none';
+                        document.getElementById('sync-strava-btn').style.display = 'inline-block';
+                    }
+                }
+            } catch (error) {
+                console.warn('Could not check Strava connection status:', error);
             }
         }
 
         // Initialize when page loads
-        document.addEventListener('DOMContentLoaded', initPage);
+        document.addEventListener('DOMContentLoaded', () => {
+            initPage();
+            checkStravaConnection();
+        });
     </script>
 </body>
 </html>

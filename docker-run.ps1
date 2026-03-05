@@ -18,12 +18,12 @@ function Write-Header {
 
 function Write-Success {
     param([string]$Text)
-    Write-Host "✓ $Text" -ForegroundColor Green
+    Write-Host "[OK] $Text" -ForegroundColor Green
 }
 
 function Write-Warning {
     param([string]$Text)
-    Write-Host "⚠ $Text" -ForegroundColor Yellow
+    Write-Host "[WARN] $Text" -ForegroundColor Yellow
 }
 
 # Check if .env exists
@@ -59,12 +59,13 @@ switch ($Command.ToLower()) {
                 Write-Success "FastAPI is healthy"
                 $appHealthy = $true
             }
-        } catch {
+        }
+        catch {
             Write-Warning "FastAPI is starting, may take a moment..."
         }
         
         Write-Host ""
-        Write-Host "🎉 Fitness Evaluator is ready!" -ForegroundColor Green
+        Write-Host "Fitness Evaluator is ready!" -ForegroundColor Green
         Write-Host ""
         Write-Host "Access points:"
         Write-Host "  Dashboard:    http://localhost:8000"
@@ -88,7 +89,8 @@ switch ($Command.ToLower()) {
         Write-Header "Showing logs (Ctrl+C to exit)"
         if ($Args) {
             docker-compose logs -f $Args
-        } else {
+        }
+        else {
             docker-compose logs -f
         }
     }
@@ -100,12 +102,12 @@ switch ($Command.ToLower()) {
 
     "shell-app" {
         Write-Header "Opening shell in FastAPI container"
-        docker-compose exec app powershell
+        docker-compose exec app cmd
     }
 
     "shell-ollama" {
         Write-Header "Opening shell in Ollama container"
-        docker-compose exec ollama powershell
+        docker-compose exec ollama cmd
     }
 
     "db-reset" {
@@ -115,7 +117,8 @@ switch ($Command.ToLower()) {
             docker-compose exec app rm -Path /app/data/fitness_eval.db
             docker-compose exec app uv run alembic upgrade head
             Write-Success "Database reset"
-        } else {
+        }
+        else {
             Write-Host "Cancelled"
         }
     }
@@ -141,18 +144,20 @@ switch ($Command.ToLower()) {
         Write-Header "Health Check"
         Write-Host "FastAPI:" -ForegroundColor Cyan
         try {
-            $response = Invoke-WebRequest -Uri "http://localhost:8000/health"
+            $response = Invoke-WebRequest -Uri "http://localhost:8000/health" -ErrorAction SilentlyContinue
             $response.Content | ConvertFrom-Json | ConvertTo-Json
-        } catch {
+        }
+        catch {
             Write-Host "Not responding"
         }
         
         Write-Host ""
         Write-Host "Ollama:" -ForegroundColor Cyan
         try {
-            $response = Invoke-WebRequest -Uri "http://localhost:11434/api/tags"
+            $response = Invoke-WebRequest -Uri "http://localhost:11434/api/tags" -ErrorAction SilentlyContinue
             $response.Content | ConvertFrom-Json | ConvertTo-Json
-        } catch {
+        }
+        catch {
             Write-Host "Not responding"
         }
     }
@@ -171,28 +176,28 @@ switch ($Command.ToLower()) {
     }
 
     default {
-        Write-Host "Fitness Evaluator Docker Helper"
-        Write-Host ""
-        Write-Host "Usage: .\docker-run.ps1 -Command <command> [-Args <args>]"
-        Write-Host ""
-        Write-Host "Commands:"
-        Write-Host "  up                Start all services"
-        Write-Host "  down              Stop all services"
-        Write-Host "  restart           Restart services"
-        Write-Host "  logs [service]    Show logs (app, ollama)"
-        Write-Host "  ps                Show container status"
-        Write-Host "  shell-app         Open shell in FastAPI container"
-        Write-Host "  shell-ollama      Open shell in Ollama container"
-        Write-Host "  db-reset          Reset database (DELETE DATA)"
-        Write-Host "  backup            Create database backup"
-        Write-Host "  clean             Remove containers and volumes"
-        Write-Host "  health            Check service health"
-        Write-Host "  model-list        List available Ollama models"
-        Write-Host "  model-pull <name> Download Ollama model"
-        Write-Host ""
-        Write-Host "Examples:"
-        Write-Host "  .\docker-run.ps1 -Command up"
-        Write-Host "  .\docker-run.ps1 -Command logs -Args app"
-        Write-Host "  .\docker-run.ps1 -Command model-pull -Args neural-chat"
+        Write-Host 'Fitness Evaluator Docker Helper'
+        Write-Host ''
+        Write-Host 'Usage: .\docker-run.ps1 -Command <command> [-Args <args>]'
+        Write-Host ''
+        Write-Host 'Commands:'
+        Write-Host '  up                Start all services'
+        Write-Host '  down              Stop all services'
+        Write-Host '  restart           Restart services'
+        Write-Host '  logs [service]    Show logs - app or ollama'
+        Write-Host '  ps                Show container status'
+        Write-Host '  shell-app         Open shell in FastAPI container'
+        Write-Host '  shell-ollama      Open shell in Ollama container'
+        Write-Host '  db-reset          Reset database (DELETE DATA)'
+        Write-Host '  backup            Create database backup'
+        Write-Host '  clean             Remove containers and volumes'
+        Write-Host '  health            Check service health'
+        Write-Host '  model-list        List available Ollama models'
+        Write-Host '  model-pull NAME   Download Ollama model'
+        Write-Host ''
+        Write-Host 'Examples:'
+        Write-Host '  .\docker-run.ps1 -Command up'
+        Write-Host '  .\docker-run.ps1 -Command logs -Args app'
+        Write-Host '  .\docker-run.ps1 -Command model-pull -Args neural-chat'
     }
 }

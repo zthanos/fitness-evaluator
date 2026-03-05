@@ -1,8 +1,8 @@
 # app/services/strava_service.py
 import time
 import httpx
-from datetime import datetime, timezone
-from uuid import UUID
+from datetime import datetime, timezone, timedelta, date
+from uuid import uuid5, NAMESPACE_DNS, UUID
 from sqlalchemy.orm import Session
 from app.config import get_settings
 
@@ -37,7 +37,8 @@ async def exchange_code(code: str) -> dict:
                 "client_id": settings.STRAVA_CLIENT_ID,
                 "client_secret": settings.STRAVA_CLIENT_SECRET,
                 "code": code,
-                "grant_type": "authorization_code"
+                "grant_type": "authorization_code",
+                "redirect_uri": settings.STRAVA_REDIRECT_URI
             }
         )
         response.raise_for_status()
@@ -82,24 +83,18 @@ async def refresh_access_token() -> str:
     
     return _strava_tokens["access_token"]
 
-async def sync_week_activities(week_id: UUID, db: Session) -> int:
+async def sync_week_activities(week_start: date, db: Session) -> int:
     """
-    Resolves the WeeklyMeasurement for week_id to get week_start.
     Calls /v3/athlete/activities?after={unix_start}&before={unix_end} with a valid access token.
     For each activity: upsert into strava_activities using strava_id as the conflict key.
     Returns the number of activities upserted.
     """
-    from app.models.weekly_measurement import WeeklyMeasurement
     from app.models.strava_activity import StravaActivity
-    from datetime import timedelta
-    
-    # Get the weekly measurement to determine week_start
-    weekly_measurement = db.query(WeeklyMeasurement).filter(WeeklyMeasurement.id == week_id).first()
-    if not weekly_measurement:
-        raise ValueError(f"No weekly measurement found for week_id: {week_id}")
-    
+
+    # Derive a stable week_id from the week_start date for grouping activities
+    week_id = uuid5(NAMESPACE_DNS, str(week_start))
+
     # Calculate start and end times for the week
-    week_start = weekly_measurement.week_start
     week_end = week_start + timedelta(days=7)
     
     # Convert to Unix timestamps
@@ -121,20 +116,27 @@ async def sync_week_activities(week_id: UUID, db: Session) -> int:
         # Upsert each activity into the database
         upserted_count = 0
         for activity_data in activities_data:
-            # Check if activity already exists
+            strava_id = activity_data["id"]
+
             existing_activity = db.query(StravaActivity).filter(
-                StravaActivity.strava_id == activity_data["id"]
+                StravaActivity.strava_id == strava_id
             ).first()
-            
+
             if existing_activity:
-                # Update existing activity
-                for key, value in activity_data.items():
-                    if hasattr(existing_activity, key):
-                        setattr(existing_activity, key, value)
+                # Update only mapped fields; never touch primary key id
+                existing_activity.activity_type = activity_data.get("type", existing_activity.activity_type)
+                existing_activity.start_date = datetime.fromisoformat(activity_data["start_date"]).replace(tzinfo=timezone.utc)
+                existing_activity.moving_time_s = activity_data.get("moving_time")
+                existing_activity.distance_m = activity_data.get("distance")
+                existing_activity.elevation_m = activity_data.get("total_elevation_gain")
+                existing_activity.avg_hr = activity_data.get("average_heartrate")
+                existing_activity.max_hr = activity_data.get("max_heartrate")
+                existing_activity.raw_json = str(activity_data)
+                existing_activity.week_id = week_id
             else:
                 # Create new activity
                 activity = StravaActivity(
-                    strava_id=activity_data["id"],
+                    strava_id=strava_id,
                     activity_type=activity_data.get("type", "Unknown"),
                     start_date=datetime.fromisoformat(activity_data["start_date"]).replace(tzinfo=timezone.utc),
                     moving_time_s=activity_data.get("moving_time"),
@@ -146,7 +148,7 @@ async def sync_week_activities(week_id: UUID, db: Session) -> int:
                     week_id=week_id
                 )
                 db.add(activity)
-            
+
             upserted_count += 1
         
         db.commit()

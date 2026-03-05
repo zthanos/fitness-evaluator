@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
-from datetime import date
+from datetime import date, timedelta
 from uuid import UUID
 from app.database import get_db
 from app.models.strava_activity import StravaActivity
@@ -31,15 +31,22 @@ async def sync_strava_activities(week_start: date, db: Session = Depends(get_db)
     - `message`: Status message
     """
     try:
-        # Create a week_id UUID from the week_start date
-        from uuid import uuid5, NAMESPACE_DNS
-        week_id = uuid5(NAMESPACE_DNS, str(week_start))
-        
-        count = await sync_week_activities(week_id, db)
+        # Start one week before the requested week_start
+        start_week = week_start - timedelta(days=7)
+        today = date.today()
+
+        total_count = 0
+        current_week = start_week
+
+        # Sync in weekly windows from (week_start - 7) up to today
+        while current_week <= today:
+            total_count += await sync_week_activities(current_week, db)
+            current_week = current_week + timedelta(days=7)
+
         return {
             "week_start": week_start,
-            "activities_synced": count,
-            "message": f"Successfully synced {count} activities"
+            "activities_synced": total_count,
+            "message": f"Successfully synced {total_count} activities from {start_week} through {current_week - timedelta(days=1)}"
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))

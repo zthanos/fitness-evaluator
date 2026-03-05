@@ -53,9 +53,9 @@ async def evaluate_week(week_start: date, db: Session = Depends(get_db)):
         
         # Create evaluation service
         eval_service = EvaluationService(db)
-        
+
         # Perform evaluation (with idempotency check)
-        weekly_eval = eval_service.evaluate_week(week_id)
+        weekly_eval = await eval_service.evaluate_week(week_id)
         
         if not weekly_eval.parsed_output_json:
             raise HTTPException(
@@ -154,7 +154,7 @@ async def refresh_evaluation(week_start: date, db: Session = Depends(get_db)):
         
         # Perform fresh evaluation
         eval_service = EvaluationService(db)
-        weekly_eval = eval_service.evaluate_week(week_id)
+        weekly_eval = await eval_service.evaluate_week(week_id)
         
         return {
             "week_start": week_start,
