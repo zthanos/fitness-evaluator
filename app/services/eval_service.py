@@ -1,5 +1,4 @@
 # app/services/eval_service.py
-from uuid import UUID
 from datetime import datetime
 from sqlalchemy.orm import Session
 from app.services.prompt_engine import build_contract, hash_contract
@@ -16,12 +15,12 @@ class EvaluationService:
     def __init__(self, db: Session):
         self.db = db
 
-    async def evaluate_week(self, week_id: UUID) -> WeeklyEval:
+    async def evaluate_week(self, week_id: str) -> WeeklyEval:
         """
         Perform a complete fitness evaluation for the given week.
         
         Args:
-            week_id: UUID of the week to evaluate
+            week_id: String UUID of the week to evaluate
             
         Returns:
             WeeklyEval model instance with the evaluation results
@@ -60,12 +59,12 @@ class EvaluationService:
         self.db.commit()
         return weekly_eval
 
-    def get_evaluation(self, week_id: UUID) -> WeeklyEval | None:
+    def get_evaluation(self, week_id: str) -> WeeklyEval | None:
         """
         Retrieve a previously generated evaluation for the given week.
         
         Args:
-            week_id: UUID of the week to retrieve
+            week_id: String UUID of the week to retrieve
             
         Returns:
             WeeklyEval model instance or None if not found

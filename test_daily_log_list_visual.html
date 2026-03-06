@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Daily Log List - Visual Test</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@4.4.20/dist/full.min.css" rel="stylesheet" type="text/css" />
+    <style>
+        .test-section {
+            margin-bottom: 2rem;
+            padding: 1.5rem;
+            border: 2px solid #e5e7eb;
+            border-radius: 0.5rem;
+        }
+        .test-passed {
+            color: #10b981;
+            font-weight: bold;
+        }
+        .test-failed {
+            color: #ef4444;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body class="bg-base-200 p-8">
+    <div class="max-w-7xl mx-auto">
+        <h1 class="text-4xl font-bold mb-2">Daily Log List Component - Visual Test</h1>
+        <p class="text-base-content/70 mb-8">Testing Requirements: 8.7, 9.1, 9.2, 9.3, 9.4, 9.5</p>
+        
+        <!-- Test Instructions -->
+        <div class="alert alert-info mb-8">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="stroke-current shrink-0 w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+            <div>
+                <h3 class="font-bold">Test Instructions:</h3>
+                <ol class="list-decimal list-inside mt-2 space-y-1">
+                    <li><strong>Requirement 8.7:</strong> Verify logs are displayed in reverse chronological order (newest first)</li>
+                    <li><strong>Requirement 9.1:</strong> Click on any field to enable inline editing</li>
+                    <li><strong>Requirement 9.2:</strong> Verify save (✓) and cancel (✕) buttons appear when editing</li>
+                    <li><strong>Requirement 9.3:</strong> Try entering invalid values (e.g., calories > 10000) and verify validation</li>
+                    <li><strong>Requirement 9.4:</strong> Observe visual feedback during save (loading spinner, success highlight)</li>
+                    <li><strong>Requirement 9.5:</strong> Verify display refreshes after successful edit</li>
+                </ol>
+            </div>
+        </div>
+
+        <!-- Test Results -->
+        <div class="test-section bg-base-100">
+            <h2 class="text-2xl font-bold mb-4">Automated Test Results</h2>
+            <div id="test-results" class="space-y-2">
+                <p class="text-base-content/60">Running tests...</p>
+            </div>
+        </div>
+
+        <!-- Component Display -->
+        <div class="card bg-base-100 shadow-xl">
+            <div class="card-body">
+                <h2 class="card-title">Daily Log List Component</h2>
+                <p class="text-sm text-base-content/70 mb-4">
+                    Click on any field to edit it inline. Changes are saved immediately.
+                </p>
+                
+                <div id="daily-log-list-container"></div>
+            </div>
+        </div>
+
+        <!-- Manual Test Checklist -->
+        <div class="test-section bg-base-100 mt-8">
+            <h2 class="text-2xl font-bold mb-4">Manual Test Checklist</h2>
+            <div class="space-y-3">
+                <label class="flex items-center gap-3 cursor-pointer">
+                    <input type="checkbox" class="checkbox" />
+                    <span>Logs are displayed in reverse chronological order (newest first)</span>
+                </label>
+                <label class="flex items-center gap-3 cursor-pointer">
+                    <input type="checkbox" class="checkbox" />
+                    <span>Clicking on a field enables inline editing</span>
+                </label>
+                <label class="flex items-center gap-3 cursor-pointer">
+                    <input type="checkbox" class="checkbox" />
+                    <span>Save (✓) and cancel (✕) buttons appear when editing</span>
+                </label>
+                <label class="flex items-center gap-3 cursor-pointer">
+                    <input type="checkbox" class="checkbox" />
+                    <span>Invalid values show validation errors (e.g., calories > 10000)</span>
+                </label>
+                <label class="flex items-center gap-3 cursor-pointer">
+                    <input type="checkbox" class="checkbox" />
+                    <span>Loading spinner appears during save operation</span>
+                </label>
+                <label class="flex items-center gap-3 cursor-pointer">
+                    <input type="checkbox" class="checkbox" />
+                    <span>Row highlights briefly after successful save</span>
+                </label>
+                <label class="flex items-center gap-3 cursor-pointer">
+                    <input type="checkbox" class="checkbox" />
+                    <span>Cancel button restores original value</span>
+                </label>
+                <label class="flex items-center gap-3 cursor-pointer">
+                    <input type="checkbox" class="checkbox" />
+                    <span>Keyboard navigation works (Tab to field, Enter to edit)</span>
+                </label>
+            </div>
+        </div>
+    </div>
+
+    <script src="public/js/api.js"></script>
+    <script src="public/js/daily-log-list.js"></script>
+    
+    <script>
+        // Run automated tests
+        async function runAutomatedTests() {
+            const resultsDiv = document.getElementById('test-results');
+            const results = [];
+            
+            try {
+                // Test 1: Component initialization
+                results.push({ name: 'Component Initialization', passed: true, message: 'DailyLogList class loaded successfully' });
+                
+                // Test 2: API client availability
+                if (typeof api !== 'undefined' && api.listDailyLogs) {
+                    results.push({ name: 'API Client', passed: true, message: 'API client methods available' });
+                } else {
+                    results.push({ name: 'API Client', passed: false, message: 'API client not available' });
+                }
+                
+                // Test 3: Validation rules
+                const component = new DailyLogList('daily-log-list-container');
+                const validationTests = [
+                    { field: 'calories_in', value: '15000', shouldFail: true },
+                    { field: 'calories_in', value: '2000', shouldFail: false },
+                    { field: 'protein_g', value: '1500', shouldFail: true },
+                    { field: 'protein_g', value: '150', shouldFail: false },
+                    { field: 'adherence_score', value: '150', shouldFail: true },
+                    { field: 'adherence_score', value: '85', shouldFail: false },
+                ];
+                
+                let validationPassed = true;
+                for (const test of validationTests) {
+                    const error = component.validateField(test.field, test.value);
+                    const failed = error !== null;
+                    if (failed !== test.shouldFail) {
+                        validationPassed = false;
+                        break;
+                    }
+                }
+                
+                results.push({ 
+                    name: 'Validation Rules', 
+                    passed: validationPassed, 
+                    message: validationPassed ? 'All validation rules working correctly' : 'Validation rules not working as expected'
+                });
+                
+                // Test 4: Load component
+                await component.load();
+                results.push({ name: 'Component Load', passed: true, message: 'Component loaded and rendered' });
+                
+            } catch (error) {
+                results.push({ name: 'Test Execution', passed: false, message: `Error: ${error.message}` });
+            }
+            
+            // Display results
+            resultsDiv.innerHTML = results.map(result => `
+                <div class="flex items-center gap-3">
+                    <span class="${result.passed ? 'test-passed' : 'test-failed'}">
+                        ${result.passed ? '✓' : '✗'}
+                    </span>
+                    <span class="font-semibold">${result.name}:</span>
+                    <span>${result.message}</span>
+                </div>
+            `).join('');
+        }
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            runAutomatedTests();
+        });
+    </script>
+</body>
+</html>

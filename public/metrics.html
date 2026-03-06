@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light" class="h-full">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Body Metrics - Fitness Platform</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@4.4.20/dist/full.min.css" rel="stylesheet" type="text/css" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- Design Tokens -->
+    <link rel="stylesheet" href="css/design-tokens.css">
+
+    <!-- Navigation Sidebar Styles -->
+    <link rel="stylesheet" href="css/navigation-sidebar.css">
+
+    <!-- Chart.js for data visualization -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+
+<body class="bg-base-200 h-full">
+    <!-- Skip to main content link for accessibility -->
+    <a href="#main-content" class="skip-to-main">Skip to main content</a>
+
+    <!-- Sidebar Container -->
+    <div id="sidebar-container"></div>
+
+    <!-- Main Content Area -->
+    <main id="main-content" class="main-content h-screen flex flex-col">
+        <div class="p-6 flex-1 flex flex-col overflow-hidden">
+            <!-- Header with Add Button and Extended Mode Toggle -->
+            <div class="flex justify-between items-center mb-6 flex-shrink-0">
+                <div class="flex items-center gap-4">
+                    <h1 class="text-4xl font-bold">📊 Body Metrics</h1>
+                    <div class="form-control">
+                        <label class="label cursor-pointer gap-2">
+                            <span class="label-text">Extended Mode</span>
+                            <input type="checkbox" id="extended-mode-toggle" class="toggle toggle-primary" />
+                        </label>
+                    </div>
+                </div>
+                <button id="add-metric-btn" class="btn btn-primary gap-2"
+                    onclick="document.getElementById('metric-form-modal').showModal()">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd"
+                            d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z"
+                            clip-rule="evenodd" />
+                    </svg>
+                    Add Measurement
+                </button>
+            </div>
+
+            <!-- Metrics Charts (Full Width) -->
+            <div class="card bg-base-100 shadow-xl mb-6 flex-shrink-0">
+                <div class="card-body">
+                    <h2 class="card-title mb-4">Metrics History</h2>
+                    <div id="metrics-charts-container">
+                        <!-- MetricsChart component will be rendered here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- All Metrics Table (Fills remaining space with internal scroll) -->
+            <div class="card bg-base-100 shadow-xl flex-1 flex flex-col overflow-hidden">
+                <div class="card-body flex flex-col overflow-hidden">
+                    <div class="flex-shrink-0">
+                        <h2 class="card-title">All Measurements</h2>
+                        <p class="text-sm text-base-content/70 mb-4">
+                            Click on any field to edit it inline (within 24 hours of creation). Changes are saved
+                            immediately.
+                        </p>
+                    </div>
+
+                    <!-- Metrics List Component with scroll -->
+                    <div id="metrics-list-container" class="flex-1 overflow-y-auto"></div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Add Measurement Modal -->
+    <dialog id="metric-form-modal" class="modal">
+        <div class="modal-box max-w-2xl">
+            <form method="dialog">
+                <button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
+            </form>
+            <h3 class="font-bold text-lg mb-4">Add Body Measurement</h3>
+
+            <!-- Metrics Form Component -->
+            <div id="metrics-form-container"></div>
+        </div>
+        <form method="dialog" class="modal-backdrop">
+            <button>close</button>
+        </form>
+    </dialog>
+
+    <script src="js/api.js"></script>
+    <script src="js/utils.js"></script>
+
+    <!-- Navigation Sidebar Script -->
+    <script src="js/navigation-sidebar.js"></script>
+
+    <!-- Chart Configuration Utilities -->
+    <script src="js/chart-config.js"></script>
+
+    <!-- Metrics Form Script -->
+    <script src="js/metrics-form.js"></script>
+
+    <!-- Metrics Chart Script -->
+    <script src="js/metrics-chart.js"></script>
+
+    <!-- Metrics List Script -->
+    <script src="js/metrics-list.js"></script>
+
+    <script>
+        let metricsForm;
+        let metricsChart;
+        let metricsList;
+        let extendedMode = false;
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            // Initialize sidebar
+            const sidebar = new NavigationSidebar('sidebar-container');
+
+            // Load extended mode preference from localStorage
+            extendedMode = localStorage.getItem('metricsExtendedMode') === 'true';
+            const toggle = document.getElementById('extended-mode-toggle');
+            if (toggle) {
+                toggle.checked = extendedMode;
+            }
+
+            // Initialize metrics form with extended mode
+            metricsForm = new MetricsForm('metrics-form-container', null, extendedMode);
+            metricsForm.render();
+
+            // Initialize metrics charts - explicitly pass api instance
+            metricsChart = new MetricsChart('metrics-charts-container', api);
+            await metricsChart.render();
+
+            // Initialize metrics list with inline editing and extended mode
+            metricsList = new MetricsList('metrics-list-container', extendedMode);
+            await metricsList.load();
+
+            // Handle extended mode toggle
+            toggle.addEventListener('change', (e) => {
+                extendedMode = e.target.checked;
+                localStorage.setItem('metricsExtendedMode', extendedMode);
+
+                // Re-render form and list with new mode
+                metricsForm.setExtendedMode(extendedMode);
+                metricsForm.render();
+                metricsList.setExtendedMode(extendedMode);
+                metricsList.render();
+            });
+
+            // Handle successful submission - refresh charts and list, then close modal
+            metricsForm.onSuccess(async (result) => {
+                console.log('Measurement saved:', result);
+                await metricsChart.update();
+                await metricsList.load();
+
+                // Close the modal
+                const modal = document.getElementById('metric-form-modal');
+                if (modal) {
+                    modal.close();
+                }
+            });
+
+            // Handle errors
+            metricsForm.onError((error) => {
+                console.error('Error saving measurement:', error);
+            });
+        });
+    </script>
+</body>
+
+</html>

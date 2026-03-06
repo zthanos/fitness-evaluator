@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Activities - Fitness Platform</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@4.4.20/dist/full.min.css" rel="stylesheet" type="text/css" />
+    
+    <!-- Design Tokens -->
+    <link rel="stylesheet" href="css/design-tokens.css">
+    
+    <!-- Navigation Sidebar Styles -->
+    <link rel="stylesheet" href="css/navigation-sidebar.css">
+</head>
+<body class="bg-base-200 h-full">
+    <!-- Skip to main content link for accessibility -->
+    <a href="#main-content" class="skip-to-main">Skip to main content</a>
+    
+    <!-- Sidebar Container -->
+    <div id="sidebar-container"></div>
+    
+    <!-- Main Content Area -->
+    <main id="main-content" class="main-content min-h-screen">
+        <div class="p-6">
+            <h1 class="text-4xl font-bold mb-6">⚡ Activities</h1>
+
+            <!-- Activities Table -->
+            <div class="card bg-base-100 shadow-xl">
+                <div class="card-body">
+                    <h2 class="card-title mb-4">Activity List</h2>
+                    <div id="activities-container">
+                        <div class="flex justify-center items-center py-8">
+                            <span class="loading loading-spinner loading-lg"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script src="js/api.js"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/activity-list.js"></script>
+    
+    <!-- Navigation Sidebar Script -->
+    <script src="js/navigation-sidebar.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', async () => {
+            // Initialize sidebar
+            const sidebar = new NavigationSidebar('sidebar-container');
+            
+            // Initialize activity list
+            const activityList = new ActivityList('activities-container', {
+                pageSize: 25,
+                onRowClick: (activityId) => {
+                    // Navigate to activity detail page (will be implemented in task 4.1)
+                    window.location.href = `/activities/${activityId}`;
+                }
+            });
+            
+            await activityList.init();
+        });
+    </script>
+</body>
+</html>

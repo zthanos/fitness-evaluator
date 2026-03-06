@@ -1,55 +1,57 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="light">
+<html lang="en" data-theme="light" class="h-full">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Fitness Evaluation Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdn.jsdelivr.net/npm/daisyui@4.4.20/dist/full.min.css" rel="stylesheet" type="text/css" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- Design Tokens -->
+    <link rel="stylesheet" href="css/design-tokens.css">
+
+    <!-- Navigation Sidebar Styles -->
+    <link rel="stylesheet" href="css/navigation-sidebar.css">
+
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
     </style>
 </head>
-<body class="bg-base-200">
-    <div class="min-h-screen">
-        <!-- Navbar -->
-        <div class="navbar bg-base-100 shadow-md">
-            <div class="flex-1">
-                <a href="index.html" class="btn btn-ghost text-xl">💪 Fitness Evaluator</a>
-            </div>
-            <div class="flex-none gap-2">
-                <button onclick="document.documentElement.setAttribute('data-theme', document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark')" class="btn btn-ghost btn-circle">
-                    <svg id="theme-toggle" class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"></path></svg>
-                </button>
-                <div class="dropdown dropdown-end">
-                    <button class="btn btn-ghost btn-circle avatar">
-                        <div class="w-10 rounded-full bg-primary text-primary-content flex items-center justify-center">
-                            FE
-                        </div>
-                    </button>
-                    <ul class="dropdown-content z-[1] menu p-2 shadow bg-base-100 rounded-box w-52">
-                        <li><a href="logs.html">📝 Daily Logs</a></li>
-                        <li><a href="measurements.html">📊 Measurements</a></li>
-                        <li><a href="targets.html">🎯 Plan Targets</a></li>
-                        <li><a href="evaluation.html">📈 Evaluations</a></li>
-                        <li><hr></li>
-                        <li><a href="http://localhost:8000/docs" target="_blank">📚 API Docs</a></li>
-                    </ul>
-                </div>
-            </div>
-        </div>
 
-        <!-- Main Content -->
-        <div class="container mx-auto p-4 max-w-6xl">
+<body class="bg-base-200 h-full">
+    <!-- Skip to main content link for accessibility -->
+    <a href="#main-content" class="skip-to-main">Skip to main content</a>
+
+    <!-- Sidebar Container -->
+    <div id="sidebar-container"></div>
+
+    <!-- Main Content Area -->
+    <main id="main-content" class="main-content min-h-screen">
+        <div class="p-6">
             <!-- Hero Section -->
-            <div class="hero bg-gradient-to-r from-primary to-secondary rounded-lg mb-6 text-primary-content py-12">
-                <div class="hero-content text-center">
-                    <div class="max-w-md">
-                        <h1 class="text-5xl font-bold">Welcome Back!</h1>
-                        <p class="py-6">Your fitness evaluation system is ready. Track your progress, log your data, and get AI-powered insights.</p>
-                        <button onclick="document.getElementById('eval-modal').showModal()" class="btn btn-warning">Generate Evaluation</button>
+            <div class="hero min-h-[400px] rounded-lg shadow-xl mb-6 overflow-hidden"
+                style="background-image: url('assets/hero.png'); background-size: cover; background-position: center;">
+                <div class="hero-overlay bg-opacity-60 rounded-lg"></div>
+                <div class="hero-content text-center text-neutral-content">
+                    <div class="max-w-2xl">
+                        <!-- <h1 class="mb-5 text-5xl font-bold text-white drop-shadow-lg">💪 Fitness Platform</h1> -->
+                        <!-- <div class="flex drop-shadow-lg w-full text-center items-center gap-2 text-xl font-bold">
+                            <img class="h-14" src="/assets/logo.png">
+                            <span class="hidden lg:inline" style="color: #7C3AED;">Fitness</span>
+                            <span class="hidden lg:inline" style="color: #2563EB;"> Platform</span>
+                        </div> -->
+                        <p class="mb-5 text-lg text-white drop-shadow-md">Track your fitness journey with AI-powered
+                            insights. Log your daily nutrition, sync activities from Strava, and get personalized weekly
+                            evaluations to optimize your training and reach your goals.</p>
+                        <div class="flex gap-3 justify-center">
+                            <a href="logs.html" class="btn btn-primary">Start Logging</a>
+                            <button onclick="document.getElementById('eval-modal').showModal()"
+                                class="btn btn-outline btn-accent">Get Evaluation</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -58,7 +60,11 @@
             <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
                 <div class="stat bg-base-100 rounded-lg shadow">
                     <div class="stat-figure text-primary">
-                        <svg class="inline-block w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+                        <svg class="inline-block w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z">
+                            </path>
+                        </svg>
                     </div>
                     <div class="stat-title">Latest Score</div>
                     <div class="stat-value text-primary" id="latest-score">--</div>
@@ -67,7 +73,11 @@
 
                 <div class="stat bg-base-100 rounded-lg shadow">
                     <div class="stat-figure text-secondary">
-                        <svg class="inline-block w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
+                        <svg class="inline-block w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z">
+                            </path>
+                        </svg>
                     </div>
                     <div class="stat-title">Total Logs</div>
                     <div class="stat-value text-secondary" id="total-logs">0</div>
@@ -76,7 +86,10 @@
 
                 <div class="stat bg-base-100 rounded-lg shadow">
                     <div class="stat-figure text-accent">
-                        <svg class="inline-block w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                        <svg class="inline-block w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                        </svg>
                     </div>
                     <div class="stat-title">Activities</div>
                     <div class="stat-value text-accent" id="total-activities">0</div>
@@ -85,7 +98,10 @@
 
                 <div class="stat bg-base-100 rounded-lg shadow">
                     <div class="stat-figure text-info">
-                        <svg class="inline-block w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        <svg class="inline-block w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
                     </div>
                     <div class="stat-title">Plan Active</div>
                     <div class="stat-value text-info text-sm" id="plan-status">⚠️ None</div>
@@ -112,7 +128,7 @@
                         <h2 class="card-title">📊 Weekly Measurements</h2>
                         <p>Record weight, body metrics, sleep, and energy levels.</p>
                         <div class="card-actions justify-end">
-                            <a href="measurements.html" class="btn btn-primary">Record Metrics</a>
+                            <a href="metrics.html" class="btn btn-primary">Record Metrics</a>
                         </div>
                     </div>
                 </div>
@@ -123,12 +139,15 @@
                         <h2 class="card-title">⚡ Strava Integration</h2>
                         <p>Sync your running, cycling, and strength training activities.</p>
                         <div id="strava-status" class="mb-2">
-                            <p class="text-sm text-base-content/60">Status: <span id="strava-connection-status">Not connected</span></p>
+                            <p class="text-sm text-base-content/60">Status: <span id="strava-connection-status">Not
+                                    connected</span></p>
                             <p id="strava-athlete-info" class="text-sm text-base-content/60" style="display: none;"></p>
                         </div>
                         <div class="card-actions justify-end">
-                            <button id="connect-strava-btn" onclick="connectStrava()" class="btn btn-primary">Connect Strava</button>
-                            <button onclick="syncStrava(event)" class="btn btn-success" style="display: none;" id="sync-strava-btn">Sync Activities</button>
+                            <button id="connect-strava-btn" onclick="connectStrava()" class="btn btn-primary">Connect
+                                Strava</button>
+                            <button onclick="syncStrava(event)" class="btn btn-success" style="display: none;"
+                                id="sync-strava-btn">Sync Activities</button>
                         </div>
                     </div>
                 </div>
@@ -139,7 +158,8 @@
                         <h2 class="card-title">📈 Get Evaluation</h2>
                         <p>Get an AI-powered analysis of your weekly performance.</p>
                         <div class="card-actions justify-end">
-                            <button onclick="document.getElementById('eval-modal').showModal()" class="btn btn-warning">Generate</button>
+                            <button onclick="document.getElementById('eval-modal').showModal()"
+                                class="btn btn-warning">Generate</button>
                         </div>
                     </div>
                 </div>
@@ -155,13 +175,13 @@
                 </div>
             </div>
         </div>
-    </div>
+    </main>
 
     <!-- Evaluation Modal -->
     <dialog id="eval-modal" class="modal">
         <div class="modal-box">
             <h3 class="font-bold text-lg mb-4">Generate Evaluation</h3>
-            
+
             <div class="form-control w-full mb-4">
                 <label class="label">
                     <span class="label-text">Select Week (Monday)</span>
@@ -170,7 +190,8 @@
             </div>
 
             <div class="modal-action">
-                <button type="button" class="btn" onclick="document.getElementById('eval-modal').close()">Cancel</button>
+                <button type="button" class="btn"
+                    onclick="document.getElementById('eval-modal').close()">Cancel</button>
                 <button onclick="generateEvaluation(event)" class="btn btn-warning">Generate</button>
             </div>
         </div>
@@ -181,16 +202,19 @@
 
     <script src="js/api.js"></script>
     <script src="js/utils.js"></script>
+
+    <!-- Navigation Sidebar Script -->
+    <script src="js/navigation-sidebar.js"></script>
     <script>
         // Set today's date
         function initPage() {
             const today = new Date();
             const weekStart = getWeekStart(today);
             document.getElementById('eval-week').value = formatDate(weekStart);
-            
+
             // Check for OAuth success in URL parameters
             checkOAuthSuccess();
-            
+
             loadDashboardData();
         }
 
@@ -199,20 +223,20 @@
             const success = urlParams.get('success');
             const athleteName = urlParams.get('athlete_name');
             const athleteId = urlParams.get('athlete_id');
-            
+
             if (success === 'true' && athleteName) {
                 // Update UI to show connected status
                 document.getElementById('strava-connection-status').textContent = 'Connected';
                 document.getElementById('strava-athlete-info').textContent = `Athlete: ${athleteName} (ID: ${athleteId})`;
                 document.getElementById('strava-athlete-info').style.display = 'block';
-                
+
                 // Hide connect button, show sync button
                 document.getElementById('connect-strava-btn').style.display = 'none';
                 document.getElementById('sync-strava-btn').style.display = 'inline-block';
-                
+
                 // Show success message
                 showSuccess(`Successfully connected to Strava as ${athleteName}!`);
-                
+
                 // Clean up URL parameters
                 window.history.replaceState({}, document.title, window.location.pathname);
             }
@@ -225,9 +249,9 @@
                 if (!response.ok) {
                     throw new Error('Failed to get authorization URL');
                 }
-                
+
                 const data = await response.json();
-                
+
                 // Redirect to Strava authorization page
                 window.location.href = data.authorization_url;
             } catch (error) {
@@ -277,18 +301,18 @@
             try {
                 const logs = await api.listDailyLogs();
                 const measurements = await api.listWeeklyMeasurements();
-                
+
                 const activityDiv = document.getElementById('recent-activity');
                 activityDiv.innerHTML = '';
-                
+
                 if (logs.length === 0 && measurements.length === 0) {
                     activityDiv.innerHTML = '<p class="text-base-content/60">No activity yet. Start by logging your daily data!</p>';
                     document.getElementById('total-logs').textContent = '0';
                     return;
                 }
-                
+
                 document.getElementById('total-logs').textContent = logs.length;
-                
+
                 // Show recent logs
                 logs.slice(0, 3).forEach(log => {
                     const dateStr = formatDateDisplay(log.log_date);
@@ -319,17 +343,17 @@
                         return;
                     }
                 }
-                
+
                 const weekStart = formatDate(getWeekStart());
                 const button = event.target;
                 button.disabled = true;
                 button.textContent = 'Syncing...';
-                
+
                 const result = await api.syncStravaActivities(weekStart);
                 showSuccess(`Synced ${result.activities_synced} activities!`);
-                
+
                 document.getElementById('total-activities').textContent = result.activities_synced;
-                
+
                 button.disabled = false;
                 button.textContent = 'Sync Activities';
             } catch (error) {
@@ -356,17 +380,17 @@
                 const button = e.target;
                 button.disabled = true;
                 button.textContent = 'Generating...';
-                
+
                 const result = await api.evaluateWeek(weekStart);
                 showSuccess('Evaluation generated successfully!');
-                
+
                 // Update dashboard
                 const score = result.evaluation?.overall_score;
                 if (score) {
                     document.getElementById('latest-score').textContent = `${score}/10`;
                     document.getElementById('latest-score-date').textContent = formatDateDisplay(weekStart);
                 }
-                
+
                 document.getElementById('eval-modal').close();
                 setTimeout(() => {
                     window.location.href = `evaluation.html?week=${weekStart}`;
@@ -396,9 +420,13 @@
 
         // Initialize when page loads
         document.addEventListener('DOMContentLoaded', () => {
+            // Initialize sidebar
+            const sidebar = new NavigationSidebar('sidebar-container');
+
             initPage();
             checkStravaConnection();
         });
     </script>
 </body>
+
 </html>

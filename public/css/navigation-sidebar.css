@@ -1,0 +1,271 @@
+/**
+ * Navigation Sidebar Styles
+ * 
+ * Styles for the persistent navigation sidebar component
+ * Uses design tokens from design-tokens.css
+ * 
+ * Requirements: 1.1, 1.2, 1.3
+ */
+
+/* ============================================
+   SIDEBAR LAYOUT
+   ============================================ */
+
+/* Main content wrapper with sidebar */
+.with-sidebar {
+  display: flex;
+  min-height: 100vh;
+}
+
+/* Content area that adjusts for sidebar */
+.main-content {
+  flex: 1;
+  margin-left: 0;
+  transition: margin-left var(--transition-base);
+  min-height: 100vh;
+  overflow-x: auto;
+  box-sizing: border-box;
+}
+
+/* Desktop: Add left margin for sidebar */
+@media (min-width: 768px) {
+  .main-content {
+    margin-left: var(--sidebar-width);
+    width: calc(100vw - var(--sidebar-width));
+  }
+}
+
+/* ============================================
+   SIDEBAR COMPONENT
+   ============================================ */
+
+#navigation-sidebar {
+  display: flex;
+  flex-direction: column;
+  background-color: var(--color-base-100);
+  border-right: var(--border-width-1) solid var(--color-base-300);
+}
+
+/* Sidebar header */
+#navigation-sidebar .flex.items-center {
+  min-height: var(--navbar-height);
+}
+
+/* Navigation menu */
+#navigation-sidebar nav {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* Custom scrollbar for sidebar */
+#navigation-sidebar nav::-webkit-scrollbar {
+  width: 4px;
+}
+
+#navigation-sidebar nav::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+#navigation-sidebar nav::-webkit-scrollbar-thumb {
+  background: var(--color-base-300);
+  border-radius: var(--radius-full);
+}
+
+/* ============================================
+   NAVIGATION ITEMS
+   ============================================ */
+
+/* Navigation link base styles */
+#navigation-sidebar .menu li a {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+  padding: var(--spacing-3) var(--spacing-4);
+  border-radius: var(--radius-md);
+  font-weight: var(--font-weight-medium);
+  transition: all var(--transition-base);
+  color: var(--color-base-content);
+}
+
+/* Navigation link hover state */
+#navigation-sidebar .menu li a:hover {
+  background-color: var(--color-base-200);
+}
+
+/* Active navigation link */
+#navigation-sidebar .menu li a.active {
+  background-color: var(--color-primary);
+  color: var(--color-primary-content);
+  font-weight: var(--font-weight-semibold);
+}
+
+/* Navigation icon */
+#navigation-sidebar .menu li a span:first-child {
+  font-size: var(--font-size-xl);
+  line-height: 1;
+}
+
+/* ============================================
+   MOBILE MENU
+   ============================================ */
+
+/* Mobile menu toggle button */
+#mobile-menu-toggle {
+  box-shadow: var(--shadow-md);
+  background-color: var(--color-base-100);
+}
+
+#mobile-menu-toggle:hover {
+  background-color: var(--color-base-200);
+}
+
+/* Sidebar overlay for mobile */
+#sidebar-overlay {
+  transition: opacity var(--transition-base);
+}
+
+/* Mobile: Sidebar slides in from left */
+@media (max-width: 767px) {
+  #navigation-sidebar {
+    width: var(--sidebar-width) !important;
+  }
+  
+  /* Hide text labels on very small screens */
+  @media (max-width: 640px) {
+    #navigation-sidebar .menu li a span:not(:first-child) {
+      display: none;
+    }
+    
+    #navigation-sidebar {
+      width: 4rem !important;
+    }
+  }
+}
+
+/* ============================================
+   SIDEBAR FOOTER
+   ============================================ */
+
+#navigation-sidebar .absolute.bottom-0 {
+  background-color: var(--color-base-100);
+}
+
+/* Theme toggle button */
+#navigation-sidebar .absolute.bottom-0 button {
+  color: var(--color-base-content);
+}
+
+#navigation-sidebar .absolute.bottom-0 button:hover {
+  background-color: var(--color-base-200);
+}
+
+/* ============================================
+   ACCESSIBILITY
+   ============================================ */
+
+/* Focus visible styles for keyboard navigation */
+#navigation-sidebar a:focus-visible,
+#mobile-menu-toggle:focus-visible,
+#mobile-menu-close:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* Skip to main content link (for screen readers) */
+.skip-to-main {
+  position: absolute;
+  top: -40px;
+  left: 0;
+  background: var(--color-primary);
+  color: var(--color-primary-content);
+  padding: var(--spacing-2) var(--spacing-4);
+  text-decoration: none;
+  z-index: 100;
+  border-radius: var(--radius-md);
+}
+
+.skip-to-main:focus {
+  top: var(--spacing-2);
+  left: var(--spacing-2);
+}
+
+/* ============================================
+   RESPONSIVE ADJUSTMENTS
+   ============================================ */
+
+/* Remove default padding - let pages control their own padding */
+.main-content {
+  padding: 0;
+}
+
+/* Tablet: Ensure proper spacing for legacy pages */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .main-content.with-default-padding {
+    padding: var(--spacing-4);
+  }
+}
+
+/* Desktop: Optimal spacing for legacy pages */
+@media (min-width: 1024px) {
+  .main-content.with-default-padding {
+    padding: var(--spacing-6);
+  }
+}
+
+/* Large desktop: Max width for content */
+@media (min-width: 1280px) {
+  .main-content > .container {
+    max-width: var(--container-xl);
+  }
+}
+
+/* ============================================
+   ANIMATIONS
+   ============================================ */
+
+/* Smooth sidebar slide animation */
+@keyframes slideIn {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideOut {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-100%);
+  }
+}
+
+/* Apply animations to sidebar on mobile */
+@media (max-width: 767px) {
+  #navigation-sidebar.opening {
+    animation: slideIn var(--transition-base) ease-out;
+  }
+  
+  #navigation-sidebar.closing {
+    animation: slideOut var(--transition-base) ease-in;
+  }
+}
+
+/* ============================================
+   PRINT STYLES
+   ============================================ */
+
+@media print {
+  #navigation-sidebar,
+  #mobile-menu-toggle,
+  #sidebar-overlay {
+    display: none !important;
+  }
+  
+  .main-content {
+    margin-left: 0 !important;
+  }
+}

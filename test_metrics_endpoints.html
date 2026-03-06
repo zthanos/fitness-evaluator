@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Metrics API Test</title>
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@4.4.19/dist/full.min.css" rel="stylesheet" type="text/css" />
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="p-8">
+    <div class="max-w-4xl mx-auto">
+        <h1 class="text-3xl font-bold mb-6">Metrics API Endpoint Test</h1>
+        
+        <!-- Test Results -->
+        <div id="results" class="space-y-4"></div>
+        
+        <!-- Test Controls -->
+        <div class="mt-8 space-y-4">
+            <button onclick="runAllTests()" class="btn btn-primary">Run All Tests</button>
+            <button onclick="clearResults()" class="btn btn-ghost">Clear Results</button>
+        </div>
+    </div>
+
+    <script src="/js/api.js"></script>
+    <script>
+        let createdMetricId = null;
+
+        function addResult(testName, success, message, data = null) {
+            const resultsDiv = document.getElementById('results');
+            const alertClass = success ? 'alert-success' : 'alert-error';
+            const icon = success ? '✓' : '✗';
+            
+            const resultHtml = `
+                <div class="alert ${alertClass}">
+                    <div>
+                        <div class="font-bold">${icon} ${testName}</div>
+                        <div class="text-sm">${message}</div>
+                        ${data ? `<pre class="text-xs mt-2 overflow-auto">${JSON.stringify(data, null, 2)}</pre>` : ''}
+                    </div>
+                </div>
+            `;
+            
+            resultsDiv.innerHTML += resultHtml;
+        }
+
+        function clearResults() {
+            document.getElementById('results').innerHTML = '';
+            createdMetricId = null;
+        }
+
+        async function testCreateMetric() {
+            try {
+                const metric = {
+                    measurement_date: new Date().toISOString().split('T')[0],
+                    weight: 75.5,
+                    body_fat_pct: 18.5,
+                    measurements: {
+                        waist_cm: 85.0
+                    }
+                };
+                
+                const result = await api.createMetric(metric);
+                createdMetricId = result.id;
+                
+                addResult(
+                    'POST /api/metrics',
+                    true,
+                    'Successfully created metric record',
+                    result
+                );
+            } catch (error) {
+                addResult(
+                    'POST /api/metrics',
+                    false,
+                    `Failed: ${error.message}`,
+                    null
+                );
+            }
+        }
+
+        async function testGetMetrics() {
+            try {
+                const result = await api.listMetrics();
+                
+                addResult(
+                    'GET /api/metrics',
+                    true,
+                    `Successfully retrieved ${result.length} metric records`,
+                    result
+                );
+            } catch (error) {
+                addResult(
+                    'GET /api/metrics',
+                    false,
+                    `Failed: ${error.message}`,
+                    null
+                );
+            }
+        }
+
+        async function testGetMetricsWithDateFilter() {
+            try {
+                const today = new Date();
+                const weekAgo = new Date(today);
+                weekAgo.setDate(weekAgo.getDate() - 7);
+                
+                const dateFrom = weekAgo.toISOString().split('T')[0];
+                const dateTo = today.toISOString().split('T')[0];
+                
+                const result = await api.listMetrics(dateFrom, dateTo);
+                
+                addResult(
+                    'GET /api/metrics?date_from&date_to',
+                    true,
+                    `Successfully retrieved ${result.length} metric records with date filter`,
+                    result
+                );
+            } catch (error) {
+                addResult(
+                    'GET /api/metrics?date_from&date_to',
+                    false,
+                    `Failed: ${error.message}`,
+                    null
+                );
+            }
+        }
+
+        async function testGetSpecificMetric() {
+            if (!createdMetricId) {
+                addResult(
+                    'GET /api/metrics/{id}',
+                    false,
+                    'Skipped: No metric ID available (create a metric first)',
+                    null
+                );
+                return;
+            }
+
+            try {
+                const result = await api.getMetric(createdMetricId);
+                
+                addResult(
+                    'GET /api/metrics/{id}',
+                    true,
+                    'Successfully retrieved specific metric record',
+                    result
+                );
+            } catch (error) {
+                addResult(
+                    'GET /api/metrics/{id}',
+                    false,
+                    `Failed: ${error.message}`,
+                    null
+                );
+            }
+        }
+
+        async function testUpdateMetric() {
+            if (!createdMetricId) {
+                addResult(
+                    'PUT /api/metrics/{id}',
+                    false,
+                    'Skipped: No metric ID available (create a metric first)',
+                    null
+                );
+                return;
+            }
+
+            try {
+                const update = {
+                    weight: 74.8,
+                    body_fat_pct: 18.2
+                };
+                
+                const result = await api.updateMetric(createdMetricId, update);
+                
+                addResult(
+                    'PUT /api/metrics/{id}',
+                    true,
+                    'Successfully updated metric record',
+                    result
+                );
+            } catch (error) {
+                addResult(
+                    'PUT /api/metrics/{id}',
+                    false,
+                    `Failed: ${error.message}`,
+                    null
+                );
+            }
+        }
+
+        async function testValidationWeightTooLow() {
+            try {
+                const metric = {
+                    measurement_date: '2024-01-01',
+                    weight: 25.0  // Below minimum of 30
+                };
+                
+                await api.createMetric(metric);
+                
+                addResult(
+                    'Validation: Weight < 30kg',
+                    false,
+                    'Validation should have failed but did not',
+                    null
+                );
+            } catch (error) {
+                addResult(
+                    'Validation: Weight < 30kg',
+                    true,
+                    'Validation correctly rejected weight below 30kg',
+                    { error: error.message }
+                );
+            }
+        }
+
+        async function testValidationWeightTooHigh() {
+            try {
+                const metric = {
+                    measurement_date: '2024-01-02',
+                    weight: 350.0  // Above maximum of 300
+                };
+                
+                await api.createMetric(metric);
+                
+                addResult(
+                    'Validation: Weight > 300kg',
+                    false,
+                    'Validation should have failed but did not',
+                    null
+                );
+            } catch (error) {
+                addResult(
+                    'Validation: Weight > 300kg',
+                    true,
+                    'Validation correctly rejected weight above 300kg',
+                    { error: error.message }
+                );
+            }
+        }
+
+        async function testValidationBodyFatTooLow() {
+            try {
+                const metric = {
+                    measurement_date: '2024-01-03',
+                    weight: 75.0,
+                    body_fat_pct: 2.0  // Below minimum of 3
+                };
+                
+                await api.createMetric(metric);
+                
+                addResult(
+                    'Validation: Body Fat < 3%',
+                    false,
+                    'Validation should have failed but did not',
+                    null
+                );
+            } catch (error) {
+                addResult(
+                    'Validation: Body Fat < 3%',
+                    true,
+                    'Validation correctly rejected body fat below 3%',
+                    { error: error.message }
+                );
+            }
+        }
+
+        async function testValidationBodyFatTooHigh() {
+            try {
+                const metric = {
+                    measurement_date: '2024-01-04',
+                    weight: 75.0,
+                    body_fat_pct: 65.0  // Above maximum of 60
+                };
+                
+                await api.createMetric(metric);
+                
+                addResult(
+                    'Validation: Body Fat > 60%',
+                    false,
+                    'Validation should have failed but did not',
+                    null
+                );
+            } catch (error) {
+                addResult(
+                    'Validation: Body Fat > 60%',
+                    true,
+                    'Validation correctly rejected body fat above 60%',
+                    { error: error.message }
+                );
+            }
+        }
+
+        async function runAllTests() {
+            clearResults();
+            
+            addResult('Test Suite', true, 'Starting metrics API endpoint tests...', null);
+            
+            // Test creation first
+            await testCreateMetric();
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            // Test retrieval
+            await testGetMetrics();
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            await testGetMetricsWithDateFilter();
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            await testGetSpecificMetric();
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            // Test update
+            await testUpdateMetric();
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            // Test validation
+            await testValidationWeightTooLow();
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            await testValidationWeightTooHigh();
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            await testValidationBodyFatTooLow();
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            await testValidationBodyFatTooHigh();
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            addResult('Test Suite', true, 'All tests completed!', null);
+        }
+    </script>
+</body>
+</html>

@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
-from uuid import UUID, uuid5, NAMESPACE_DNS
+from uuid import uuid5, NAMESPACE_DNS
 from datetime import date
 from app.database import get_db
 from app.models.weekly_eval import WeeklyEval
@@ -49,7 +49,7 @@ async def evaluate_week(week_start: date, db: Session = Depends(get_db)):
     """
     try:
         # Generate week_id from week_start date
-        week_id = uuid5(NAMESPACE_DNS, str(week_start))
+        week_id = str(uuid5(NAMESPACE_DNS, str(week_start)))
         
         # Create evaluation service
         eval_service = EvaluationService(db)
@@ -96,10 +96,10 @@ async def get_evaluation(week_start: date, db: Session = Depends(get_db)):
     - `evidence_map`: Mapping of claims to supporting DB records
     """
     try:
-        week_id = uuid5(NAMESPACE_DNS, str(week_start))
+        week_id = str(uuid5(NAMESPACE_DNS, str(week_start)))
         
         weekly_eval = db.query(WeeklyEval).filter(
-            WeeklyEval.week_id == str(week_id)
+            WeeklyEval.week_id == week_id
         ).first()
         
         if not weekly_eval:
@@ -141,11 +141,11 @@ async def refresh_evaluation(week_start: date, db: Session = Depends(get_db)):
     - `message`: Confirmation that evaluation was refreshed
     """
     try:
-        week_id = uuid5(NAMESPACE_DNS, str(week_start))
+        week_id = str(uuid5(NAMESPACE_DNS, str(week_start)))
         
         # Delete existing evaluation to force re-run
         existing = db.query(WeeklyEval).filter(
-            WeeklyEval.week_id == str(week_id)
+            WeeklyEval.week_id == week_id
         ).first()
         
         if existing:

@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chart.js Configuration Test - Fitness Platform</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@4.4.20/dist/full.min.css" rel="stylesheet" type="text/css" />
+    
+    <!-- Design Tokens -->
+    <link rel="stylesheet" href="css/design-tokens.css">
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body class="bg-base-200 p-8">
+    <div class="max-w-6xl mx-auto">
+        <h1 class="text-4xl font-bold mb-8">📊 Chart.js Configuration Test</h1>
+        
+        <!-- Theme Toggle -->
+        <div class="mb-6">
+            <button id="theme-toggle" class="btn btn-primary">
+                Toggle Dark Theme
+            </button>
+        </div>
+        
+        <!-- Weight Chart -->
+        <div class="card bg-base-100 shadow-xl mb-6">
+            <div class="card-body">
+                <h2 class="card-title">Weight Trend (Line Chart)</h2>
+                <canvas id="weightChart"></canvas>
+            </div>
+        </div>
+        
+        <!-- Body Fat Chart -->
+        <div class="card bg-base-100 shadow-xl mb-6">
+            <div class="card-body">
+                <h2 class="card-title">Body Fat Percentage (Line Chart)</h2>
+                <canvas id="bodyFatChart"></canvas>
+            </div>
+        </div>
+        
+        <!-- Multi-Metric Comparison -->
+        <div class="card bg-base-100 shadow-xl mb-6">
+            <div class="card-body">
+                <h2 class="card-title">Circumference Measurements (Multi-Line Chart)</h2>
+                <canvas id="circumferenceChart"></canvas>
+            </div>
+        </div>
+        
+        <!-- Activity Volume Bar Chart -->
+        <div class="card bg-base-100 shadow-xl mb-6">
+            <div class="card-body">
+                <h2 class="card-title">Weekly Activity Volume (Bar Chart)</h2>
+                <canvas id="activityChart"></canvas>
+            </div>
+        </div>
+        
+        <!-- Color Palette Demo -->
+        <div class="card bg-base-100 shadow-xl">
+            <div class="card-body">
+                <h2 class="card-title mb-4">Brand Color Palette</h2>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4" id="color-palette">
+                    <!-- Colors will be rendered here -->
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Chart Configuration Utilities -->
+    <script src="js/chart-config.js"></script>
+    
+    <script>
+        // Sample data
+        const dates = ['Jan 1', 'Jan 8', 'Jan 15', 'Jan 22', 'Jan 29', 'Feb 5', 'Feb 12'];
+        const weightData = [82.5, 82.1, 81.8, 81.5, 81.2, 80.9, 80.6];
+        const bodyFatData = [18.5, 18.2, 18.0, 17.8, 17.5, 17.3, 17.1];
+        const chestData = [102, 101.5, 101, 100.8, 100.5, 100.2, 100];
+        const waistData = [88, 87.5, 87, 86.5, 86, 85.5, 85];
+        const hipsData = [98, 97.8, 97.5, 97.2, 97, 96.8, 96.5];
+        const activityData = [5, 6, 4, 7, 5, 6, 8];
+        
+        let charts = {};
+        
+        // Initialize charts
+        document.addEventListener('DOMContentLoaded', () => {
+            // Weight Chart
+            const weightConfig = ChartConfig.createLineChartConfig({
+                label: 'Weight',
+                color: ChartConfig.colors.primary,
+                fill: true,
+                yAxisLabel: 'Weight (kg)',
+                tooltipCallback: ChartConfig.weightTooltipFormatter,
+            });
+            
+            charts.weight = new Chart(
+                document.getElementById('weightChart'),
+                {
+                    type: 'line',
+                    data: {
+                        labels: dates,
+                        datasets: [{
+                            ...weightConfig.datasetDefaults,
+                            data: weightData,
+                        }],
+                    },
+                    options: weightConfig,
+                }
+            );
+            
+            // Body Fat Chart
+            const bodyFatConfig = ChartConfig.createLineChartConfig({
+                label: 'Body Fat %',
+                color: ChartConfig.colors.secondary,
+                fill: true,
+                yAxisLabel: 'Body Fat (%)',
+                tooltipCallback: ChartConfig.bodyFatTooltipFormatter,
+            });
+            
+            charts.bodyFat = new Chart(
+                document.getElementById('bodyFatChart'),
+                {
+                    type: 'line',
+                    data: {
+                        labels: dates,
+                        datasets: [{
+                            ...bodyFatConfig.datasetDefaults,
+                            data: bodyFatData,
+                        }],
+                    },
+                    options: bodyFatConfig,
+                }
+            );
+            
+            // Multi-Line Circumference Chart
+            const circumferenceConfig = ChartConfig.createMultiLineChartConfig({
+                labels: ['Chest', 'Waist', 'Hips'],
+                colors: [
+                    ChartConfig.colors.primary,
+                    ChartConfig.colors.accent,
+                    ChartConfig.colors.info,
+                ],
+                yAxisLabel: 'Circumference (cm)',
+            });
+            
+            charts.circumference = new Chart(
+                document.getElementById('circumferenceChart'),
+                {
+                    type: 'line',
+                    data: {
+                        labels: dates,
+                        datasets: [
+                            {
+                                ...circumferenceConfig.datasetTemplates[0],
+                                data: chestData,
+                            },
+                            {
+                                ...circumferenceConfig.datasetTemplates[1],
+                                data: waistData,
+                            },
+                            {
+                                ...circumferenceConfig.datasetTemplates[2],
+                                data: hipsData,
+                            },
+                        ],
+                    },
+                    options: circumferenceConfig,
+                }
+            );
+            
+            // Activity Bar Chart
+            const activityConfig = ChartConfig.createBarChartConfig({
+                label: 'Activities',
+                color: ChartConfig.colors.positive,
+                yAxisLabel: 'Number of Activities',
+            });
+            
+            charts.activity = new Chart(
+                document.getElementById('activityChart'),
+                {
+                    type: 'bar',
+                    data: {
+                        labels: dates,
+                        datasets: [{
+                            ...activityConfig.datasetDefaults,
+                            data: activityData,
+                        }],
+                    },
+                    options: activityConfig,
+                }
+            );
+            
+            // Render color palette
+            renderColorPalette();
+        });
+        
+        // Theme toggle
+        document.getElementById('theme-toggle').addEventListener('click', () => {
+            const html = document.documentElement;
+            const currentTheme = html.getAttribute('data-theme');
+            const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+            html.setAttribute('data-theme', newTheme);
+            
+            // Update all charts for new theme
+            Object.values(charts).forEach(chart => {
+                ChartConfig.updateChartTheme(chart);
+            });
+        });
+        
+        // Render color palette
+        function renderColorPalette() {
+            const container = document.getElementById('color-palette');
+            const colors = {
+                'Primary': ChartConfig.colors.primary,
+                'Secondary': ChartConfig.colors.secondary,
+                'Accent': ChartConfig.colors.accent,
+                'Positive': ChartConfig.colors.positive,
+                'Negative': ChartConfig.colors.negative,
+                'Warning': ChartConfig.colors.warning,
+                'Info': ChartConfig.colors.info,
+                'Run': ChartConfig.colors.run,
+                'Ride': ChartConfig.colors.ride,
+                'Swim': ChartConfig.colors.swim,
+                'Strength': ChartConfig.colors.strength,
+            };
+            
+            Object.entries(colors).forEach(([name, color]) => {
+                const div = document.createElement('div');
+                div.className = 'flex flex-col items-center gap-2';
+                div.innerHTML = `
+                    <div class="w-full h-16 rounded-lg shadow-md" style="background-color: ${color}"></div>
+                    <div class="text-sm font-medium">${name}</div>
+                    <div class="text-xs text-base-content/70">${color}</div>
+                `;
+                container.appendChild(div);
+            });
+        }
+    </script>
+</body>
+</html>

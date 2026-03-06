@@ -1,10 +1,9 @@
 # app/services/evidence_collector.py
 from sqlalchemy.orm import Session
-from uuid import UUID
 from app.schemas.eval_output import EvalOutput
 
 
-def collect_evidence(eval_data: EvalOutput, week_id: UUID, db: Session) -> dict:
+def collect_evidence(eval_data: EvalOutput, week_id: str, db: Session) -> dict:
     """
     Collect evidence for traceability of the evaluation.
     
@@ -14,7 +13,7 @@ def collect_evidence(eval_data: EvalOutput, week_id: UUID, db: Session) -> dict:
     
     Args:
         eval_data: The parsed evaluation output from the LLM
-        week_id: The UUID of the week being evaluated
+        week_id: The string UUID of the week being evaluated
         db: Database session for querying source data
     
     Returns:

@@ -1,7 +1,6 @@
 # app/services/prompt_engine.py
 import hashlib, json
 from datetime import timedelta
-from uuid import UUID
 from sqlalchemy.orm import Session
 from app.models.weekly_measurement import WeeklyMeasurement
 from app.models.plan_targets import PlanTargets
@@ -10,7 +9,7 @@ from app.models.strava_activity import StravaActivity
 from app.services.strava_service import compute_weekly_aggregates
 
 
-def build_contract(week_id: UUID, db: Session) -> dict:
+def build_contract(week_id: str, db: Session) -> dict:
     """
     Gather all data for the week and return a structured dict (the Contract).
     Keys must always be present even if values are None.

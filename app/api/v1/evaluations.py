@@ -1,5 +1,4 @@
 # app/api/v1/evaluations.py
-from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.services.eval_service import EvaluationService
@@ -16,14 +15,14 @@ def get_evaluation_service(db: Session = Depends(get_db)) -> EvaluationService:
 
 @router.get("/{week_id}", response_model=WeeklyEval)
 async def get_evaluation(
-    week_id: UUID,
+    week_id: str,
     eval_service: EvaluationService = Depends(get_evaluation_service)
 ) -> WeeklyEval:
     """
     Retrieve a fitness evaluation for a specific week.
     
     Args:
-        week_id: UUID of the week to retrieve
+        week_id: String UUID of the week to retrieve
         
     Returns:
         WeeklyEval model instance with the evaluation results
@@ -39,14 +38,14 @@ async def get_evaluation(
 
 @router.post("/{week_id}/evaluate", response_model=WeeklyEval)
 async def evaluate_week(
-    week_id: UUID,
+    week_id: str,
     eval_service: EvaluationService = Depends(get_evaluation_service)
 ) -> WeeklyEval:
     """
     Generate a fitness evaluation for a specific week.
     
     Args:
-        week_id: UUID of the week to evaluate
+        week_id: String UUID of the week to evaluate
         
     Returns:
         WeeklyEval model instance with the generated evaluation results

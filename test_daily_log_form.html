@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Daily Log Form</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@4.4.20/dist/full.min.css" rel="stylesheet" type="text/css" />
+</head>
+<body class="bg-base-200 p-8">
+    <div class="max-w-2xl mx-auto">
+        <h1 class="text-3xl font-bold mb-6">Daily Log Form Test</h1>
+        
+        <div class="card bg-base-100 shadow-xl">
+            <div class="card-body">
+                <h2 class="card-title">Test Form Component</h2>
+                <div id="form-container"></div>
+            </div>
+        </div>
+        
+        <div class="mt-6 p-4 bg-info text-info-content rounded-lg">
+            <h3 class="font-bold mb-2">Test Instructions:</h3>
+            <ul class="list-disc list-inside space-y-1">
+                <li>All fields except date are optional</li>
+                <li>Calories: 0-10000 kcal</li>
+                <li>Protein, Carbs, Fats: 0-1000g each</li>
+                <li>Adherence Score: 0-100</li>
+                <li>Form should prevent duplicate dates</li>
+                <li>Submit button should disable during save</li>
+                <li>Validation errors should appear in real-time</li>
+            </ul>
+        </div>
+    </div>
+
+    <script src="public/js/api.js"></script>
+    <script src="public/js/daily-log-form.js"></script>
+    <script>
+        // Initialize form
+        const form = new DailyLogForm('form-container');
+        form.render();
+        
+        // Set up callbacks
+        form.onSuccess((result) => {
+            console.log('Success!', result);
+            alert('Log saved successfully! Check console for details.');
+        });
+        
+        form.onError((error) => {
+            console.error('Error:', error);
+        });
+    </script>
+</body>
+</html>

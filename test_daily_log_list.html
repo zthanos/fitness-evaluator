@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Daily Log List Test</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@4.4.20/dist/full.min.css" rel="stylesheet" type="text/css" />
+</head>
+<body class="bg-base-200 p-8">
+    <div class="max-w-6xl mx-auto">
+        <h1 class="text-3xl font-bold mb-6">Daily Log List Component Test</h1>
+        
+        <div class="card bg-base-100 shadow-xl">
+            <div class="card-body">
+                <h2 class="card-title">Test Daily Log List</h2>
+                <p class="text-sm text-base-content/70 mb-4">
+                    Click on any field to edit it inline. Changes are saved immediately.
+                </p>
+                
+                <div id="daily-log-list-container"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="public/js/api.js"></script>
+    <script src="public/js/daily-log-list.js"></script>
+    
+    <script>
+        // Initialize the component
+        const dailyLogList = new DailyLogList('daily-log-list-container');
+        dailyLogList.load();
+    </script>
+</body>
+</html>

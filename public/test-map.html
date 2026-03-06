@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Map Test</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+          crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+            crossorigin=""></script>
+    <style>
+        #map { height: 400px; width: 100%; }
+    </style>
+</head>
+<body>
+    <h1>Leaflet Map Test</h1>
+    <div id="map"></div>
+    
+    <script>
+        // Test polyline (sample from Strava)
+        const testPolyline = "u{r~Fvyys@fCnA";
+        
+        // Decode polyline function
+        function decodePolyline(encoded) {
+            const coordinates = [];
+            let index = 0;
+            let lat = 0;
+            let lng = 0;
+
+            while (index < encoded.length) {
+                let b;
+                let shift = 0;
+                let result = 0;
+
+                // Decode latitude
+                do {
+                    b = encoded.charCodeAt(index++) - 63;
+                    result |= (b & 0x1f) << shift;
+                    shift += 5;
+                } while (b >= 0x20);
+
+                const dlat = ((result & 1) ? ~(result >> 1) : (result >> 1));
+                lat += dlat;
+
+                shift = 0;
+                result = 0;
+
+                // Decode longitude
+                do {
+                    b = encoded.charCodeAt(index++) - 63;
+                    result |= (b & 0x1f) << shift;
+                    shift += 5;
+                } while (b >= 0x20);
+
+                const dlng = ((result & 1) ? ~(result >> 1) : (result >> 1));
+                lng += dlng;
+
+                // Convert to degrees and add to coordinates array
+                coordinates.push([lat / 1e5, lng / 1e5]);
+            }
+
+            return coordinates;
+        }
+        
+        // Initialize map
+        const map = L.map('map');
+        
+        // Add tile layer
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap contributors',
+            maxZoom: 19
+        }).addTo(map);
+        
+        // Decode and add polyline
+        const coordinates = decodePolyline(testPolyline);
+        console.log('Decoded coordinates:', coordinates);
+        
+        if (coordinates.length > 0) {
+            const polyline = L.polyline(coordinates, {
+                color: '#3b82f6',
+                weight: 3,
+                opacity: 0.8
+            }).addTo(map);
+            
+            // Add markers
+            L.circleMarker(coordinates[0], {
+                radius: 8,
+                fillColor: '#10b981',
+                color: '#fff',
+                weight: 2,
+                opacity: 1,
+                fillOpacity: 0.9
+            }).addTo(map).bindPopup('Start');
+            
+            L.circleMarker(coordinates[coordinates.length - 1], {
+                radius: 8,
+                fillColor: '#ef4444',
+                color: '#fff',
+                weight: 2,
+                opacity: 1,
+                fillOpacity: 0.9
+            }).addTo(map).bindPopup('Finish');
+            
+            // Fit bounds
+            map.fitBounds(polyline.getBounds(), { padding: [20, 20] });
+        }
+    </script>
+</body>
+</html>

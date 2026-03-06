@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Metrics Chart</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@4.4.20/dist/full.min.css" rel="stylesheet" type="text/css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body class="bg-base-200 p-8">
+    <div class="max-w-6xl mx-auto">
+        <h1 class="text-3xl font-bold mb-6">Metrics Chart Test</h1>
+        
+        <div class="card bg-base-100 shadow-xl">
+            <div class="card-body">
+                <h2 class="card-title">Test Charts</h2>
+                <div id="test-charts"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/chart-config.js"></script>
+    <script src="js/metrics-chart.js"></script>
+    
+    <script>
+        // Mock API client for testing
+        class MockAPIClient {
+            async listMetrics() {
+                // Generate sample data
+                const data = [];
+                const today = new Date();
+                
+                for (let i = 90; i >= 0; i -= 7) {
+                    const date = new Date(today);
+                    date.setDate(date.getDate() - i);
+                    
+                    data.push({
+                        id: `metric-${i}`,
+                        measurement_date: date.toISOString().split('T')[0],
+                        weight: 75 + Math.random() * 5 - 2.5,
+                        body_fat_pct: 15 + Math.random() * 3 - 1.5,
+                        measurements: {
+                            waist_cm: 85 + Math.random() * 4 - 2,
+                        },
+                        created_at: date.toISOString(),
+                        updated_at: date.toISOString(),
+                    });
+                }
+                
+                return data;
+            }
+        }
+        
+        // Test the component
+        document.addEventListener('DOMContentLoaded', async () => {
+            const mockApi = new MockAPIClient();
+            const chart = new MetricsChart('test-charts', mockApi);
+            
+            try {
+                await chart.render();
+                console.log('✅ MetricsChart rendered successfully');
+            } catch (error) {
+                console.error('❌ Error rendering MetricsChart:', error);
+                document.getElementById('test-charts').innerHTML = `
+                    <div class="alert alert-error">
+                        <span>Error: ${error.message}</span>
+                    </div>
+                `;
+            }
+        });
+    </script>
+</body>
+</html>
