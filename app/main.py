@@ -6,10 +6,10 @@ from fastapi.responses import FileResponse
 from pathlib import Path
 from app.database import engine
 from app.models.base import Base
-from app.api import auth, logs, strava, evaluate
+from app.api import auth, logs, strava, evaluate, metrics, goals, chat, dashboard, settings
 
 # Import all models to register them with SQLAlchemy
-from app.models import daily_log, weekly_measurement, strava_activity, plan_targets, weekly_eval
+from app.models import daily_log, weekly_measurement, strava_activity, plan_targets, weekly_eval, athlete_goal
 
 def custom_openapi():
     """Generate custom OpenAPI schema with proper grouping and descriptions."""
@@ -89,8 +89,13 @@ Comprehensive fitness and nutrition evaluation system with:
             {"name": "health", "description": "System health check"},
             {"name": "auth", "description": "Strava OAuth2 authentication flow"},
             {"name": "logs", "description": "Log and measurement management"},
+            {"name": "metrics", "description": "Body metrics tracking"},
             {"name": "strava", "description": "Strava integration and sync"},
             {"name": "evaluate", "description": "Weekly fitness evaluation"},
+            {"name": "goals", "description": "Athlete goal management with LLM assistance"},
+            {"name": "chat", "description": "AI coach chat interface"},
+            {"name": "dashboard", "description": "Dashboard overview statistics and charts"},
+            {"name": "settings", "description": "Profile, Strava, and LLM settings management"},
         ]
     )
     
@@ -106,14 +111,56 @@ Comprehensive fitness and nutrition evaluation system with:
     # Include routers BEFORE mounting static files
     app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
     app.include_router(logs.router, prefix="/api/logs", tags=["logs"])
+    app.include_router(metrics.router, prefix="/api/metrics", tags=["metrics"])
     app.include_router(strava.router, prefix="/api/strava", tags=["strava"])
     app.include_router(evaluate.router, prefix="/api/evaluate", tags=["evaluate"])
+    app.include_router(goals.router, prefix="/api/goals", tags=["goals"])
+    app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
+    app.include_router(dashboard.router, prefix="/api/dashboard", tags=["dashboard"])
+    app.include_router(settings.router, prefix="/api/settings", tags=["settings"])
     
     # Health check endpoints
     @app.get("/health", tags=["health"])
     async def health_check():
         """Health check endpoint - verify API is responsive."""
         return {"status": "healthy"}
+    
+    # HTML page routes
+    @app.get("/activities", tags=["pages"])
+    async def activities_page():
+        """Serve the activities list page."""
+        static_dir = Path(__file__).parent.parent / "public"
+        return FileResponse(static_dir / "activities.html")
+    
+    @app.get("/activities/{activity_id}", tags=["pages"])
+    async def activity_detail_page(activity_id: int):
+        """Serve the activity detail page."""
+        static_dir = Path(__file__).parent.parent / "public"
+        return FileResponse(static_dir / "activity-detail.html")
+    
+    @app.get("/metrics", tags=["pages"])
+    async def metrics_page():
+        """Serve the body metrics page."""
+        static_dir = Path(__file__).parent.parent / "public"
+        return FileResponse(static_dir / "metrics.html")
+    
+    @app.get("/logs", tags=["pages"])
+    async def logs_page():
+        """Serve the daily logs page."""
+        static_dir = Path(__file__).parent.parent / "public"
+        return FileResponse(static_dir / "logs.html")
+    
+    @app.get("/settings.html", tags=["pages"])
+    async def settings_page():
+        """Serve the settings page."""
+        static_dir = Path(__file__).parent.parent / "public"
+        return FileResponse(static_dir / "settings.html")
+    
+    @app.get("/chat.html", tags=["pages"])
+    async def chat_page():
+        """Serve the AI coach chat page."""
+        static_dir = Path(__file__).parent.parent / "public"
+        return FileResponse(static_dir / "chat.html")
     
     # Mount static files AFTER routers so API routes take precedence
     static_dir = Path(__file__).parent.parent / "public"

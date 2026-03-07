@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Metrics Form Test</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@4.4.20/dist/full.min.css" rel="stylesheet" type="text/css" />
+</head>
+<body class="bg-base-200 p-8">
+    <div class="max-w-2xl mx-auto">
+        <h1 class="text-3xl font-bold mb-6">MetricsForm Component Test</h1>
+        
+        <div class="card bg-base-100 shadow-xl">
+            <div class="card-body">
+                <h2 class="card-title mb-4">Body Metrics Form</h2>
+                <div id="metrics-form-container"></div>
+            </div>
+        </div>
+
+        <div class="mt-6 p-4 bg-info text-info-content rounded-lg">
+            <h3 class="font-bold mb-2">Test Instructions:</h3>
+            <ul class="list-disc list-inside space-y-1">
+                <li>Try entering weight below 30kg - should show error</li>
+                <li>Try entering weight above 300kg - should show error</li>
+                <li>Try entering body fat below 3% - should show error</li>
+                <li>Try entering body fat above 60% - should show error</li>
+                <li>Valid weight: 30-300kg</li>
+                <li>Valid body fat: 3-60%</li>
+                <li>Waist circumference is optional</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- Mock API for testing -->
+    <script>
+        // Mock API client for testing
+        class APIClient {
+            constructor() {
+                this.baseUrl = 'http://localhost:8000/api';
+            }
+
+            async createWeeklyMeasurement(measurement) {
+                console.log('Mock API: Creating measurement', measurement);
+                // Simulate API delay
+                await new Promise(resolve => setTimeout(resolve, 500));
+                // Return mock response
+                return {
+                    id: 'test-id-' + Date.now(),
+                    ...measurement,
+                    created_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString()
+                };
+            }
+
+            async updateWeeklyMeasurement(id, measurement) {
+                console.log('Mock API: Updating measurement', id, measurement);
+                await new Promise(resolve => setTimeout(resolve, 500));
+                return {
+                    id: id,
+                    ...measurement,
+                    created_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString()
+                };
+            }
+        }
+
+        const api = new APIClient();
+    </script>
+
+    <script src="public/js/metrics-form.js"></script>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Initialize metrics form
+            const metricsForm = new MetricsForm('metrics-form-container');
+            metricsForm.render();
+            
+            // Handle successful submission
+            metricsForm.onSuccess((result) => {
+                console.log('✅ Measurement saved successfully:', result);
+            });
+            
+            // Handle errors
+            metricsForm.onError((error) => {
+                console.error('❌ Error saving measurement:', error);
+            });
+        });
+    </script>
+</body>
+</html>

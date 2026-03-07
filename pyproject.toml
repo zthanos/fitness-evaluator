@@ -1,7 +1,7 @@
 [project]
 name = "fitness-eval"
 version = "0.1.0"
-description = "Add your description here"
+description = "Fitness Platform V2 - AI-powered athlete coaching platform"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -14,4 +14,10 @@ dependencies = [
     "python-jose>=3.5.0",
     "sqlalchemy>=2.0.48",
     "uvicorn>=0.41.0",
+    # V2 Platform Dependencies
+    "cryptography>=44.0.0", # For Fernet token encryption
+    "faiss-cpu>=1.9.0", # Vector similarity search for RAG
+    "sentence-transformers>=3.3.0", # Embeddings generation (all-MiniLM-L6-v2)
+    "sse-starlette>=2.2.1", # Server-Sent Events for LLM streaming
+    "hypothesis>=6.122.3", # Property-based testing
 ]

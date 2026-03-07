@@ -1,13 +1,12 @@
 from datetime import date
-from sqlalchemy import Column, Date, Float, Integer, Text
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID
+from sqlalchemy import Column, Date, Float, Integer, Text, String
 from app.models.base import Base, TimestampMixin
 import uuid
 
 class WeeklyMeasurement(Base, TimestampMixin):
     __tablename__ = 'weekly_measurements'
     
-    id: uuid.UUID = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: str = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     week_start: date = Column(Date, unique=True, nullable=False)
     weight_kg: float = Column(Float, nullable=True)
     weight_prev_kg: float = Column(Float, nullable=True)

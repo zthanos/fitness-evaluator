@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Activity Map Visual Test</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@4.4.20/dist/full.min.css" rel="stylesheet" type="text/css" />
+    
+    <!-- Leaflet.js for maps -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+          crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+            crossorigin=""></script>
+</head>
+<body class="bg-base-200 p-6">
+    <div class="max-w-4xl mx-auto">
+        <h1 class="text-3xl font-bold mb-6">Activity Map Visual Test</h1>
+        
+        <!-- Test Case 1: Activity with map data -->
+        <div class="card bg-base-100 shadow-xl mb-6">
+            <div class="card-body">
+                <h2 class="card-title">Test Case 1: Activity with Map Data</h2>
+                <p class="text-sm text-base-content/70 mb-4">
+                    This should display a map with a route polyline and start/end markers.
+                </p>
+                <div id="map-with-data" class="w-full h-96 bg-base-200 rounded-lg"></div>
+            </div>
+        </div>
+        
+        <!-- Test Case 2: Activity without map data -->
+        <div class="card bg-base-100 shadow-xl mb-6">
+            <div class="card-body">
+                <h2 class="card-title">Test Case 2: Activity without Map Data</h2>
+                <p class="text-sm text-base-content/70 mb-4">
+                    This should show nothing (map section would be hidden in actual implementation).
+                </p>
+                <div id="map-without-data" class="w-full h-96 bg-base-200 rounded-lg flex items-center justify-center">
+                    <p class="text-base-content/50">No map data available</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Test Case 3: Zoom and Pan Controls -->
+        <div class="card bg-base-100 shadow-xl">
+            <div class="card-body">
+                <h2 class="card-title">Test Case 3: Zoom and Pan Controls</h2>
+                <p class="text-sm text-base-content/70 mb-4">
+                    Test that zoom controls work and you can pan the map.
+                </p>
+                <div id="map-controls-test" class="w-full h-96 bg-base-200 rounded-lg"></div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Sample polyline from a real Strava activity (simplified)
+        // This represents a short running route
+        const samplePolyline = "u{r~Fvyys@fCnAjBbAhBx@~@\\|@Zx@Vv@Tv@Rv@Pv@Nv@Lv@Jv@Hv@Fv@Dv@Bv@@v@?v@Av@Cv@Ev@Gv@Iv@Kv@Mv@Ov@Qv@Sv@Uv@Wv@Yv@[v@]v@_@v@av@cv@ev@gv@iv@kv@mv@ov@qv@sv@uv@wv@yv@{v@}v@";
+        
+        // Polyline decoder (same as in activity-detail.js)
+        function decodePolyline(encoded) {
+            const coordinates = [];
+            let index = 0;
+            let lat = 0;
+            let lng = 0;
+
+            while (index < encoded.length) {
+                let b;
+                let shift = 0;
+                let result = 0;
+
+                // Decode latitude
+                do {
+                    b = encoded.charCodeAt(index++) - 63;
+                    result |= (b & 0x1f) << shift;
+                    shift += 5;
+                } while (b >= 0x20);
+
+                const dlat = ((result & 1) ? ~(result >> 1) : (result >> 1));
+                lat += dlat;
+
+                shift = 0;
+                result = 0;
+
+                // Decode longitude
+                do {
+                    b = encoded.charCodeAt(index++) - 63;
+                    result |= (b & 0x1f) << shift;
+                    shift += 5;
+                } while (b >= 0x20);
+
+                const dlng = ((result & 1) ? ~(result >> 1) : (result >> 1));
+                lng += dlng;
+
+                coordinates.push([lat / 1e5, lng / 1e5]);
+            }
+
+            return coordinates;
+        }
+        
+        // Test Case 1: Map with data
+        function testMapWithData() {
+            const map = L.map('map-with-data', {
+                zoomControl: true,
+                scrollWheelZoom: true
+            });
+            
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                maxZoom: 19
+            }).addTo(map);
+            
+            const coordinates = decodePolyline(samplePolyline);
+            
+            if (coordinates.length > 0) {
+                const polyline = L.polyline(coordinates, {
+                    color: '#3b82f6',
+                    weight: 3,
+                    opacity: 0.8
+                }).addTo(map);
+                
+                L.circleMarker(coordinates[0], {
+                    radius: 8,
+                    fillColor: '#10b981',
+                    color: '#fff',
+                    weight: 2,
+                    opacity: 1,
+                    fillOpacity: 0.9
+                }).addTo(map).bindPopup('Start');
+                
+                L.circleMarker(coordinates[coordinates.length - 1], {
+                    radius: 8,
+                    fillColor: '#ef4444',
+                    color: '#fff',
+                    weight: 2,
+                    opacity: 1,
+                    fillOpacity: 0.9
+                }).addTo(map).bindPopup('Finish');
+                
+                map.fitBounds(polyline.getBounds(), { padding: [20, 20] });
+            }
+        }
+        
+        // Test Case 3: Controls test
+        function testMapControls() {
+            const map = L.map('map-controls-test', {
+                zoomControl: true,
+                scrollWheelZoom: true
+            });
+            
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                maxZoom: 19
+            }).addTo(map);
+            
+            const coordinates = decodePolyline(samplePolyline);
+            
+            if (coordinates.length > 0) {
+                const polyline = L.polyline(coordinates, {
+                    color: '#3b82f6',
+                    weight: 3,
+                    opacity: 0.8
+                }).addTo(map);
+                
+                map.fitBounds(polyline.getBounds(), { padding: [20, 20] });
+            }
+        }
+        
+        // Run tests
+        testMapWithData();
+        testMapControls();
+    </script>
+</body>
+</html>

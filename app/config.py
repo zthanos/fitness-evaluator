@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     STRAVA_CLIENT_ID: str = ""
     STRAVA_CLIENT_SECRET: str = ""
     STRAVA_REDIRECT_URI: str = "http://localhost:8000/api/auth/strava/callback"
+    STRAVA_ENCRYPTION_KEY: str = ""  # Fernet encryption key for tokens
 
     # LLM Configuration - supports both LM Studio and Ollama
     LLM_TYPE: Literal["lm-studio", "ollama"] = "ollama"

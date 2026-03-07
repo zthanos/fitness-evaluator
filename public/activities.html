@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Activities - Fitness Platform</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@4.4.20/dist/full.min.css" rel="stylesheet" type="text/css" />
+    
+    <!-- Design Tokens -->
+    <link rel="stylesheet" href="css/design-tokens.css">
+    
+    <!-- Navigation Sidebar Styles -->
+    <link rel="stylesheet" href="css/navigation-sidebar.css">
+</head>
+<body class="bg-base-200 h-full">
+    <!-- Skip to main content link for accessibility -->
+    <a href="#main-content" class="skip-to-main">Skip to main content</a>
+    
+    <!-- Sidebar Container -->
+    <div id="sidebar-container"></div>
+    
+    <!-- Main Content Area -->
+    <main id="main-content" class="main-content min-h-screen">
+        <div class="p-6">
+            <!-- Header with Sync Button -->
+            <div class="flex justify-between items-center mb-6">
+                <h1 class="text-4xl font-bold">⚡ Activities</h1>
+                <button id="sync-strava-btn" class="btn btn-primary gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd" />
+                    </svg>
+                    Sync Strava Activities
+                </button>
+            </div>
+
+            <!-- Activities Table -->
+            <div class="card bg-base-100 shadow-xl">
+                <div class="card-body">
+                    <h2 class="card-title mb-4">Activity List</h2>
+                    <div id="activities-container">
+                        <div class="flex justify-center items-center py-8">
+                            <span class="loading loading-spinner loading-lg"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script src="js/api.js"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/activity-list.js"></script>
+    
+    <!-- Navigation Sidebar Script -->
+    <script src="js/navigation-sidebar.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', async () => {
+            // Initialize sidebar
+            const sidebar = new NavigationSidebar('sidebar-container');
+            
+            // Initialize activity list
+            const activityList = new ActivityList('activities-container', {
+                pageSize: 25,
+                onRowClick: (activityId) => {
+                    // Navigate to activity detail page (will be implemented in task 4.1)
+                    window.location.href = `/activities/${activityId}`;
+                }
+            });
+            
+            await activityList.init();
+            
+            // Setup Strava sync button
+            const syncBtn = document.getElementById('sync-strava-btn');
+            if (syncBtn) {
+                syncBtn.addEventListener('click', async () => {
+                    await handleStravaSync(syncBtn, activityList);
+                });
+            }
+        });
+        
+        /**
+         * Handle Strava sync button click
+         */
+        async function handleStravaSync(button, activityList) {
+            // Disable button and show loading state
+            button.disabled = true;
+            const originalHTML = button.innerHTML;
+            button.innerHTML = `
+                <span class="loading loading-spinner loading-sm"></span>
+                Syncing...
+            `;
+            
+            try {
+                // Create AbortController with 5 minute timeout for large syncs
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 minutes
+                
+                // Call sync API endpoint
+                const response = await fetch(`${api.baseUrl}/auth/strava/sync?athlete_id=1`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    signal: controller.signal
+                });
+                
+                clearTimeout(timeoutId);
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Sync failed');
+                }
+                
+                const result = await response.json();
+                
+                // Show success message
+                showToast(
+                    `✅ ${result.message}`,
+                    'success'
+                );
+                
+                // Reload activities list if new activities were synced
+                if (result.synced_count > 0) {
+                    await activityList.loadActivities();
+                    activityList.render();
+                }
+                
+            } catch (error) {
+                console.error('Strava sync failed:', error);
+                
+                // Handle timeout
+                if (error.name === 'AbortError') {
+                    showToast(
+                        '⏱️ Sync is taking longer than expected. It may still be processing in the background. Please refresh the page in a moment.',
+                        'warning'
+                    );
+                    // Still try to reload activities in case some were synced
+                    setTimeout(async () => {
+                        await activityList.loadActivities();
+                        activityList.render();
+                    }, 3000);
+                    return;
+                }
+                
+                // Handle specific error cases
+                if (error.message.includes('revoked')) {
+                    showToast(
+                        '❌ Strava authorization has been revoked. Please reconnect in Settings.',
+                        'error'
+                    );
+                } else if (error.message.includes('No Strava token')) {
+                    showToast(
+                        '⚠️ Strava not connected. Please connect your account in Settings.',
+                        'warning'
+                    );
+                } else {
+                    showToast(
+                        `❌ Sync failed: ${error.message}`,
+                        'error'
+                    );
+                }
+            } finally {
+                // Restore button state
+                button.disabled = false;
+                button.innerHTML = originalHTML;
+            }
+        }
+        
+        /**
+         * Show toast notification
+         */
+        function showToast(message, type = 'info') {
+            const toast = document.createElement('div');
+            toast.className = `alert alert-${type} fixed bottom-4 right-4 w-auto max-w-sm z-50 shadow-lg`;
+            toast.innerHTML = `<span>${message}</span>`;
+            
+            document.body.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.remove();
+            }, 5000);
+        }
+    </script>
+</body>
+</html>

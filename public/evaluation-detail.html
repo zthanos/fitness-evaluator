@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Evaluation Detail - Fitness Platform</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@4.4.20/dist/full.min.css" rel="stylesheet" type="text/css" />
+    
+    <!-- Design Tokens -->
+    <link rel="stylesheet" href="css/design-tokens.css">
+    
+    <!-- Navigation Sidebar Styles -->
+    <link rel="stylesheet" href="css/navigation-sidebar.css">
+</head>
+<body class="bg-base-200">
+    <!-- Skip to main content link for accessibility -->
+    <a href="#main-content" class="skip-to-main">Skip to main content</a>
+    
+    <!-- Sidebar Container -->
+    <div id="sidebar-container"></div>
+    
+    <!-- Main Content Area -->
+    <main id="main-content" class="main-content">
+        <div class="container mx-auto p-4 max-w-6xl">
+            <!-- Back Button -->
+            <div class="mb-4">
+                <a href="evaluations-list.html" class="btn btn-ghost btn-sm">
+                    ← Back to History
+                </a>
+            </div>
+
+            <!-- Evaluation Header -->
+            <div id="eval-header" class="mb-6">
+                <div class="card bg-base-100 shadow-xl">
+                    <div class="card-body">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <h1 class="text-3xl font-bold mb-2" id="eval-title">Loading...</h1>
+                                <p class="text-base-content/70" id="eval-period">--</p>
+                                <p class="text-base-content/60 text-sm mt-1" id="eval-generated">--</p>
+                            </div>
+                            <div class="text-right">
+                                <div class="text-6xl font-bold" id="overall-score">--</div>
+                                <p class="text-lg mt-2" id="score-label">Overall Score</p>
+                                <div class="mt-2">
+                                    <span class="badge badge-outline" id="confidence-badge">--</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Main Grid -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- Left Column - Main Content -->
+                <div class="lg:col-span-2 space-y-6">
+                    <!-- Strengths -->
+                    <div class="card bg-base-100 shadow-xl">
+                        <div class="card-body">
+                            <h2 class="card-title text-success">✓ Strengths</h2>
+                            <ul id="strengths-list" class="space-y-2 mt-2">
+                                <li class="skeleton h-4 w-full"></li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <!-- Areas for Improvement -->
+                    <div class="card bg-base-100 shadow-xl">
+                        <div class="card-body">
+                            <h2 class="card-title text-warning">⚠ Areas for Improvement</h2>
+                            <ul id="improvements-list" class="space-y-2 mt-2">
+                                <li class="skeleton h-4 w-full"></li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <!-- Goal Alignment -->
+                    <div class="card bg-base-100 shadow-xl">
+                        <div class="card-body">
+                            <h2 class="card-title">🎯 Goal Alignment</h2>
+                            <p id="goal-alignment" class="mt-2 text-base-content/80">
+                                Loading...
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Column - Sidebar -->
+                <div class="lg:col-span-1 space-y-6">
+                    <!-- Actionable Tips -->
+                    <div class="card bg-base-100 shadow-xl">
+                        <div class="card-body">
+                            <h2 class="card-title text-info">💡 Actionable Tips</h2>
+                            <ul id="tips-list" class="space-y-2 mt-2 text-sm">
+                                <li class="skeleton h-4 w-full"></li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <!-- Recommended Exercises -->
+                    <div class="card bg-base-100 shadow-xl">
+                        <div class="card-body">
+                            <h2 class="card-title text-primary">🏋️ Recommended Exercises</h2>
+                            <ul id="exercises-list" class="space-y-2 mt-2 text-sm">
+                                <li class="skeleton h-4 w-full"></li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <!-- Actions -->
+                    <div class="card bg-base-100 shadow-xl">
+                        <div class="card-body">
+                            <h2 class="card-title text-sm">Actions</h2>
+                            <div class="space-y-2">
+                                <button onclick="downloadReport()" class="btn btn-sm btn-secondary w-full">
+                                    📥 Download Report
+                                </button>
+                                <button onclick="shareReport()" class="btn btn-sm btn-ghost w-full">
+                                    🔗 Share
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script src="js/navigation-sidebar.js"></script>
+    <script src="js/utils.js"></script>
+    <script>
+        let currentEvaluation = null;
+
+        async function loadEvaluation() {
+            try {
+                const params = new URLSearchParams(window.location.search);
+                const evalId = params.get('id');
+
+                if (!evalId) {
+                    showError('No evaluation ID provided');
+                    setTimeout(() => {
+                        window.location.href = 'evaluations-list.html';
+                    }, 2000);
+                    return;
+                }
+
+                const response = await fetch(`/api/evaluations/${evalId}`);
+                if (!response.ok) {
+                    throw new Error('Failed to load evaluation');
+                }
+
+                currentEvaluation = await response.json();
+                displayEvaluation(currentEvaluation);
+            } catch (error) {
+                console.error('Error loading evaluation:', error);
+                showError('Failed to load evaluation');
+            }
+        }
+
+        function displayEvaluation(eval) {
+            // Header
+            document.getElementById('eval-title').textContent = 
+                `${formatPeriodType(eval.period_type)} Evaluation`;
+            document.getElementById('eval-period').textContent = 
+                `${formatDate(eval.period_start)} - ${formatDate(eval.period_end)}`;
+            document.getElementById('eval-generated').textContent = 
+                `Generated: ${formatDateTime(eval.generated_at)}`;
+
+            // Overall Score
+            document.getElementById('overall-score').textContent = eval.overall_score;
+            document.getElementById('overall-score').className = 
+                `text-6xl font-bold ${getScoreColor(eval.overall_score)}`;
+
+            // Confidence Badge
+            const confidencePct = (eval.confidence_score * 100).toFixed(0);
+            document.getElementById('confidence-badge').textContent = 
+                `Data Confidence: ${confidencePct}%`;
+            document.getElementById('confidence-badge').className = 
+                `badge ${getConfidenceBadgeClass(eval.confidence_score)}`;
+
+            // Strengths
+            const strengthsList = document.getElementById('strengths-list');
+            if (eval.strengths.length > 0) {
+                strengthsList.innerHTML = eval.strengths.map(strength => `
+                    <li class="flex items-start gap-2">
+                        <span class="text-success text-xl">✓</span>
+                        <span class="flex-1">${strength}</span>
+                    </li>
+                `).join('');
+            } else {
+                strengthsList.innerHTML = '<li class="text-base-content/60">No strengths identified</li>';
+            }
+
+            // Improvements
+            const improvementsList = document.getElementById('improvements-list');
+            if (eval.improvements.length > 0) {
+                improvementsList.innerHTML = eval.improvements.map(improvement => `
+                    <li class="flex items-start gap-2">
+                        <span class="text-warning text-xl">⚠</span>
+                        <span class="flex-1">${improvement}</span>
+                    </li>
+                `).join('');
+            } else {
+                improvementsList.innerHTML = '<li class="text-base-content/60">No areas for improvement identified</li>';
+            }
+
+            // Goal Alignment
+            document.getElementById('goal-alignment').textContent = eval.goal_alignment;
+
+            // Tips
+            const tipsList = document.getElementById('tips-list');
+            if (eval.tips.length > 0) {
+                tipsList.innerHTML = eval.tips.map((tip, index) => `
+                    <li class="flex items-start gap-2">
+                        <span class="font-bold text-info">${index + 1}.</span>
+                        <span class="flex-1">${tip}</span>
+                    </li>
+                `).join('');
+            } else {
+                tipsList.innerHTML = '<li class="text-base-content/60">No tips available</li>';
+            }
+
+            // Exercises
+            const exercisesList = document.getElementById('exercises-list');
+            if (eval.recommended_exercises.length > 0) {
+                exercisesList.innerHTML = eval.recommended_exercises.map(exercise => `
+                    <li class="flex items-start gap-2">
+                        <span class="text-primary">•</span>
+                        <span class="flex-1">${exercise}</span>
+                    </li>
+                `).join('');
+            } else {
+                exercisesList.innerHTML = '<li class="text-base-content/60">No exercises recommended</li>';
+            }
+        }
+
+        function formatPeriodType(type) {
+            return type.split('-').map(word => 
+                word.charAt(0).toUpperCase() + word.slice(1)
+            ).join('-');
+        }
+
+        function formatDate(dateStr) {
+            const date = new Date(dateStr);
+            return date.toLocaleDateString('en-US', { 
+                year: 'numeric', 
+                month: 'short', 
+                day: 'numeric' 
+            });
+        }
+
+        function formatDateTime(dateStr) {
+            const date = new Date(dateStr);
+            return date.toLocaleString('en-US', { 
+                year: 'numeric', 
+                month: 'short', 
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+
+        function getScoreColor(score) {
+            if (score >= 80) return 'text-success';
+            if (score >= 60) return 'text-warning';
+            if (score >= 40) return 'text-info';
+            return 'text-error';
+        }
+
+        function getConfidenceBadgeClass(confidence) {
+            if (confidence >= 0.8) return 'badge-success';
+            if (confidence >= 0.5) return 'badge-warning';
+            return 'badge-error';
+        }
+
+        function downloadReport() {
+            if (!currentEvaluation) return;
+
+            const report = generateReportText(currentEvaluation);
+            const blob = new Blob([report], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `evaluation-${currentEvaluation.id}.txt`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            showSuccess('Report downloaded!');
+        }
+
+        function generateReportText(eval) {
+            return `
+EVALUATION REPORT
+=================
+
+Period: ${formatDate(eval.period_start)} - ${formatDate(eval.period_end)}
+Type: ${formatPeriodType(eval.period_type)}
+Generated: ${formatDateTime(eval.generated_at)}
+
+OVERALL SCORE: ${eval.overall_score}/100
+Data Confidence: ${(eval.confidence_score * 100).toFixed(0)}%
+
+STRENGTHS
+---------
+${eval.strengths.map((s, i) => `${i + 1}. ${s}`).join('\n')}
+
+AREAS FOR IMPROVEMENT
+---------------------
+${eval.improvements.map((i, idx) => `${idx + 1}. ${i}`).join('\n')}
+
+GOAL ALIGNMENT
+--------------
+${eval.goal_alignment}
+
+ACTIONABLE TIPS
+---------------
+${eval.tips.map((t, i) => `${i + 1}. ${t}`).join('\n')}
+
+RECOMMENDED EXERCISES
+---------------------
+${eval.recommended_exercises.map((e, i) => `${i + 1}. ${e}`).join('\n')}
+            `.trim();
+        }
+
+        function shareReport() {
+            if (!currentEvaluation) return;
+
+            const url = window.location.href;
+            
+            if (navigator.share) {
+                navigator.share({
+                    title: 'Fitness Evaluation Report',
+                    text: `My evaluation score: ${currentEvaluation.overall_score}/100`,
+                    url: url
+                }).then(() => {
+                    showSuccess('Shared successfully!');
+                }).catch(err => {
+                    console.error('Error sharing:', err);
+                });
+            } else {
+                // Fallback: copy to clipboard
+                navigator.clipboard.writeText(url).then(() => {
+                    showSuccess('Link copied to clipboard!');
+                }).catch(err => {
+                    console.error('Error copying:', err);
+                    showError('Failed to copy link');
+                });
+            }
+        }
+
+        function showSuccess(message) {
+            const toast = document.createElement('div');
+            toast.className = 'toast toast-top toast-end';
+            toast.innerHTML = `
+                <div class="alert alert-success">
+                    <span>${message}</span>
+                </div>
+            `;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+        }
+
+        function showError(message) {
+            const toast = document.createElement('div');
+            toast.className = 'toast toast-top toast-end';
+            toast.innerHTML = `
+                <div class="alert alert-error">
+                    <span>${message}</span>
+                </div>
+            `;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 5000);
+        }
+
+        // Initialize page
+        document.addEventListener('DOMContentLoaded', () => {
+            const sidebar = new NavigationSidebar('sidebar-container');
+            loadEvaluation();
+        });
+    </script>
+</body>
+</html>

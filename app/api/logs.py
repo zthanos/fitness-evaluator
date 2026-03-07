@@ -3,7 +3,6 @@
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
 from datetime import date
-from uuid import UUID
 from app.database import get_db
 from app.models.daily_log import DailyLog
 from app.models.weekly_measurement import WeeklyMeasurement
@@ -15,6 +14,7 @@ from app.schemas.log_schemas import (
     WeeklyMeasurementResponse,
     PlanTargetsCreate,
     PlanTargetsResponse,
+    PaginatedResponse,
 )
 
 router = APIRouter()
@@ -68,18 +68,28 @@ async def get_daily_log(log_date: date, db: Session = Depends(get_db)):
     return log
 
 
-@router.get("/daily", response_model=list[DailyLogResponse], summary="List daily logs")
+@router.get("/daily", response_model=PaginatedResponse[DailyLogResponse], summary="List daily logs")
 async def list_daily_logs(
     start_date: date = None,
     end_date: date = None,
+    page: int = 1,
+    page_size: int = 25,
     db: Session = Depends(get_db)
 ):
     """
-    List daily logs within an optional date range.
+    List daily logs within an optional date range with pagination.
     
     **Query Parameters:**
     - `start_date`: Start date (YYYY-MM-DD) - optional
     - `end_date`: End date (YYYY-MM-DD) - optional
+    - `page`: Page number (default: 1)
+    - `page_size`: Number of records per page (default: 25)
+    
+    **Returns:**
+    - `logs`: List of daily log records
+    - `total`: Total number of records matching filters
+    - `page`: Current page number
+    - `page_size`: Records per page
     """
     query = db.query(DailyLog).order_by(DailyLog.log_date.desc())
     
@@ -88,7 +98,50 @@ async def list_daily_logs(
     if end_date:
         query = query.filter(DailyLog.log_date <= end_date)
     
-    return query.all()
+    # Get total count before pagination
+    total = query.count()
+    
+    # Apply pagination
+    offset = (page - 1) * page_size
+    logs = query.offset(offset).limit(page_size).all()
+    
+    return {
+        "logs": logs,
+        "total": total,
+        "page": page,
+        "page_size": page_size
+    }
+
+
+@router.put("/daily/{log_id}", response_model=DailyLogResponse, summary="Update daily log")
+async def update_daily_log(log_id: str, log: DailyLogCreate, db: Session = Depends(get_db)):
+    """
+    Update an existing daily log by ID.
+    
+    **Parameters:**
+    - `log_id`: String UUID of the daily log record
+    
+    **Fields:**
+    - `log_date`: Date of the log (YYYY-MM-DD)
+    - `calories_in`: Total caloric intake (0-10000)
+    - `protein_g`: Protein intake in grams (0-1000)
+    - `carbs_g`: Carbohydrate intake in grams (0-1000)
+    - `fat_g`: Fat intake in grams (0-1000)
+    - `adherence_score`: Self-rated plan adherence (0-100)
+    - `notes`: Optional free-text observations
+    """
+    existing = db.query(DailyLog).filter(DailyLog.id == log_id).first()
+    
+    if not existing:
+        raise HTTPException(status_code=404, detail="Daily log not found")
+    
+    # Update fields
+    for field, value in log.dict().items():
+        setattr(existing, field, value)
+    
+    db.commit()
+    db.refresh(existing)
+    return existing
 
 
 # Weekly Measurement Endpoints
@@ -147,6 +200,50 @@ async def get_weekly_measurement(week_start: date, db: Session = Depends(get_db)
     return measurement
 
 
+@router.put("/weekly/{measurement_id}", response_model=WeeklyMeasurementResponse, summary="Update weekly measurements")
+async def update_weekly_measurement(
+    measurement_id: str,
+    measurement: WeeklyMeasurementCreate,
+    db: Session = Depends(get_db)
+):
+    """
+    Update an existing weekly measurement by ID.
+    
+    **Parameters:**
+    - `measurement_id`: String UUID of the measurement record
+    
+    **Fields:**
+    - `week_start`: Monday of the week (YYYY-MM-DD)
+    - `weight_kg`: Body weight in kilograms (30-300)
+    - `body_fat_pct`: Body fat percentage (3-60)
+    - `waist_cm`: Waist circumference in centimeters
+    - Other optional health metrics
+    """
+    existing = db.query(WeeklyMeasurement).filter(
+        WeeklyMeasurement.id == measurement_id
+    ).first()
+    
+    if not existing:
+        raise HTTPException(status_code=404, detail="Weekly measurement not found")
+    
+    # Check if measurement is within 24 hours (Requirement 5.6)
+    from datetime import datetime, timedelta
+    time_since_creation = datetime.utcnow() - existing.created_at
+    if time_since_creation > timedelta(hours=24):
+        raise HTTPException(
+            status_code=403, 
+            detail="Measurements can only be edited within 24 hours of creation"
+        )
+    
+    # Update fields
+    for field, value in measurement.dict().items():
+        setattr(existing, field, value)
+    
+    db.commit()
+    db.refresh(existing)
+    return existing
+
+
 @router.get("/weekly", response_model=list[WeeklyMeasurementResponse], summary="List all weekly measurements")
 async def list_weekly_measurements(db: Session = Depends(get_db)):
     """
@@ -179,12 +276,12 @@ async def create_plan_targets(targets: PlanTargetsCreate, db: Session = Depends(
 
 
 @router.get("/targets/by-id/{target_id}", response_model=PlanTargetsResponse, summary="Get plan targets by ID")
-async def get_plan_targets(target_id: UUID, db: Session = Depends(get_db)):
+async def get_plan_targets(target_id: str, db: Session = Depends(get_db)):
     """
     Retrieve a specific plan targets entry by UUID.
     
     **Parameters:**
-    - `target_id`: UUID of the plan targets record
+    - `target_id`: String UUID of the plan targets record
     """
     targets = db.query(PlanTargets).filter(PlanTargets.id == target_id).first()
     if not targets:

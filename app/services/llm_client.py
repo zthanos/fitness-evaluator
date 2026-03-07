@@ -2,7 +2,10 @@
 import httpx
 import asyncio
 import json
+from typing import Dict, Any, List, Optional, Callable, AsyncGenerator
 from app.config import get_settings
+from langchain_openai import ChatOpenAI
+from langchain_core.prompts import ChatPromptTemplate
 
 def normalize_base_url(base_url: str) -> str:
     """
@@ -51,6 +54,893 @@ def construct_openai_endpoint(base_url: str) -> str:
 SYSTEM_PROMPT_PATH = "app/prompts/system_prompt.txt"
 
 
+class LLMClient:
+    """
+    Enhanced LLM Client with LangChain integration.
+    
+    Supports both Ollama and LM Studio (OpenAI-compatible) backends through LangChain.
+    Handles tool execution, conversation management, and streaming responses.
+    Implements retry logic with exponential backoff.
+    
+    Requirements: 21.1, 21.2, 21.3, 21.8, 21.10
+    """
+    
+    def __init__(self):
+        """
+        Initialize LLM client with settings.
+        
+        Logs all initialization parameters for debugging (Requirement 21.10).
+        """
+        self.settings = get_settings()
+        self.tools: Dict[str, Callable] = {}
+        self.endpoint_url = construct_openai_endpoint(self.settings.llm_base_url)
+        self.model_name = (
+            self.settings.OLLAMA_MODEL 
+            if self.settings.is_ollama 
+            else self.settings.LM_STUDIO_MODEL
+        )
+        
+        # Log initialization parameters (Requirement 21.10)
+        print(f"[LLMClient] Initializing with backend: {self.settings.LLM_TYPE}")
+        print(f"[LLMClient] Endpoint: {self.endpoint_url}")
+        print(f"[LLMClient] Model: {self.model_name}")
+        print(f"[LLMClient] Base URL: {self.settings.llm_base_url}")
+    
+    async def generate_response(
+        self,
+        prompt: str,
+        system_prompt: Optional[str] = None,
+        temperature: float = 0.7,
+        max_tokens: int = 500
+    ) -> str:
+        """
+        Generate a response from the LLM using LangChain.
+        
+        Implements retry logic with exponential backoff (max 3 retries).
+        Handles connection errors and timeouts gracefully.
+        
+        Requirements: 21.1, 21.8, 29.7
+        
+        Args:
+            prompt: User prompt
+            system_prompt: Optional system prompt
+            temperature: Sampling temperature (default 0.7 for chat)
+            max_tokens: Maximum tokens in response (default 500 for chat flow)
+        
+        Returns:
+            Generated response text
+        
+        Raises:
+            httpx.HTTPError: After 3 failed retry attempts
+        """
+        from langchain_openai import ChatOpenAI
+        from langchain_core.prompts import ChatPromptTemplate
+        
+        # Log invocation attempt (Requirement 21.10)
+        print(f"[LLMClient] generate_response called with temperature={temperature}, max_tokens={max_tokens}")
+        
+        messages = []
+        if system_prompt:
+            messages.append(("system", system_prompt))
+        messages.append(("user", "{prompt}"))
+        
+        prompt_template = ChatPromptTemplate.from_messages(messages)
+        
+        # Initialize LangChain ChatOpenAI
+        llm = ChatOpenAI(
+            base_url=self.endpoint_url.replace('/v1/chat/completions', ''),
+            model=self.model_name,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            api_key="not-needed"  # Required by LangChain but not used by Ollama/LM Studio
+        )
+        
+        chain = prompt_template | llm
+        
+        # Retry logic with exponential backoff (Requirement 21.8)
+        for attempt in range(3):
+            try:
+                print(f"[LLMClient] Attempt {attempt + 1}/3")
+                result = await chain.ainvoke({"prompt": prompt})
+                
+                # Extract content from response
+                if hasattr(result, 'content'):
+                    return result.content
+                return str(result)
+                
+            except (httpx.ConnectError, httpx.TimeoutException) as e:
+                print(f"[LLMClient] Connection error on attempt {attempt + 1}: {e}")
+                if attempt == 2:
+                    print(f"[LLMClient] All retry attempts failed")
+                    raise
+                # Exponential backoff: 1s, 2s, 4s
+                await asyncio.sleep(2 ** attempt)
+            except Exception as e:
+                print(f"[LLMClient] Validation error: {e}")
+                raise
+    
+    async def stream_response(
+        self,
+        prompt: str,
+        system_prompt: Optional[str] = None,
+        temperature: float = 0.7,
+        max_tokens: int = 500
+    ) -> AsyncGenerator[str, None]:
+        """
+        Stream a response from the LLM using LangChain streaming capabilities.
+        
+        Implements retry logic with exponential backoff (max 3 retries).
+        Handles connection errors and timeouts gracefully.
+        
+        Requirements: 21.1, 21.8, 29.7
+        
+        Args:
+            prompt: User prompt
+            system_prompt: Optional system prompt
+            temperature: Sampling temperature (default 0.7 for chat)
+            max_tokens: Maximum tokens in response (default 500 for chat flow)
+        
+        Yields:
+            Response chunks as they arrive
+        
+        Raises:
+            httpx.HTTPError: After 3 failed retry attempts
+        """
+        from langchain_openai import ChatOpenAI
+        from langchain_core.prompts import ChatPromptTemplate
+        from typing import AsyncGenerator
+        
+        # Log invocation attempt (Requirement 21.10)
+        print(f"[LLMClient] stream_response called with temperature={temperature}, max_tokens={max_tokens}")
+        
+        messages = []
+        if system_prompt:
+            messages.append(("system", system_prompt))
+        messages.append(("user", "{prompt}"))
+        
+        prompt_template = ChatPromptTemplate.from_messages(messages)
+        
+        # Initialize LangChain ChatOpenAI
+        llm = ChatOpenAI(
+            base_url=self.endpoint_url.replace('/v1/chat/completions', ''),
+            model=self.model_name,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            api_key="not-needed"
+        )
+        
+        chain = prompt_template | llm
+        
+        # Retry logic with exponential backoff (Requirement 21.8)
+        for attempt in range(3):
+            try:
+                print(f"[LLMClient] Stream attempt {attempt + 1}/3")
+                
+                async for chunk in chain.astream({"prompt": prompt}):
+                    if hasattr(chunk, 'content'):
+                        yield chunk.content
+                    else:
+                        yield str(chunk)
+                
+                # If we successfully streamed, break out of retry loop
+                break
+                
+            except (httpx.ConnectError, httpx.TimeoutException) as e:
+                print(f"[LLMClient] Connection error on attempt {attempt + 1}: {e}")
+                if attempt == 2:
+                    print(f"[LLMClient] All retry attempts failed")
+                    raise
+                # Exponential backoff: 1s, 2s, 4s
+                await asyncio.sleep(2 ** attempt)
+            except Exception as e:
+                print(f"[LLMClient] Validation error: {e}")
+                raise
+    
+    def _build_prompt(
+        self,
+        user_message: str,
+        context: Optional[str] = None,
+        history: Optional[List[Dict[str, str]]] = None,
+        athlete_profile: Optional[Dict[str, Any]] = None
+    ) -> str:
+        """
+        Build a comprehensive prompt with context and history using LangChain formatting.
+        
+        Requirements: 29.1, 29.2, 29.3, 29.4, 29.7, 29.8
+        
+        Args:
+            user_message: The current user message
+            context: RAG-retrieved context (formatted)
+            history: Conversation history (last 10 messages)
+            athlete_profile: Athlete profile information (name, goals, current plan)
+        
+        Returns:
+            Formatted prompt string with all context
+        """
+        from langchain_core.prompts import ChatPromptTemplate
+        
+        # Build system prompt components
+        system_parts = []
+        
+        # Base coach persona (Requirement 29.1)
+        system_parts.append("""You are an expert fitness coach with deep knowledge of training, nutrition, and body composition.
+Your role is to provide personalized, evidence-based coaching to athletes.
+
+## Your Coaching Style
+- **Knowledgeable**: You understand exercise physiology, nutrition science, and training principles
+- **Supportive**: You encourage athletes and celebrate their progress
+- **Evidence-Based**: You always cite specific data points from the athlete's history when making recommendations
+- **Actionable**: You provide concrete, specific advice that athletes can implement immediately""")
+        
+        # Add athlete profile if available (Requirement 29.3)
+        if athlete_profile:
+            profile_parts = ["## Athlete Profile"]
+            if athlete_profile.get('name'):
+                profile_parts.append(f"**Name**: {athlete_profile['name']}")
+            if athlete_profile.get('goals'):
+                profile_parts.append(f"**Goals**: {athlete_profile['goals']}")
+            if athlete_profile.get('current_plan'):
+                profile_parts.append(f"**Current Plan**: {athlete_profile['current_plan']}")
+            
+            system_parts.append("\n".join(profile_parts))
+        
+        # Add RAG context if available (Requirement 29.2, 29.4)
+        if context:
+            system_parts.append(f"""## Relevant Athlete Data
+
+The following information from the athlete's history may be relevant to this conversation:
+
+{context}
+
+**IMPORTANT**: When providing advice, reference specific data points from above. For example, mention specific activities, measurements, or logs to make your guidance more personalized and evidence-based.""")
+        
+        system_prompt = "\n\n".join(system_parts)
+        
+        # Build message list with history (Requirement 29.8)
+        messages = [("system", system_prompt)]
+        
+        # Add conversation history (last 10 messages)
+        if history:
+            for msg in history[-10:]:  # Last 10 messages for context continuity
+                role = msg.get('role', 'user')
+                content = msg.get('content', '')
+                if role == 'user':
+                    messages.append(("user", content))
+                elif role == 'assistant':
+                    messages.append(("assistant", content))
+        
+        # Add current user message
+        messages.append(("user", user_message))
+        
+        # Create prompt template
+        prompt_template = ChatPromptTemplate.from_messages(messages)
+        
+        # Format and return
+        return prompt_template.format()
+    
+    def register_tool(self, name: str, handler: Callable, definition: Dict[str, Any]):
+        """
+        Register a tool for LLM function calling.
+        
+        Args:
+            name: Tool name (must match function name in definition)
+            handler: Callable that executes the tool
+            definition: Tool definition dict compatible with OpenAI function calling
+        """
+        self.tools[name] = {
+            'handler': handler,
+            'definition': definition
+        }
+    
+    async def _execute_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Execute a registered tool.
+        
+        Args:
+            tool_name: Name of the tool to execute
+            arguments: Tool arguments from LLM
+        
+        Returns:
+            Tool execution result
+        
+        Raises:
+            ValueError: If tool is not registered
+        """
+        if tool_name not in self.tools:
+            raise ValueError(f"Tool '{tool_name}' is not registered")
+        
+        handler = self.tools[tool_name]['handler']
+        
+        try:
+            result = handler(**arguments)
+            return result
+        except Exception as e:
+            return {
+                'success': False,
+                'error': str(e),
+                'message': f"Tool execution failed: {str(e)}"
+            }
+    
+    async def chat_completion(
+        self,
+        messages: List[Dict[str, str]],
+        tools: Optional[List[Dict[str, Any]]] = None,
+        max_tokens: int = 2048,
+        temperature: float = 0.7,
+        response_format: Optional[Dict[str, str]] = None
+    ) -> Dict[str, Any]:
+        """
+        Send a chat completion request with optional tool calling.
+        
+        Args:
+            messages: List of message dicts with 'role' and 'content'
+            tools: Optional list of tool definitions
+            max_tokens: Maximum tokens in response
+            temperature: Sampling temperature (0.0-1.0)
+            response_format: Optional response format (e.g., {"type": "json_object"})
+        
+        Returns:
+            Response dict with 'content' and optional 'tool_calls'
+        
+        Raises:
+            httpx.HTTPError: On connection or HTTP errors
+        """
+        payload = {
+            "model": self.model_name,
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature
+        }
+        
+        if response_format:
+            payload["response_format"] = response_format
+        
+        if tools:
+            payload["tools"] = tools
+        
+        for attempt in range(3):
+            try:
+                async with httpx.AsyncClient(timeout=120.0) as client:
+                    response = await client.post(self.endpoint_url, json=payload)
+                    response.raise_for_status()
+                    
+                    data = response.json()
+                    choice = data["choices"][0]
+                    message = choice["message"]
+                    
+                    result = {
+                        'content': message.get('content'),
+                        'role': message.get('role', 'assistant')
+                    }
+                    
+                    # Check for tool calls
+                    if 'tool_calls' in message:
+                        result['tool_calls'] = message['tool_calls']
+                    
+                    return result
+                    
+            except (httpx.ConnectError, httpx.TimeoutException) as e:
+                if attempt == 2:
+                    raise
+                await asyncio.sleep(2 ** attempt)
+    
+    async def chat_with_tools(
+        self,
+        messages: List[Dict[str, str]],
+        max_iterations: int = 5
+    ) -> Dict[str, Any]:
+        """
+        Chat with automatic tool execution.
+        
+        Handles the full tool calling loop:
+        1. Send messages to LLM
+        2. If LLM calls tools, execute them
+        3. Send tool results back to LLM
+        4. Repeat until LLM responds without tool calls or max iterations reached
+        
+        Args:
+            messages: Initial conversation messages
+            max_iterations: Maximum tool calling iterations
+        
+        Returns:
+            Final response dict with 'content' and 'messages' (full conversation)
+        """
+        conversation = messages.copy()
+        tool_definitions = [tool['definition'] for tool in self.tools.values()]
+        
+        for iteration in range(max_iterations):
+            response = await self.chat_completion(
+                messages=conversation,
+                tools=tool_definitions if tool_definitions else None
+            )
+            
+            # Add assistant response to conversation
+            assistant_message = {
+                'role': 'assistant',
+                'content': response.get('content', '')
+            }
+            
+            if 'tool_calls' in response:
+                assistant_message['tool_calls'] = response['tool_calls']
+            
+            conversation.append(assistant_message)
+            
+            # Check if LLM wants to call tools
+            if 'tool_calls' not in response:
+                # No tool calls, return final response
+                return {
+                    'content': response['content'],
+                    'messages': conversation,
+                    'iterations': iteration + 1
+                }
+            
+            # Execute tool calls
+            for tool_call in response['tool_calls']:
+                tool_name = tool_call['function']['name']
+                arguments = json.loads(tool_call['function']['arguments'])
+                
+                # Execute tool
+                tool_result = await self._execute_tool(tool_name, arguments)
+                
+                # Add tool result to conversation
+                conversation.append({
+                    'role': 'tool',
+                    'tool_call_id': tool_call['id'],
+                    'name': tool_name,
+                    'content': json.dumps(tool_result)
+                })
+        
+        # Max iterations reached
+        return {
+            'content': 'Maximum tool calling iterations reached. Please try again.',
+            'messages': conversation,
+            'iterations': max_iterations,
+            'max_iterations_reached': True
+        }
+
+
+    async def generate_trend_analysis(
+        self,
+        metrics: List[Dict[str, Any]],
+        athlete_goals: Optional[str] = None,
+        current_plan: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Generate AI-powered weight trend analysis using LangChain structured output.
+        
+        Requirements: 7.1, 7.2, 7.3
+        
+        Args:
+            metrics: List of body metric records containing:
+                - measurement_date: Date of measurement
+                - weight: Weight in kg
+                - body_fat_pct: Body fat percentage (optional)
+            athlete_goals: Athlete's stated goals (optional)
+            current_plan: Current training/nutrition plan (optional)
+        
+        Returns:
+            Dict containing structured trend analysis with:
+                - weekly_change_rate: Average kg/week change
+                - trend_direction: 'increasing', 'decreasing', or 'stable'
+                - summary: Brief trend summary
+                - goal_alignment: Assessment vs goals
+                - recommendations: Actionable suggestions
+                - confidence_level: 'high', 'medium', or 'low'
+                - data_points_analyzed: Number of measurements
+        
+        Raises:
+            ValueError: If fewer than 4 weeks of data provided
+        """
+        from app.schemas.trend_analysis import TrendAnalysisResponse
+        from datetime import datetime, timedelta
+        
+        # Validate minimum data requirement (Requirement 7.1)
+        if len(metrics) < 4:
+            raise ValueError("At least 4 weeks of weight data required for trend analysis")
+        
+        # Sort metrics by date
+        sorted_metrics = sorted(metrics, key=lambda m: m['measurement_date'])
+        
+        # Calculate weekly average weight change rate (Requirement 7.2)
+        first_date = datetime.fromisoformat(str(sorted_metrics[0]['measurement_date']))
+        last_date = datetime.fromisoformat(str(sorted_metrics[-1]['measurement_date']))
+        first_weight = sorted_metrics[0]['weight']
+        last_weight = sorted_metrics[-1]['weight']
+        
+        days_elapsed = (last_date - first_date).days
+        weeks_elapsed = days_elapsed / 7.0
+        
+        if weeks_elapsed < 4:
+            raise ValueError("Data must span at least 4 weeks for trend analysis")
+        
+        total_change = last_weight - first_weight
+        weekly_change_rate = total_change / weeks_elapsed if weeks_elapsed > 0 else 0
+        
+        # Initialize LangChain ChatOpenAI with structured output
+        llm = ChatOpenAI(
+            base_url=self.endpoint_url.replace('/v1/chat/completions', ''),
+            model=self.model_name,
+            temperature=0.1,  # Low temperature for consistent analysis (Requirement 7.3)
+            api_key="not-needed"  # Required by LangChain but not used by Ollama/LM Studio
+        )
+        
+        # Use with_structured_output for validated Pydantic schema responses
+        structured_llm = llm.with_structured_output(TrendAnalysisResponse)
+        
+        # Build context from metrics data
+        context_parts = []
+        
+        context_parts.append(f"Weight Measurements ({len(sorted_metrics)} data points over {weeks_elapsed:.1f} weeks):")
+        for metric in sorted_metrics:
+            date = metric['measurement_date']
+            weight = metric['weight']
+            bf_pct = metric.get('body_fat_pct')
+            if bf_pct:
+                context_parts.append(f"  - {date}: {weight:.1f} kg (Body Fat: {bf_pct:.1f}%)")
+            else:
+                context_parts.append(f"  - {date}: {weight:.1f} kg")
+        
+        context_parts.append(f"\nCalculated Metrics:")
+        context_parts.append(f"  - Total weight change: {total_change:+.2f} kg")
+        context_parts.append(f"  - Average weekly change rate: {weekly_change_rate:+.3f} kg/week")
+        context_parts.append(f"  - Time period: {weeks_elapsed:.1f} weeks")
+        
+        # Include athlete goals and plan in context (Requirement 7.2)
+        if athlete_goals:
+            context_parts.append(f"\nAthlete Goals: {athlete_goals}")
+        
+        if current_plan:
+            context_parts.append(f"\nCurrent Plan: {current_plan}")
+        
+        context = "\n".join(context_parts)
+        
+        # Create prompt template
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", """You are an expert nutrition and body composition coach analyzing weight trends.
+Provide a comprehensive trend analysis based on the weight measurement data.
+
+Focus on:
+- Overall trend direction and consistency
+- Rate of change and whether it's appropriate
+- Alignment with athlete's stated goals (if provided)
+- Data quality and confidence in the analysis
+- Specific, actionable recommendations for adjusting rate of change if needed
+
+Be specific and reference the actual data points and calculated metrics provided.
+Consider that healthy weight loss is typically 0.5-1.0 kg/week, and healthy weight gain is 0.25-0.5 kg/week.
+Weight maintenance should show minimal weekly change (within ±0.2 kg/week)."""),
+            ("user", "Analyze this weight trend:\n\n{context}")
+        ])
+        
+        # Generate structured analysis
+        chain = prompt | structured_llm
+        
+        try:
+            result = await chain.ainvoke({"context": context})
+            
+            # Return as dict for API response
+            return {
+                'weekly_change_rate': result.weekly_change_rate,
+                'trend_direction': result.trend_direction,
+                'summary': result.summary,
+                'goal_alignment': result.goal_alignment,
+                'recommendations': result.recommendations,
+                'confidence_level': result.confidence_level,
+                'data_points_analyzed': result.data_points_analyzed
+            }
+            
+        except Exception as e:
+            # If LLM fails, return a basic analysis based on calculated metrics
+            trend_direction = 'stable'
+            if abs(weekly_change_rate) < 0.2:
+                trend_direction = 'stable'
+            elif weekly_change_rate > 0:
+                trend_direction = 'increasing'
+            else:
+                trend_direction = 'decreasing'
+            
+            return {
+                'weekly_change_rate': round(weekly_change_rate, 3),
+                'trend_direction': trend_direction,
+                'summary': f"Weight has changed by {total_change:+.2f} kg over {weeks_elapsed:.1f} weeks, averaging {weekly_change_rate:+.3f} kg/week.",
+                'goal_alignment': "Unable to assess goal alignment - LLM analysis unavailable.",
+                'recommendations': "Continue monitoring your weight weekly. Consult with a coach for personalized recommendations.",
+                'confidence_level': 'low',
+                'data_points_analyzed': len(sorted_metrics)
+            }
+
+    async def generate_effort_analysis(self, activity: Dict[str, Any]) -> str:
+        """
+        Generate AI-powered effort analysis for an activity using LangChain structured output.
+        
+        Args:
+            activity: Activity data dict containing:
+                - activity_type: Type of activity (Run, Ride, etc.)
+                - distance_m: Distance in meters
+                - moving_time_s: Duration in seconds
+                - elevation_m: Elevation gain in meters
+                - avg_hr: Average heart rate (optional)
+                - max_hr: Maximum heart rate (optional)
+                - raw_json: Raw activity data with splits and pace info (optional)
+        
+        Returns:
+            Formatted analysis text as a string
+        """
+        from app.schemas.activity_analysis import EffortAnalysisResponse
+        
+        # Initialize LangChain ChatOpenAI with structured output
+        llm = ChatOpenAI(
+            base_url=self.endpoint_url.replace('/v1/chat/completions', ''),
+            model=self.model_name,
+            temperature=0.1,  # Low temperature for consistent analysis
+            api_key="not-needed"  # Required by LangChain but not used by Ollama/LM Studio
+        )
+        
+        # Use with_structured_output for validated Pydantic schema responses
+        structured_llm = llm.with_structured_output(EffortAnalysisResponse)
+        
+        # Build context from activity data
+        context_parts = []
+        
+        # Basic activity info
+        activity_type = activity.get('activity_type', 'Unknown')
+        distance_km = activity.get('distance_m', 0) / 1000 if activity.get('distance_m') else 0
+        duration_min = activity.get('moving_time_s', 0) / 60 if activity.get('moving_time_s') else 0
+        elevation_m = activity.get('elevation_m', 0) if activity.get('elevation_m') else 0
+        
+        context_parts.append(f"Activity Type: {activity_type}")
+        context_parts.append(f"Distance: {distance_km:.2f} km")
+        context_parts.append(f"Duration: {duration_min:.1f} minutes")
+        context_parts.append(f"Elevation Gain: {elevation_m:.0f} meters")
+        
+        # Calculate pace/speed
+        if distance_km > 0 and duration_min > 0:
+            if activity_type in ['Run', 'Walk']:
+                pace_min_per_km = duration_min / distance_km
+                pace_min = int(pace_min_per_km)
+                pace_sec = int((pace_min_per_km - pace_min) * 60)
+                context_parts.append(f"Average Pace: {pace_min}:{pace_sec:02d} /km")
+            else:
+                speed_kmh = distance_km / (duration_min / 60)
+                context_parts.append(f"Average Speed: {speed_kmh:.1f} km/h")
+        
+        # Heart rate data
+        avg_hr = activity.get('avg_hr')
+        max_hr = activity.get('max_hr')
+        if avg_hr or max_hr:
+            hr_info = []
+            if avg_hr:
+                hr_info.append(f"Average HR: {avg_hr} bpm")
+            if max_hr:
+                hr_info.append(f"Max HR: {max_hr} bpm")
+            context_parts.append(", ".join(hr_info))
+        
+        # Parse raw_json for additional context (splits, pace variation)
+        raw_json = activity.get('raw_json')
+        if raw_json:
+            try:
+                if isinstance(raw_json, str):
+                    raw_data = json.loads(raw_json)
+                else:
+                    raw_data = raw_json
+                
+                # Add splits info if available
+                splits = raw_data.get('splits_metric') or raw_data.get('splits_standard')
+                if splits and len(splits) > 1:
+                    # Calculate pace variation
+                    paces = []
+                    for split in splits:
+                        if split.get('moving_time') and split.get('distance') and split['distance'] > 0:
+                            pace = (split['moving_time'] / 60) / (split['distance'] / 1000)
+                            paces.append(pace)
+                    
+                    if paces:
+                        avg_pace = sum(paces) / len(paces)
+                        pace_variation = max(paces) - min(paces)
+                        context_parts.append(f"Pace Variation: {pace_variation:.2f} min/km range across {len(splits)} splits")
+            except (json.JSONDecodeError, KeyError, TypeError) as e:
+                # If parsing fails, continue without splits data
+                pass
+        
+        context = "\n".join(context_parts)
+        
+        # Create prompt template
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", """You are an expert running and cycling coach analyzing activity effort.
+Provide a comprehensive effort analysis based on the activity data.
+
+Focus on:
+- Overall effort level and intensity
+- Heart rate zones and cardiovascular stress (if HR data available)
+- Pace consistency and variation patterns
+- Impact of elevation on effort
+- Actionable recommendations for future training
+
+Be specific and reference the actual data points provided."""),
+            ("user", "Analyze this activity:\n\n{context}")
+        ])
+        
+        # Generate structured analysis
+        chain = prompt | structured_llm
+        
+        try:
+            result = await chain.ainvoke({"context": context})
+            
+            # Format the structured response into readable text
+            analysis_parts = []
+            
+            analysis_parts.append(f"**Effort Level:** {result.effort_level}\n")
+            analysis_parts.append(f"**Summary:** {result.summary}\n")
+            
+            if result.heart_rate_analysis:
+                analysis_parts.append(f"**Heart Rate Analysis:** {result.heart_rate_analysis}\n")
+            
+            if result.pace_analysis:
+                analysis_parts.append(f"**Pace Analysis:** {result.pace_analysis}\n")
+            
+            if result.elevation_analysis:
+                analysis_parts.append(f"**Elevation Analysis:** {result.elevation_analysis}\n")
+            
+            analysis_parts.append(f"**Recommendations:** {result.recommendations}")
+            
+            return "\n".join(analysis_parts)
+            
+        except Exception as e:
+            # If LLM fails, return a basic analysis
+            return f"Unable to generate detailed analysis. Activity: {distance_km:.2f}km in {duration_min:.1f} minutes with {elevation_m:.0f}m elevation gain."
+        async def generate_trend_analysis(
+            self,
+            metrics: List[Dict[str, Any]],
+            athlete_goals: Optional[str] = None,
+            current_plan: Optional[str] = None
+        ) -> Dict[str, Any]:
+            """
+            Generate AI-powered weight trend analysis using LangChain structured output.
+
+            Requirements: 7.1, 7.2, 7.3
+
+            Args:
+                metrics: List of body metric records containing:
+                    - measurement_date: Date of measurement
+                    - weight: Weight in kg
+                    - body_fat_pct: Body fat percentage (optional)
+                athlete_goals: Athlete's stated goals (optional)
+                current_plan: Current training/nutrition plan (optional)
+
+            Returns:
+                Dict containing structured trend analysis with:
+                    - weekly_change_rate: Average kg/week change
+                    - trend_direction: 'increasing', 'decreasing', or 'stable'
+                    - summary: Brief trend summary
+                    - goal_alignment: Assessment vs goals
+                    - recommendations: Actionable suggestions
+                    - confidence_level: 'high', 'medium', or 'low'
+                    - data_points_analyzed: Number of measurements
+
+            Raises:
+                ValueError: If fewer than 4 weeks of data provided
+            """
+            from app.schemas.trend_analysis import TrendAnalysisResponse
+            from datetime import datetime, timedelta
+
+            # Validate minimum data requirement (Requirement 7.1)
+            if len(metrics) < 4:
+                raise ValueError("At least 4 weeks of weight data required for trend analysis")
+
+            # Sort metrics by date
+            sorted_metrics = sorted(metrics, key=lambda m: m['measurement_date'])
+
+            # Calculate weekly average weight change rate (Requirement 7.2)
+            first_date = datetime.fromisoformat(str(sorted_metrics[0]['measurement_date']))
+            last_date = datetime.fromisoformat(str(sorted_metrics[-1]['measurement_date']))
+            first_weight = sorted_metrics[0]['weight']
+            last_weight = sorted_metrics[-1]['weight']
+
+            days_elapsed = (last_date - first_date).days
+            weeks_elapsed = days_elapsed / 7.0
+
+            if weeks_elapsed < 4:
+                raise ValueError("Data must span at least 4 weeks for trend analysis")
+
+            total_change = last_weight - first_weight
+            weekly_change_rate = total_change / weeks_elapsed if weeks_elapsed > 0 else 0
+
+            # Initialize LangChain ChatOpenAI with structured output
+            llm = ChatOpenAI(
+                base_url=self.endpoint_url.replace('/v1/chat/completions', ''),
+                model=self.model_name,
+                temperature=0.1,  # Low temperature for consistent analysis (Requirement 7.3)
+                api_key="not-needed"  # Required by LangChain but not used by Ollama/LM Studio
+            )
+
+            # Use with_structured_output for validated Pydantic schema responses
+            structured_llm = llm.with_structured_output(TrendAnalysisResponse)
+
+            # Build context from metrics data
+            context_parts = []
+
+            context_parts.append(f"Weight Measurements ({len(sorted_metrics)} data points over {weeks_elapsed:.1f} weeks):")
+            for metric in sorted_metrics:
+                date = metric['measurement_date']
+                weight = metric['weight']
+                bf_pct = metric.get('body_fat_pct')
+                if bf_pct:
+                    context_parts.append(f"  - {date}: {weight:.1f} kg (Body Fat: {bf_pct:.1f}%)")
+                else:
+                    context_parts.append(f"  - {date}: {weight:.1f} kg")
+
+            context_parts.append(f"\nCalculated Metrics:")
+            context_parts.append(f"  - Total weight change: {total_change:+.2f} kg")
+            context_parts.append(f"  - Average weekly change rate: {weekly_change_rate:+.3f} kg/week")
+            context_parts.append(f"  - Time period: {weeks_elapsed:.1f} weeks")
+
+            # Include athlete goals and plan in context (Requirement 7.2)
+            if athlete_goals:
+                context_parts.append(f"\nAthlete Goals: {athlete_goals}")
+
+            if current_plan:
+                context_parts.append(f"\nCurrent Plan: {current_plan}")
+
+            context = "\n".join(context_parts)
+
+            # Create prompt template
+            prompt = ChatPromptTemplate.from_messages([
+                ("system", """You are an expert nutrition and body composition coach analyzing weight trends.
+    Provide a comprehensive trend analysis based on the weight measurement data.
+
+    Focus on:
+    - Overall trend direction and consistency
+    - Rate of change and whether it's appropriate
+    - Alignment with athlete's stated goals (if provided)
+    - Data quality and confidence in the analysis
+    - Specific, actionable recommendations for adjusting rate of change if needed
+
+    Be specific and reference the actual data points and calculated metrics provided.
+    Consider that healthy weight loss is typically 0.5-1.0 kg/week, and healthy weight gain is 0.25-0.5 kg/week.
+    Weight maintenance should show minimal weekly change (within ±0.2 kg/week)."""),
+                ("user", "Analyze this weight trend:\n\n{context}")
+            ])
+
+            # Generate structured analysis
+            chain = prompt | structured_llm
+
+            try:
+                result = await chain.ainvoke({"context": context})
+
+                # Return as dict for API response
+                return {
+                    'weekly_change_rate': result.weekly_change_rate,
+                    'trend_direction': result.trend_direction,
+                    'summary': result.summary,
+                    'goal_alignment': result.goal_alignment,
+                    'recommendations': result.recommendations,
+                    'confidence_level': result.confidence_level,
+                    'data_points_analyzed': result.data_points_analyzed
+                }
+
+            except Exception as e:
+                # If LLM fails, return a basic analysis based on calculated metrics
+                trend_direction = 'stable'
+                if abs(weekly_change_rate) < 0.2:
+                    trend_direction = 'stable'
+                elif weekly_change_rate > 0:
+                    trend_direction = 'increasing'
+                else:
+                    trend_direction = 'decreasing'
+
+                return {
+                    'weekly_change_rate': round(weekly_change_rate, 3),
+                    'trend_direction': trend_direction,
+                    'summary': f"Weight has changed by {total_change:+.2f} kg over {weeks_elapsed:.1f} weeks, averaging {weekly_change_rate:+.3f} kg/week.",
+                    'goal_alignment': "Unable to assess goal alignment - LLM analysis unavailable.",
+                    'recommendations': "Continue monitoring your weight weekly. Consult with a coach for personalized recommendations.",
+                    'confidence_level': 'low',
+                    'data_points_analyzed': len(sorted_metrics)
+                }
+
+
+
+# Legacy function for backward compatibility
 async def generate_evaluation(contract: dict) -> str:
     """
     Send the contract to LM Studio or Ollama and return the raw JSON string response.
@@ -101,4 +991,3 @@ async def generate_evaluation(contract: dict) -> str:
             await asyncio.sleep(2 ** attempt)
         except json.JSONDecodeError as e:
             raise ValueError(f"Invalid JSON response from LLM: {str(e)}")
-

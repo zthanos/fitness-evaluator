@@ -44,6 +44,23 @@ class APIClient {
     }
   }
 
+  // Generic HTTP methods for flexible API calls
+  async get(endpoint) {
+    return this.request('GET', endpoint);
+  }
+
+  async post(endpoint, data) {
+    return this.request('POST', endpoint, data);
+  }
+
+  async put(endpoint, data) {
+    return this.request('PUT', endpoint, data);
+  }
+
+  async delete(endpoint) {
+    return this.request('DELETE', endpoint);
+  }
+
   // Daily Logs
   async createDailyLog(log) {
     return this.request('POST', '/logs/daily', log);
@@ -51,6 +68,10 @@ class APIClient {
 
   async getDailyLog(date) {
     return this.request('GET', `/logs/daily/${date}`);
+  }
+
+  async updateDailyLog(logId, log) {
+    return this.request('PUT', `/logs/daily/${logId}`, log);
   }
 
   async listDailyLogs(startDate = null, endDate = null) {
@@ -62,9 +83,13 @@ class APIClient {
     return this.request('GET', endpoint);
   }
 
-  // Weekly Measurements
+  // Weekly Measurements (legacy endpoints)
   async createWeeklyMeasurement(measurement) {
     return this.request('POST', '/logs/weekly', measurement);
+  }
+
+  async updateWeeklyMeasurement(id, measurement) {
+    return this.request('PUT', `/logs/weekly/${id}`, measurement);
   }
 
   async getWeeklyMeasurement(weekStart) {
@@ -73,6 +98,37 @@ class APIClient {
 
   async listWeeklyMeasurements() {
     return this.request('GET', '/logs/weekly');
+  }
+
+  // Body Metrics (new endpoints - Requirements 5.4, 5.5, 5.6)
+  async createMetric(metric) {
+    return this.request('POST', '/metrics', metric);
+  }
+
+  async updateMetric(id, metric) {
+    return this.request('PUT', `/metrics/${id}`, metric);
+  }
+
+  async getMetric(metricId) {
+    return this.request('GET', `/metrics/${metricId}`);
+  }
+
+  async listMetrics(dateFrom = null, dateTo = null) {
+    let endpoint = '/metrics';
+    const params = new URLSearchParams();
+    if (dateFrom) params.append('date_from', dateFrom);
+    if (dateTo) params.append('date_to', dateTo);
+    if (params.toString()) endpoint += '?' + params.toString();
+    return this.request('GET', endpoint);
+  }
+
+  async getTrendAnalysis(athleteGoals = null, currentPlan = null) {
+    let endpoint = '/metrics/trends/analysis';
+    const params = new URLSearchParams();
+    if (athleteGoals) params.append('athlete_goals', athleteGoals);
+    if (currentPlan) params.append('current_plan', currentPlan);
+    if (params.toString()) endpoint += '?' + params.toString();
+    return this.request('GET', endpoint);
   }
 
   // Plan Targets
@@ -121,6 +177,38 @@ class APIClient {
 
   async refreshEvaluation(weekStart) {
     return this.request('POST', `/evaluate/${weekStart}/refresh`);
+  }
+
+  // Activities
+  async getActivities(params = {}) {
+    let endpoint = '/strava/activities/all';
+    const queryParams = new URLSearchParams();
+    
+    // Pagination
+    if (params.page) queryParams.append('page', params.page);
+    if (params.page_size) queryParams.append('page_size', params.page_size);
+    
+    // Filtering
+    if (params.type) queryParams.append('type', params.type);
+    if (params.date_from) queryParams.append('date_from', params.date_from);
+    if (params.date_to) queryParams.append('date_to', params.date_to);
+    if (params.distance_min !== null && params.distance_min !== undefined) {
+      queryParams.append('distance_min', params.distance_min);
+    }
+    if (params.distance_max !== null && params.distance_max !== undefined) {
+      queryParams.append('distance_max', params.distance_max);
+    }
+    
+    // Sorting
+    if (params.sort_by) queryParams.append('sort_by', params.sort_by);
+    if (params.sort_dir) queryParams.append('sort_dir', params.sort_dir);
+    
+    if (queryParams.toString()) endpoint += '?' + queryParams.toString();
+    return this.request('GET', endpoint);
+  }
+
+  async getActivity(activityId) {
+    return this.request('GET', `/strava/activities/detail/${activityId}`);
   }
 }
 
