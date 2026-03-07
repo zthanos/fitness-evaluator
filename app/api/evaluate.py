@@ -2,10 +2,10 @@
 
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
-from uuid import uuid5, NAMESPACE_DNS
 from datetime import date
 from app.database import get_db
 from app.models.weekly_eval import WeeklyEval
+from app.models.weekly_measurement import WeeklyMeasurement
 from app.schemas.eval_output import EvalOutput
 from app.services.eval_service import EvaluationService
 
@@ -48,8 +48,18 @@ async def evaluate_week(week_start: date, db: Session = Depends(get_db)):
     - `is_cached`: Boolean indicating if result was cached
     """
     try:
-        # Generate week_id from week_start date
-        week_id = str(uuid5(NAMESPACE_DNS, str(week_start)))
+        # Look up WeeklyMeasurement by week_start to get week_id
+        weekly_measurement = db.query(WeeklyMeasurement).filter(
+            WeeklyMeasurement.week_start == week_start
+        ).first()
+        
+        if not weekly_measurement:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No WeeklyMeasurement found for week starting {week_start}"
+            )
+        
+        week_id = weekly_measurement.id
         
         # Create evaluation service
         eval_service = EvaluationService(db)
@@ -71,6 +81,8 @@ async def evaluate_week(week_start: date, db: Session = Depends(get_db)):
             "input_hash": weekly_eval.input_hash,
             "is_cached": weekly_eval.raw_llm_response is not None,
         }
+    except HTTPException:
+        raise
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -96,8 +108,20 @@ async def get_evaluation(week_start: date, db: Session = Depends(get_db)):
     - `evidence_map`: Mapping of claims to supporting DB records
     """
     try:
-        week_id = str(uuid5(NAMESPACE_DNS, str(week_start)))
+        # Look up WeeklyMeasurement by week_start to get week_id
+        weekly_measurement = db.query(WeeklyMeasurement).filter(
+            WeeklyMeasurement.week_start == week_start
+        ).first()
         
+        if not weekly_measurement:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No WeeklyMeasurement found for week starting {week_start}"
+            )
+        
+        week_id = weekly_measurement.id
+        
+        # Query WeeklyEval by week_id
         weekly_eval = db.query(WeeklyEval).filter(
             WeeklyEval.week_id == week_id
         ).first()
@@ -108,6 +132,7 @@ async def get_evaluation(week_start: date, db: Session = Depends(get_db)):
                 detail=f"No evaluation found for week starting {week_start}"
             )
         
+        # Return response with evidence_map included
         return {
             "week_start": week_start,
             "week_id": str(week_id),
@@ -141,20 +166,22 @@ async def refresh_evaluation(week_start: date, db: Session = Depends(get_db)):
     - `message`: Confirmation that evaluation was refreshed
     """
     try:
-        week_id = str(uuid5(NAMESPACE_DNS, str(week_start)))
-        
-        # Delete existing evaluation to force re-run
-        existing = db.query(WeeklyEval).filter(
-            WeeklyEval.week_id == week_id
+        # Look up WeeklyMeasurement by week_start to get week_id
+        weekly_measurement = db.query(WeeklyMeasurement).filter(
+            WeeklyMeasurement.week_start == week_start
         ).first()
         
-        if existing:
-            db.delete(existing)
-            db.commit()
+        if not weekly_measurement:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No WeeklyMeasurement found for week starting {week_start}"
+            )
         
-        # Perform fresh evaluation
+        week_id = weekly_measurement.id
+        
+        # Perform fresh evaluation with force_refresh=True to bypass cache
         eval_service = EvaluationService(db)
-        weekly_eval = await eval_service.evaluate_week(week_id)
+        weekly_eval = await eval_service.evaluate_week(week_id, force_refresh=True)
         
         return {
             "week_start": week_start,
@@ -164,6 +191,8 @@ async def refresh_evaluation(week_start: date, db: Session = Depends(get_db)):
             "input_hash": weekly_eval.input_hash,
             "message": "Evaluation refreshed",
         }
+    except HTTPException:
+        raise
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:

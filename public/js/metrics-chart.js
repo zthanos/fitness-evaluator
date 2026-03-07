@@ -42,7 +42,7 @@ class MetricsChart {
   
   /**
    * Initialize and render the component
-   * Requirements: 6.1, 6.2
+   * Requirements: 6.1, 6.2, 7.4, 7.5
    */
   async render() {
     try {
@@ -54,6 +54,9 @@ class MetricsChart {
       
       // Render charts
       this.renderCharts();
+      
+      // Render trend analysis (Requirements 7.4, 7.5)
+      await this.renderTrendAnalysis();
     } catch (error) {
       console.error('Error rendering metrics charts:', error);
       this.renderError(error.message);
@@ -74,7 +77,7 @@ class MetricsChart {
   
   /**
    * Render the UI structure with time range selector
-   * Requirements: 6.3
+   * Requirements: 6.3, 7.4
    */
   renderUI() {
     this.container.innerHTML = `
@@ -87,6 +90,11 @@ class MetricsChart {
           <button class="btn btn-sm ${this.currentTimeRange === '1y' ? 'btn-active' : ''}" data-range="1y">1 Year</button>
           <button class="btn btn-sm ${this.currentTimeRange === 'all' ? 'btn-active' : ''}" data-range="all">All Time</button>
         </div>
+      </div>
+      
+      <!-- AI Trend Analysis Section (Requirements 7.4, 7.5) -->
+      <div id="trend-analysis-container" class="mb-6">
+        <!-- Trend analysis will be rendered here -->
       </div>
       
       <!-- Charts Grid - Responsive: 1 column on mobile, 3 columns on desktop -->
@@ -458,12 +466,176 @@ class MetricsChart {
   }
   
   /**
+   * Render AI-powered weight trend analysis
+   * Requirements: 7.4, 7.5, 7.6
+   */
+  async renderTrendAnalysis() {
+    const container = document.getElementById('trend-analysis-container');
+    
+    if (!container) {
+      console.warn('Trend analysis container not found');
+      return;
+    }
+    
+    // Check if we have enough data (at least 4 weeks)
+    if (this.metricsData.length < 4) {
+      // Don't show anything if insufficient data
+      container.innerHTML = '';
+      return;
+    }
+    
+    // Check time span
+    const sortedData = [...this.metricsData].sort((a, b) => 
+      new Date(a.measurement_date) - new Date(b.measurement_date)
+    );
+    const firstDate = new Date(sortedData[0].measurement_date);
+    const lastDate = new Date(sortedData[sortedData.length - 1].measurement_date);
+    const daysElapsed = (lastDate - firstDate) / (1000 * 60 * 60 * 24);
+    
+    if (daysElapsed < 28) {
+      // Don't show anything if data doesn't span 4 weeks
+      container.innerHTML = '';
+      return;
+    }
+    
+    // Show loading state
+    container.innerHTML = `
+      <div class="card bg-gradient-to-br from-primary/10 to-secondary/10 border border-primary/20">
+        <div class="card-body">
+          <div class="flex items-center gap-3">
+            <span class="loading loading-spinner loading-md text-primary"></span>
+            <h3 class="card-title text-lg">Generating AI Weight Trend Analysis...</h3>
+          </div>
+        </div>
+      </div>
+    `;
+    
+    try {
+      // Fetch trend analysis from API (Requirements 7.4, 7.5)
+      const analysis = await this.api.getTrendAnalysis();
+      
+      // Determine trend icon and color
+      let trendIcon = '📊';
+      let trendColorClass = 'text-info';
+      
+      if (analysis.trend_direction === 'increasing') {
+        trendIcon = '📈';
+        trendColorClass = 'text-success';
+      } else if (analysis.trend_direction === 'decreasing') {
+        trendIcon = '📉';
+        trendColorClass = 'text-warning';
+      }
+      
+      // Determine confidence badge color
+      let confidenceBadgeClass = 'badge-info';
+      if (analysis.confidence_level === 'high') {
+        confidenceBadgeClass = 'badge-success';
+      } else if (analysis.confidence_level === 'low') {
+        confidenceBadgeClass = 'badge-warning';
+      }
+      
+      // Render analysis (Requirement 7.4)
+      container.innerHTML = `
+        <div class="card bg-gradient-to-br from-primary/10 to-secondary/10 border border-primary/20">
+          <div class="card-body">
+            <div class="flex items-start justify-between mb-4">
+              <div class="flex items-center gap-3">
+                <span class="text-4xl">${trendIcon}</span>
+                <div>
+                  <h3 class="card-title text-lg">AI Weight Trend Analysis</h3>
+                  <div class="flex gap-2 mt-1">
+                    <span class="badge ${confidenceBadgeClass} badge-sm">
+                      ${analysis.confidence_level} confidence
+                    </span>
+                    <span class="badge badge-ghost badge-sm">
+                      ${analysis.data_points_analyzed} measurements
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <button 
+                class="btn btn-sm btn-ghost btn-circle" 
+                onclick="document.getElementById('trend-analysis-container').querySelector('.card').remove()"
+                title="Dismiss analysis"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              <div class="stat bg-base-100 rounded-lg p-4">
+                <div class="stat-title">Weekly Change Rate</div>
+                <div class="stat-value text-2xl ${trendColorClass}">
+                  ${analysis.weekly_change_rate >= 0 ? '+' : ''}${analysis.weekly_change_rate.toFixed(3)} kg/week
+                </div>
+                <div class="stat-desc capitalize">${analysis.trend_direction}</div>
+              </div>
+              
+              <div class="stat bg-base-100 rounded-lg p-4">
+                <div class="stat-title">Goal Alignment</div>
+                <div class="stat-desc text-sm mt-2">${analysis.goal_alignment}</div>
+              </div>
+            </div>
+            
+            <div class="space-y-3">
+              <div>
+                <h4 class="font-semibold text-sm mb-2">📝 Summary</h4>
+                <p class="text-sm text-base-content/80">${analysis.summary}</p>
+              </div>
+              
+              <div>
+                <h4 class="font-semibold text-sm mb-2">💡 Recommendations</h4>
+                <p class="text-sm text-base-content/80">${analysis.recommendations}</p>
+              </div>
+            </div>
+            
+            ${analysis.error ? `
+              <div class="alert alert-warning mt-4">
+                <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <span class="text-sm">Note: ${analysis.error}</span>
+              </div>
+            ` : ''}
+          </div>
+        </div>
+      `;
+      
+    } catch (error) {
+      // Handle generation failures gracefully (Requirement 7.6)
+      console.error('Error generating trend analysis:', error);
+      
+      // Check if it's an insufficient data error
+      if (error.message && error.message.includes('At least 4 weeks')) {
+        // Don't show anything for insufficient data
+        container.innerHTML = '';
+      } else {
+        // Show error message for other failures
+        container.innerHTML = `
+          <div class="alert alert-info">
+            <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <div>
+              <div class="font-semibold">AI Trend Analysis Unavailable</div>
+              <div class="text-sm">Unable to generate trend analysis at this time. Continue tracking your metrics.</div>
+            </div>
+          </div>
+        `;
+      }
+    }
+  }
+  
+  /**
    * Update charts with new data
    * Call this method after new metrics are added
+   * Requirements: 7.5
    */
   async update() {
     await this.loadData();
     this.renderCharts();
+    // Regenerate trend analysis when new data is added (Requirement 7.5)
+    await this.renderTrendAnalysis();
   }
   
   /**

@@ -2,7 +2,6 @@
 import time
 import httpx
 from datetime import datetime, timezone, timedelta, date
-from uuid import uuid5, NAMESPACE_DNS
 from sqlalchemy.orm import Session
 from app.config import get_settings
 
@@ -90,9 +89,17 @@ async def sync_week_activities(week_start: date, db: Session) -> int:
     Returns the number of activities upserted.
     """
     from app.models.strava_activity import StravaActivity
+    from app.models.weekly_measurement import WeeklyMeasurement
 
-    # Derive a stable week_id from the week_start date for grouping activities
-    week_id = str(uuid5(NAMESPACE_DNS, str(week_start)))
+    # Look up WeeklyMeasurement by week_start to get the correct week_id
+    weekly_measurement = db.query(WeeklyMeasurement).filter(
+        WeeklyMeasurement.week_start == week_start
+    ).first()
+    
+    if not weekly_measurement:
+        raise ValueError(f"No WeeklyMeasurement found for week starting {week_start}")
+    
+    week_id = weekly_measurement.id
 
     # Calculate start and end times for the week
     week_end = week_start + timedelta(days=7)

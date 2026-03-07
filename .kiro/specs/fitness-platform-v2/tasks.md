@@ -7,8 +7,15 @@ This implementation plan transforms the Fitness Evaluator from a basic dashboard
 The platform uses:
 - **Frontend**: Vanilla JavaScript (ES6+), DaisyUI/Tailwind CSS, Chart.js, Leaflet.js
 - **Backend**: Python with FastAPI, SQLite, Alembic migrations
-- **AI/ML**: Ollama (Mistral), FAISS, sentence-transformers (all-MiniLM-L6-v2)
+- **AI/ML**: LangChain framework with Ollama/LM Studio backends (Mistral model), FAISS, sentence-transformers (all-MiniLM-L6-v2)
 - **Integrations**: Strava API with OAuth 2.0
+
+LangChain provides:
+- Structured output parsing with Pydantic schema validation
+- Prompt template management for consistent formatting
+- Streaming response capabilities for real-time chat
+- Support for both Ollama and LM Studio (OpenAI-compatible) backends
+- Temperature control (0.1 for analysis tasks, 0.7 for chat)
 
 ## Tasks
 
@@ -121,7 +128,7 @@ The platform uses:
     - Implement map rendering with route polyline
     - Add zoom and pan controls
     - Handle missing map data gracefully
-    - _Requirements: 3.1, 3.4, 3.6_
+    - _Requirements: 3.1, 3.4, 3.6_![alt text](image.png)
 
 - [ ] 5. Body metrics data entry and management
   - [x] 5.1 Create metrics page and route
@@ -219,8 +226,8 @@ The platform uses:
 
 ### Phase 2: AI-Powered Features and Chat Interface
 
-- [ ] 10. Strava OAuth integration
-  - [~] 10.1 Implement StravaClient service class
+- [x] 10. Strava OAuth integration
+  - [x] 10.1 Implement StravaClient service class
     - Create StravaClient with OAuth flow methods
     - Implement get_authorization_url() for OAuth initiation
     - Implement exchange_code() for token exchange
@@ -228,80 +235,105 @@ The platform uses:
     - Implement get_activities() for fetching activities
     - _Requirements: 20.1, 20.2, 20.5_
   
-  - [~] 10.2 Implement token encryption
+  - [x] 10.2 Implement token encryption
     - Add Fernet encryption for access and refresh tokens
     - Implement _encrypt_token() and _decrypt_token() methods
     - Store encryption key in environment variable
     - _Requirements: 20.3, 20.4, 30.1, 30.2_
   
-  - [~] 10.3 Write property test for token encryption round-trip
+  - [x] 10.3 Write property test for token encryption round-trip
     - **Property 7: Token Encryption Round-Trip**
     - **Validates: Requirements 20.3, 30.1_
   
-  - [~] 10.4 Create Strava settings UI
+  - [x] 10.4 Create Strava settings UI
     - Add Strava connection status display to settings page
     - Add connect/disconnect buttons
     - Implement OAuth callback handler
     - _Requirements: 19.2, 20.1_
   
-  - [~] 10.5 Implement activity sync functionality
+  - [x] 10.5 Implement activity sync functionality
     - Create sync_activities() method
     - Add scheduled job for hourly sync (configurable)
     - Handle authorization revocation
     - _Requirements: 20.6, 20.7_
   
-  - [~] 10.6 Write property test for activity sync idempotence
+  - [x] 10.6 Write property test for activity sync idempotence
     - **Property 17: Activity Sync Idempotence**
     - **Validates: Requirements 20.6_
+  
+  - [x] 10.7 Implement manual Strava sync button in activities page
+    - Add "Sync Strava Activities" button to activities list page header
+    - Implement POST /api/activities/sync endpoint
+    - If activities exist, use latest activity date as starting point for sync
+    - If no activities exist, sync all activities from Strava account
+    - Display sync progress with loading indicator
+    - Show success message with count of new activities synced
+    - Handle errors gracefully (no Strava connection, API errors)
+    - Update activities list automatically after successful sync
+    - _Requirements: 20.6, 20.7_
 
-- [ ] 11. Ollama LLM client integration
-  - [~] 11.1 Implement LLMClient service class
-    - Create LLMClient with Ollama API connection
-    - Implement generate_response() for synchronous generation
-    - Implement stream_response() for streaming generation
+- [x] 11. LangChain LLM integration
+  - [x] 11.1 Implement LangChain-based LLMClient service class
+    - Create LLMClient using LangChain framework
+    - Support both Ollama and LM Studio (OpenAI-compatible) backends through LangChain
+    - Initialize LangChain with configured endpoint (default: http://localhost:11434 for Ollama)
+    - Initialize with configured model name (default: mistral)
+    - Implement generate_response() using LangChain invocation
+    - Implement stream_response() using LangChain streaming capabilities
     - Add retry logic with exponential backoff (max 3 retries)
     - Handle connection errors and timeouts gracefully
-    - _Requirements: 21.1, 21.2, 21.3, 21.6_
+    - Log all initialization parameters, invocation attempts, and validation errors
+    - _Requirements: 21.1, 21.2, 21.3, 21.8, 21.10_
   
-  - [~] 11.2 Implement prompt engineering utilities
-    - Create system prompt for coach persona
-    - Implement _build_prompt() with context and history
-    - Set default temperature to 0.7 (configurable)
-    - Limit response length to 500 tokens
-    - _Requirements: 21.5, 29.1, 29.5, 29.6_
+  - [x] 11.2 Implement LangChain structured output parsing
+    - Use LangChain's with_structured_output for validated Pydantic schema responses
+    - Create Pydantic models for evaluation reports, effort analysis, and trend analysis
+    - Implement prompt templates using LangChain's prompt template system
+    - Set temperature=0.1 for evaluation and analysis tasks requiring consistency
+    - Set configurable temperature (default 0.7) for conversational chat
+    - Limit response length to 500 tokens for chat flow
+    - _Requirements: 21.5, 21.6, 21.7, 29.5, 29.6_
   
-  - [~] 11.3 Create LLM settings UI
+  - [x] 11.3 Implement prompt engineering with LangChain
+    - Create system prompt for coach persona using LangChain templates
+    - Implement _build_prompt() with context and history using LangChain formatting
+    - Include athlete profile information in system prompt
+    - Instruct model to cite specific data points from context
+    - Include conversation history (last 10 messages) for context continuity
+    - _Requirements: 29.1, 29.2, 29.3, 29.4, 29.7, 29.8_
+  
+  - [x] 11.4 Create LLM settings UI
     - Add LLM configuration to settings page
     - Support model selection and temperature adjustment
-    - Display Ollama endpoint configuration
+    - Display backend endpoint configuration (Ollama/LM Studio)
     - _Requirements: 19.4, 21.4_
 
-- [ ] 12. RAG system with FAISS
-  - [~] 12.1 Implement RAGSystem service class
+- [x] 12. RAG system with FAISS
+  - [x] 12.1 Implement RAGSystem service class
     - Create RAGSystem with FAISS index management
     - Implement initialize_index() for index creation
     - Implement load_index() and save_index() for persistence
     - _Requirements: 15, 16_
   
-  - [~] 12.2 Integrate sentence-transformers for embeddings
+  - [x] 12.2 Integrate sentence-transformers for embeddings
     - Add sentence-transformers library (all-MiniLM-L6-v2 model)
     - Implement generate_embedding() method
     - Ensure 384-dimensional embeddings
     - Normalize embedding vectors
     - _Requirements: 15.1, 15.6, 28.1, 28.2, 28.7_
   
-  - [~] 12.3 Write property test for embedding dimension invariant
+  - [x] 12.3 Write property test for embedding dimension invariant
     - **Property 4: Embedding Dimension Invariant**
     - **Validates: Requirements 15.6, 28.2_
   
-  - [~] 12.4 Implement record formatting for embeddings
+  - [x] 12.4 Implement record formatting for embeddings
     - Create _format_activity_text() method
     - Create _format_metric_text() method
     - Create _format_log_text() method
     - Create _format_evaluation_text() method
     - _Requirements: 28.3, 28.4, 28.5, 28.6_
   
-  - [~] 12.5 Implement indexing methods
+  - [x] 12.5 Implement indexing methods
     - Create index_activity() method
     - Create index_metric() method
     - Create index_log() method
@@ -309,169 +341,222 @@ The platform uses:
     - Store metadata in faiss_metadata table
     - _Requirements: 16.1, 16.2, 16.3, 16.4, 16.6_
   
-  - [~] 12.6 Write property test for FAISS index consistency
+  - [x] 12.6 Write property test for FAISS index consistency
     - **Property 5: FAISS Index Consistency**
     - **Validates: Requirements 16_
   
-  - [~] 12.7 Implement semantic search
+  - [x] 12.7 Implement semantic search
     - Create search() method with top-k retrieval
     - Generate query embedding
     - Search FAISS index for similar vectors
     - Retrieve full record details from database
     - _Requirements: 15.2, 15.3_
   
-  - [~] 12.8 Write property test for semantic search relevance ordering
+  - [x] 12.8 Write property test for semantic search relevance ordering
     - **Property 16: Semantic Search Relevance Ordering**
     - **Validates: Requirements 15.2_
   
-  - [~] 12.9 Add index initialization on application startup
+  - [x] 12.9 Add index initialization on application startup
     - Load FAISS index into memory on startup
     - Create index if it doesn't exist
     - _Requirements: 16.7_
 
-- [ ] 13. Coach chat interface
-  - [~] 13.1 Create chat page and route
+- [x] 13. LLM-assisted goal setting with tool calling
+  - [x] 13.1 Create athlete_goals database table
+    - Add athlete_goals table (id, athlete_id, goal_type, target_value, target_date, description, status, created_at, updated_at)
+    - Add goal_type enum (weight_loss, weight_gain, performance, endurance, strength, custom)
+    - Add status enum (active, completed, abandoned)
+    - Add foreign key constraint to athlete
+    - Create Alembic migration
+    - _Requirements: New - Goal Management_
+  
+  - [x] 13.2 Implement GoalService with tool calling
+    - Create GoalService class with save_goal() method
+    - Implement tool definition for LLM (save_athlete_goal tool)
+    - Tool parameters: goal_type, target_value, target_date, description
+    - Validate goal parameters before saving
+    - Return success/failure response to LLM
+    - _Requirements: New - Goal Management_
+  
+  - [x] 13.3 Integrate tool calling into LLMClient
+    - Add support for function/tool calling through LangChain
+    - Implement _execute_tool() method to route tool calls
+    - Register save_athlete_goal tool with LLMClient
+    - Handle tool execution results and continue conversation
+    - _Requirements: New - Goal Management_
+  
+  - [x] 13.4 Implement goal setting conversation flow
+    - Add system prompt instructions for goal clarification
+    - LLM asks clarifying questions (timeframe, specific targets, constraints)
+    - LLM calls save_athlete_goal tool when sufficient information gathered
+    - LLM confirms goal saved to user
+    - _Requirements: New - Goal Management_
+  
+  - [x] 13.5 Create goal management UI in settings
+    - Add "Goals" section to settings page
+    - Display active goals with progress indicators
+    - Support viewing goal history (completed/abandoned)
+    - Add "Set New Goal with Coach" button that opens chat
+    - _Requirements: New - Goal Management_
+  
+  - [x] 13.6 Create goal API endpoints
+    - Implement GET /api/goals for listing athlete goals
+    - Implement GET /api/goals/{id} for goal details
+    - Implement PUT /api/goals/{id} for updating goal status
+    - Implement DELETE /api/goals/{id} for deleting goals
+    - Add Pydantic models for validation
+    - _Requirements: New - Goal Management_
+
+- [x] 14. Coach chat interface
+  - [x] 14.1 Create chat page and route
     - Add /chat route to FastAPI
     - Create chat.html template with full-height layout
     - _Requirements: 13_
   
-  - [~] 13.2 Implement CoachChat component
+  - [x] 14.2 Implement CoachChat component
     - Create CoachChat JavaScript class
     - Implement message history display
     - Add message input field with Enter/Shift+Enter handling
     - Implement auto-scroll to latest message
     - _Requirements: 13.1, 13.5, 13.6, 13.7_
   
-  - [~] 13.3 Implement markdown rendering for responses
+  - [x] 14.3 Implement markdown rendering for responses
     - Add markdown parsing library
     - Render bold, italic, lists, code blocks
     - _Requirements: 13.5_
   
-  - [~] 13.4 Create chat API endpoints
+  - [x] 14.4 Create chat API endpoints with LangChain integration
     - Implement GET /api/chat/sessions for listing sessions
     - Implement POST /api/chat/sessions for creating sessions
     - Implement GET /api/chat/sessions/{id}/messages for message history
     - Implement POST /api/chat/sessions/{id}/messages for sending messages
+    - Use LangChain LLMClient for generating responses
     - Add Pydantic models for validation
     - _Requirements: 13.2, 13.3, 13.4_
 
-- [ ] 14. LLM streaming responses
-  - [~] 14.1 Implement Server-Sent Events endpoint
+- [x] 15. LLM streaming responses
+  - [x] 15.1 Implement Server-Sent Events endpoint
     - Create GET /api/chat/stream endpoint
     - Stream LLM response chunks as SSE events
     - Send "done" event on completion
     - _Requirements: 14.1_
   
-  - [~] 14.2 Implement streaming in CoachChat component
+  - [x] 15.2 Implement streaming in CoachChat component
     - Add EventSource connection to SSE endpoint
     - Display partial response text as it arrives
     - Append new tokens in real-time
     - Show visual feedback during generation
     - _Requirements: 14.2, 14.3, 14.6_
   
-  - [~] 14.3 Write property test for LLM streaming completeness
+  - [x] 15.3 Write property test for LLM streaming completeness
     - **Property 11: LLM Streaming Completeness**
     - **Validates: Requirements 14.4_
   
-  - [~] 14.4 Handle streaming interruptions
+  - [x] 15.4 Handle streaming interruptions
     - Save partial response on interruption
     - Display error indicator
     - _Requirements: 14.5_
   
-  - [~] 14.5 Persist complete responses
+  - [x] 15.5 Persist complete responses
     - Save complete message to database after streaming
     - _Requirements: 14.4_
 
-- [ ] 15. RAG context retrieval for chat
-  - [~] 15.1 Integrate RAG search into chat flow
+- [-] 16. RAG context retrieval for chat
+  - [x] 16.1 Integrate RAG search into chat flow
     - Generate query embedding for user message
     - Search FAISS index for top 5 relevant records
     - Retrieve full record details
     - _Requirements: 15.1, 15.2, 15.3_
   
-  - [~] 15.2 Format context for LLM prompt
+  - [x] 16.2 Format context for LLM prompt
     - Include retrieved records in structured format
     - Add athlete profile information to system prompt
     - Include conversation history (last 10 messages)
     - Instruct model to cite specific data points
+    - Include active goals in system prompt context
     - _Requirements: 15.4, 29.2, 29.3, 29.4, 29.7_
 
-- [ ] 16. Chat session persistence
-  - [~] 16.1 Implement session management
+- [x] 17. Chat session persistence
+  - [x] 17.1 Implement session management
     - Create new session on first message
     - Associate all messages with active session
     - Load most recent session on page load
     - _Requirements: 17.1, 17.2, 17.3_
   
-  - [~] 16.2 Implement session list UI
+  - [x] 16.2 Implement session list UI
     - Display previous sessions with timestamps and preview
     - Support selecting and loading previous sessions
     - Support creating new sessions
     - Limit display to 50 most recent messages per session
     - _Requirements: 17.4, 17.5, 17.6, 17.7_
   
-  - [~] 16.3 Write property test for chat message ordering
+  - [x] 16.3 Write property test for chat message ordering
     - **Property 6: Chat Message Ordering**
     - **Validates: Requirements 17_
 
-- [ ] 17. Evaluation report generation
-  - [~] 17.1 Implement EvaluationEngine service class
-    - Create EvaluationEngine with LLM integration
+- [x] 17. Evaluation report generation
+  - [x] 17.1 Implement EvaluationEngine service class
+    - Create EvaluationEngine with LangChain LLM integration
     - Implement _gather_activities() for data collection
     - Implement _gather_metrics() for data collection
     - Implement _gather_logs() for data collection
     - Implement _build_context() for LLM prompt
     - _Requirements: 11.2_
   
-  - [~] 17.2 Implement evaluation generation
-    - Create generate_evaluation() method
+  - [x] 17.2 Implement evaluation generation with LangChain
+    - Create generate_evaluation() method using LangChain structured output
+    - Create Pydantic schema for evaluation report (score, strengths, improvements, tips, exercises, goal alignment, confidence)
+    - Use temperature=0.1 for consistent evaluation outputs
     - Support configurable time periods (weekly, bi-weekly, monthly)
-    - Generate structured report with LLM
-    - Parse response into structured format
+    - Parse LangChain response into structured format
     - Include overall score, strengths, improvements, tips, exercises, goal alignment
     - _Requirements: 11.1, 11.3, 11.4_
   
-  - [~] 17.3 Write property test for evaluation score bounds
+  - [x] 17.3 Write property test for evaluation score bounds
     - **Property 12: Evaluation Score Bounds**
     - **Validates: Requirements 11.4_
   
-  - [~] 17.4 Create evaluation API endpoints
+  - [x] 17.4 Create evaluation API endpoints
     - Implement POST /api/evaluations/generate
     - Implement GET /api/evaluations for history
     - Implement GET /api/evaluations/{id} for detail view
     - Add Pydantic models for validation
     - _Requirements: 11.5, 11.7_
   
-  - [~] 17.5 Create evaluation pages
+  - [x] 17.5 Create evaluation pages
     - Add /evaluations route for history list
     - Add /evaluations/{id} route for detail view
     - Display report metadata and content
     - Support filtering by date range and score
     - _Requirements: 12.1, 12.2, 12.3, 12.5_
 
-- [ ] 18. AI activity effort analysis
-  - [~] 18.1 Implement effort analysis generation
-    - Add generate_effort_analysis() to LLMClient
+- [x] 18. AI activity effort analysis
+  - [x] 18.1 Implement effort analysis generation with LangChain
+    - Add generate_effort_analysis() to LLMClient using LangChain structured output
+    - Create Pydantic schema for effort analysis response
+    - Use temperature=0.1 for consistent analysis outputs
     - Include HR data, pace variation, elevation in context
     - Store analysis in activity_analyses table
     - _Requirements: 4.1, 4.2, 4.3_
   
-  - [~] 18.2 Display effort analysis in activity detail
+  - [x] 18.2 Display effort analysis in activity detail
     - Check for cached analysis on page load
     - Display analysis if available
     - Generate analysis if missing (within 3 seconds)
     - Handle generation failures gracefully
     - _Requirements: 4.4, 4.5, 4.6_
 
-- [ ] 19. AI weight tracking suggestions
-  - [~] 19.1 Implement trend analysis generation
-    - Add generate_trend_analysis() to LLMClient
+- [x] 19. AI weight tracking suggestions
+  - [x] 19.1 Implement trend analysis generation with LangChain
+    - Add generate_trend_analysis() to LLMClient using LangChain structured output
+    - Create Pydantic schema for trend analysis response
+    - Use temperature=0.1 for consistent analysis outputs
     - Calculate weekly average weight change rate
     - Include athlete goals and plan in context
     - Require at least 4 weeks of data
     - _Requirements: 7.1, 7.2, 7.3_
   
-  - [~] 19.2 Display trend analysis in metrics page
+  - [x] 19.2 Display trend analysis in metrics page
     - Show analysis with recommendations
     - Regenerate when new data is added
     - Handle generation failures gracefully
@@ -483,52 +568,52 @@ The platform uses:
 
 ### Phase 3: Dashboard, Settings, and Administrative Features
 
-- [ ] 21. Revised dashboard overview
-  - [~] 21.1 Create compact statistics bar
+- [x] 21. Revised dashboard overview
+  - [x] 21.1 Create compact statistics bar
     - Display total activities count
     - Display current weight
     - Display weekly adherence average
     - Display latest evaluation score
     - _Requirements: 18.1_
   
-  - [~] 21.2 Implement progress charts
+  - [x] 21.2 Implement progress charts
     - Add weekly activity volume chart (last 30 days)
     - Add weight trend chart (last 30 days)
     - _Requirements: 18.2_
   
-  - [~] 21.3 Display recent activities and logs
+  - [x] 21.3 Display recent activities and logs
     - Show 5 most recent activities with summary
     - Show 5 most recent daily logs with summary
     - _Requirements: 18.3, 18.4_
   
-  - [~] 21.4 Display latest evaluation summary
+  - [x] 21.4 Display latest evaluation summary
     - Show score and top 3 strengths
     - _Requirements: 18.5_
   
-  - [~] 21.5 Add quick action buttons
+  - [x] 21.5 Add quick action buttons
     - Add "Log Today" button for daily entry
     - Add "Chat with Coach" button
     - _Requirements: 18.6_
 
-- [ ] 22. Settings and profile management
-  - [~] 22.1 Create settings page and route
+- [x] 22. Settings and profile management
+  - [x] 22.1 Create settings page and route
     - Add /settings route to FastAPI
     - Create settings.html template with tabbed sections
     - _Requirements: 19_
   
-  - [~] 22.2 Implement profile settings section
-    - Add form for name, email, date of birth
+  - [x] 22.2 Implement profile settings section
+    - Add form for name, email, date of birth, height
     - Implement email format validation
     - Implement date of birth range validation
     - Persist changes to database
     - _Requirements: 19.1, 19.6_
   
-  - [~] 22.3 Implement training plan settings section
+  - [x] 22.3 Implement training plan settings section
     - Add form for plan name, start date, goal description
     - Persist changes to database
     - _Requirements: 19.3_
   
-  - [~] 22.4 Create settings API endpoints
+  - [x] 22.4 Create settings API endpoints
     - Implement GET /api/settings/profile
     - Implement PUT /api/settings/profile
     - Implement GET /api/settings/strava
@@ -739,4 +824,8 @@ The platform uses:
 - All code should be production-ready with proper error handling, validation, and user feedback
 - Frontend uses Vanilla JavaScript (ES6+) with DaisyUI/Tailwind CSS
 - Backend uses Python with FastAPI framework
-- AI features use Ollama (Mistral model) and FAISS for semantic search
+- AI features use LangChain framework with support for Ollama and LM Studio backends (default: Mistral model)
+- LangChain provides structured output parsing, prompt templates, and streaming capabilities
+- Temperature is set to 0.1 for analysis tasks (evaluations, effort analysis, trend analysis) requiring consistency
+- Temperature is configurable (default 0.7) for conversational chat
+- FAISS is used for semantic search with sentence-transformers (all-MiniLM-L6-v2) embeddings

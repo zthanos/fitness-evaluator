@@ -10,6 +10,8 @@ from app.schemas.metrics_schemas import (
     BodyMetricUpdate,
     BodyMetricResponse,
 )
+from app.services.llm_client import LLMClient
+from typing import Optional
 
 router = APIRouter()
 
@@ -197,3 +199,114 @@ def _format_response(metric: WeeklyMeasurement) -> dict:
         'created_at': metric.created_at,
         'updated_at': metric.updated_at,
     }
+
+
+@router.get("/trends/analysis", summary="Get AI-powered weight trend analysis")
+async def get_trend_analysis(
+    athlete_goals: Optional[str] = None,
+    current_plan: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """
+    Generate AI-powered weight trend analysis using LangChain structured output.
+    
+    **Requirements: 7.1, 7.2, 7.3, 7.4, 7.5**
+    
+    **Query Parameters:**
+    - `athlete_goals`: Athlete's stated goals (optional)
+    - `current_plan`: Current training/nutrition plan (optional)
+    
+    **Returns:**
+    - Structured trend analysis with:
+        - `weekly_change_rate`: Average kg/week change
+        - `trend_direction`: 'increasing', 'decreasing', or 'stable'
+        - `summary`: Brief trend summary
+        - `goal_alignment`: Assessment vs goals
+        - `recommendations`: Actionable suggestions
+        - `confidence_level`: 'high', 'medium', or 'low'
+        - `data_points_analyzed`: Number of measurements
+    
+    **Requirements:**
+    - At least 4 weeks of weight data (Requirement 7.1)
+    - Calculates weekly average weight change rate (Requirement 7.2)
+    - Includes athlete goals and plan in context (Requirement 7.2)
+    - Uses temperature=0.1 for consistent outputs (Requirement 7.3)
+    
+    **Error Handling:**
+    - Returns 400 if insufficient data (< 4 weeks)
+    - Returns basic analysis if LLM fails (Requirement 7.6)
+    """
+    # Fetch all metrics ordered by date
+    metrics = db.query(WeeklyMeasurement).order_by(
+        WeeklyMeasurement.week_start.asc()
+    ).all()
+    
+    # Check minimum data requirement (Requirement 7.1)
+    if len(metrics) < 4:
+        raise HTTPException(
+            status_code=400,
+            detail=f"At least 4 weeks of weight data required for trend analysis. Currently have {len(metrics)} measurements."
+        )
+    
+    # Check time span requirement
+    first_date = metrics[0].week_start
+    last_date = metrics[-1].week_start
+    days_elapsed = (last_date - first_date).days
+    
+    if days_elapsed < 28:  # 4 weeks
+        raise HTTPException(
+            status_code=400,
+            detail=f"Data must span at least 4 weeks. Current span: {days_elapsed} days."
+        )
+    
+    # Format metrics for LLM client
+    metrics_data = []
+    for metric in metrics:
+        metrics_data.append({
+            'measurement_date': metric.week_start,
+            'weight': metric.weight_kg,
+            'body_fat_pct': metric.body_fat_pct
+        })
+    
+    # Generate trend analysis using LLM client
+    try:
+        llm_client = LLMClient()
+        analysis = await llm_client.generate_trend_analysis(
+            metrics=metrics_data,
+            athlete_goals=athlete_goals,
+            current_plan=current_plan
+        )
+        
+        return analysis
+        
+    except ValueError as e:
+        # Re-raise validation errors
+        raise HTTPException(status_code=400, detail=str(e))
+    
+    except Exception as e:
+        # Handle generation failures gracefully (Requirement 7.6)
+        # Return a basic analysis based on calculated metrics
+        first_weight = metrics[0].weight_kg
+        last_weight = metrics[-1].weight_kg
+        total_change = last_weight - first_weight
+        weeks_elapsed = days_elapsed / 7.0
+        weekly_change_rate = total_change / weeks_elapsed if weeks_elapsed > 0 else 0
+        
+        trend_direction = 'stable'
+        if abs(weekly_change_rate) < 0.2:
+            trend_direction = 'stable'
+        elif weekly_change_rate > 0:
+            trend_direction = 'increasing'
+        else:
+            trend_direction = 'decreasing'
+        
+        return {
+            'weekly_change_rate': round(weekly_change_rate, 3),
+            'trend_direction': trend_direction,
+            'summary': f"Weight has changed by {total_change:+.2f} kg over {weeks_elapsed:.1f} weeks, averaging {weekly_change_rate:+.3f} kg/week.",
+            'goal_alignment': "Unable to assess goal alignment - LLM analysis unavailable.",
+            'recommendations': "Continue monitoring your weight weekly. Consult with a coach for personalized recommendations.",
+            'confidence_level': 'low',
+            'data_points_analyzed': len(metrics),
+            'error': f"LLM analysis failed: {str(e)}"
+        }

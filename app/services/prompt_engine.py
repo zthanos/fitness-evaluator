@@ -1,54 +1,101 @@
 # app/services/prompt_engine.py
-import hashlib, json
+import hashlib, json, logging
 from datetime import timedelta
 from sqlalchemy.orm import Session
 from app.models.weekly_measurement import WeeklyMeasurement
 from app.models.plan_targets import PlanTargets
 from app.models.daily_log import DailyLog
 from app.models.strava_activity import StravaActivity
+from app.models.athlete_goal import AthleteGoal, GoalStatus
 from app.services.strava_service import compute_weekly_aggregates
+
+logger = logging.getLogger(__name__)
 
 
 def build_contract(week_id: str, db: Session) -> dict:
     """
     Gather all data for the week and return a structured dict (the Contract).
     Keys must always be present even if values are None.
+    
+    Args:
+        week_id: UUID of the WeeklyMeasurement record
+        db: Database session
+        
+    Returns:
+        Contract dictionary with all data sources
+        
+    Raises:
+        ValueError: If WeeklyMeasurement not found for the given week_id
     """
-    # 1. Load WeeklyMeasurement
-    weekly_measurement = db.query(WeeklyMeasurement).filter(WeeklyMeasurement.id == week_id).first()
+    logger.info(f"Building contract for week_id={week_id}")
+    
+    # 1. Load WeeklyMeasurement using week_id (UUID)
+    weekly_measurement = db.query(WeeklyMeasurement).filter(
+        WeeklyMeasurement.id == week_id
+    ).first()
+    
+    if not weekly_measurement:
+        logger.error(
+            "Contract building failed: No WeeklyMeasurement found",
+            extra={
+                "week_id": week_id,
+                "missing_data": ["weekly_measurement"]
+            }
+        )
+        raise ValueError(f"No WeeklyMeasurement found for week_id: {week_id}")
+    
+    # Derive week_start and week_end from WeeklyMeasurement
+    week_start = weekly_measurement.week_start
+    week_end = week_start + timedelta(days=7)
     
     # 2. Load active PlanTargets (latest effective_from <= week_start)
-    if weekly_measurement:
-        week_start = weekly_measurement.week_start
-        plan_targets = db.query(PlanTargets).filter(
-            PlanTargets.effective_from <= week_start
-        ).order_by(PlanTargets.effective_from.desc()).first()
-    else:
-        plan_targets = None
+    plan_targets = db.query(PlanTargets).filter(
+        PlanTargets.effective_from <= week_start
+    ).order_by(PlanTargets.effective_from.desc()).first()
     
-    # 3. Load all DailyLog rows for the week (ordered by log_date)
-    daily_logs = []
-    if weekly_measurement:
-        # Get the start and end dates for the week
-        week_start = weekly_measurement.week_start
-        week_end = week_start + timedelta(days=7)
-        
-        daily_logs = db.query(DailyLog).filter(
-            DailyLog.log_date >= week_start,
-            DailyLog.log_date < week_end
-        ).order_by(DailyLog.log_date).all()
+    # 3. Load all DailyLog rows for the week using date range [week_start, week_start + 7 days)
+    daily_logs = db.query(DailyLog).filter(
+        DailyLog.log_date >= week_start,
+        DailyLog.log_date < week_end
+    ).order_by(DailyLog.log_date).all()
     
-    # 4. Call compute_weekly_aggregates(week_id, db)
-    strava_aggregates = compute_weekly_aggregates(week_id, db) if weekly_measurement else {}
+    # 4. Query StravaActivity using WeeklyMeasurement.id as week_id foreign key
+    strava_aggregates = compute_weekly_aggregates(week_id, db)
+    
+    # 5. Load active AthleteGoal records
+    active_goals = db.query(AthleteGoal).filter(
+        AthleteGoal.status == GoalStatus.ACTIVE.value
+    ).all()
+    
+    # Log data source availability
+    missing_data = []
+    if not plan_targets:
+        missing_data.append("plan_targets")
+    if not daily_logs:
+        missing_data.append("daily_logs")
+    if not strava_aggregates or all(v == 0 or v is None for v in strava_aggregates.values() if isinstance(v, (int, float))):
+        missing_data.append("strava_aggregates")
+    if not active_goals:
+        missing_data.append("active_goals")
+    
+    logger.info(
+        "Contract data sources loaded",
+        extra={
+            "week_id": week_id,
+            "week_start": str(week_start),
+            "has_targets": plan_targets is not None,
+            "daily_logs_count": len(daily_logs),
+            "has_strava_data": bool(strava_aggregates and any(v != 0 and v is not None for v in strava_aggregates.values() if isinstance(v, (int, float)))),
+            "active_goals_count": len(active_goals),
+            "missing_data": missing_data if missing_data else None
+        }
+    )
     
     # Build and return the contract
     contract = {
         "week": {
-            "start": str(weekly_measurement.week_start) if weekly_measurement else None,
-            "end": str(weekly_measurement.week_start + timedelta(days=7)) if weekly_measurement else None
-        } if weekly_measurement else {
-            "start": None,
-            "end": None
+            "start": str(week_start),
+            "end": str(week_end)
         },
         "targets": {
             "effective_from": str(plan_targets.effective_from) if plan_targets else None,
@@ -70,23 +117,14 @@ def build_contract(week_id: str, db: Session) -> dict:
             "notes": None
         },
         "measurements": {
-            "weight_kg": weekly_measurement.weight_kg if weekly_measurement else None,
-            "weight_prev_kg": weekly_measurement.weight_prev_kg if weekly_measurement else None,
-            "body_fat_pct": weekly_measurement.body_fat_pct if weekly_measurement else None,
-            "waist_cm": weekly_measurement.waist_cm if weekly_measurement else None,
-            "waist_prev_cm": weekly_measurement.waist_prev_cm if weekly_measurement else None,
-            "sleep_avg_hrs": weekly_measurement.sleep_avg_hrs if weekly_measurement else None,
-            "rhr_bpm": weekly_measurement.rhr_bpm if weekly_measurement else None,
-            "energy_level_avg": weekly_measurement.energy_level_avg if weekly_measurement else None
-        } if weekly_measurement else {
-            "weight_kg": None,
-            "weight_prev_kg": None,
-            "body_fat_pct": None,
-            "waist_cm": None,
-            "waist_prev_cm": None,
-            "sleep_avg_hrs": None,
-            "rhr_bpm": None,
-            "energy_level_avg": None
+            "weight_kg": weekly_measurement.weight_kg,
+            "weight_prev_kg": weekly_measurement.weight_prev_kg,
+            "body_fat_pct": weekly_measurement.body_fat_pct,
+            "waist_cm": weekly_measurement.waist_cm,
+            "waist_prev_cm": weekly_measurement.waist_prev_cm,
+            "sleep_avg_hrs": weekly_measurement.sleep_avg_hrs,
+            "rhr_bpm": weekly_measurement.rhr_bpm,
+            "energy_level_avg": weekly_measurement.energy_level_avg
         },
         "daily_logs": [
             {
@@ -102,9 +140,22 @@ def build_contract(week_id: str, db: Session) -> dict:
             }
             for log in daily_logs
         ],
-        "strava_aggregates": strava_aggregates
+        "strava_aggregates": strava_aggregates,
+        "active_goals": [
+            {
+                "id": str(goal.id),
+                "goal_type": goal.goal_type,
+                "target_value": goal.target_value,
+                "target_date": str(goal.target_date) if goal.target_date else None,
+                "description": goal.description,
+                "status": goal.status,
+                "created_at": str(goal.created_at) if goal.created_at else None
+            }
+            for goal in active_goals
+        ]
     }
     
+    logger.info(f"Contract built successfully for week_id={week_id}")
     return contract
 
 

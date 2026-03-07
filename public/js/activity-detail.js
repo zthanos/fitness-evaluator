@@ -17,6 +17,8 @@ class ActivityDetail {
         try {
             await this.fetchActivity();
             this.render();
+            // Fetch and display effort analysis after rendering main content
+            await this.fetchAndDisplayAnalysis();
         } catch (error) {
             console.error('Failed to load activity:', error);
             this.showError(error.message || 'Failed to load activity details');
@@ -474,5 +476,73 @@ class ActivityDetail {
         document.getElementById('error-message').textContent = message;
         document.getElementById('error-container').classList.remove('hidden');
         this.container.classList.add('hidden');
+    }
+
+    /**
+     * Fetch and display AI effort analysis
+     */
+    async fetchAndDisplayAnalysis() {
+        const analysisSection = document.getElementById('analysis-section');
+        const analysisLoading = document.getElementById('analysis-loading');
+        const analysisContent = document.getElementById('analysis-content');
+        const analysisError = document.getElementById('analysis-error');
+
+        // Show the analysis section
+        analysisSection.classList.remove('hidden');
+
+        try {
+            // Set a timeout for the analysis request (3 seconds as per requirements)
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 3000);
+
+            const response = await fetch(
+                `/api/strava/activities/detail/${this.activityId}/analysis`,
+                { signal: controller.signal }
+            );
+
+            clearTimeout(timeoutId);
+
+            if (!response.ok) {
+                throw new Error('Failed to fetch analysis');
+            }
+
+            const data = await response.json();
+
+            // Hide loading, show content
+            analysisLoading.classList.add('hidden');
+            analysisContent.classList.remove('hidden');
+
+            // Format and display the analysis text
+            // Convert markdown-style formatting to HTML
+            let formattedText = data.analysis_text
+                .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>') // Bold
+                .replace(/\n\n/g, '</p><p>') // Paragraphs
+                .replace(/\n/g, '<br>'); // Line breaks
+
+            analysisContent.innerHTML = `<p>${formattedText}</p>`;
+
+            // Add a badge if it's cached
+            if (data.cached) {
+                const cachedBadge = document.createElement('div');
+                cachedBadge.className = 'badge badge-ghost badge-sm mt-2';
+                cachedBadge.textContent = 'Cached analysis';
+                analysisContent.appendChild(cachedBadge);
+            }
+
+        } catch (error) {
+            // Hide loading, show error
+            analysisLoading.classList.add('hidden');
+            
+            if (error.name === 'AbortError') {
+                // Timeout occurred - show error but don't break the page
+                analysisError.querySelector('span').textContent = 
+                    'Analysis generation is taking longer than expected. Please refresh to try again.';
+            }
+            
+            analysisError.classList.remove('hidden');
+            
+            // Log error for debugging
+            console.error('Failed to fetch effort analysis:', error);
+        }
     }
 }

@@ -22,7 +22,7 @@ This document specifies the requirements for transforming the Fitness Evaluator 
 - **Chat_Session**: A persistent conversation thread between athlete and Coach_Chat
 - **FAISS_Index**: The vector database index for semantic search across athlete records
 - **Strava_Client**: The OAuth-authenticated Strava API integration client
-- **LLM_Client**: The Ollama API client for language model interactions
+- **LLM_Client**: The LangChain-based client for language model interactions supporting Ollama and LM Studio backends
 - **Design_Token**: A standardized CSS variable for colors, spacing, typography, or other design values
 - **Viewport_Width**: The horizontal screen dimension in pixels
 
@@ -77,12 +77,13 @@ This document specifies the requirements for transforming the Fitness Evaluator 
 
 #### Acceptance Criteria
 
-1. WHEN an Activity_Record is viewed, THE Activities_Module SHALL generate an effort analysis using the LLM_Client
+1. WHEN an Activity_Record is viewed, THE Activities_Module SHALL generate an effort analysis using the LLM_Client with LangChain structured output
 2. THE Activities_Module SHALL include heart rate data, pace variation, and elevation profile in the analysis context
-3. THE Activities_Module SHALL store generated effort analyses in the activity_analyses database table
-4. WHEN an effort analysis exists for an Activity_Record, THE Activities_Module SHALL display the cached analysis instead of regenerating
-5. THE Activities_Module SHALL display effort analysis within 3 seconds of activity detail page load
-6. IF effort analysis generation fails, THEN THE Activities_Module SHALL display activity details without the analysis section
+3. THE Activities_Module SHALL use temperature=0.1 for consistent effort analysis outputs
+4. THE Activities_Module SHALL store generated effort analyses in the activity_analyses database table
+5. WHEN an effort analysis exists for an Activity_Record, THE Activities_Module SHALL display the cached analysis instead of regenerating
+6. THE Activities_Module SHALL display effort analysis within 3 seconds of activity detail page load
+7. IF effort analysis generation fails, THEN THE Activities_Module SHALL display activity details without the analysis section
 
 ### Requirement 5: Body Metrics Data Entry
 
@@ -117,12 +118,13 @@ This document specifies the requirements for transforming the Fitness Evaluator 
 
 #### Acceptance Criteria
 
-1. WHEN Body_Metric history contains at least 4 weeks of weight data, THE Metrics_Module SHALL generate trend analysis using the LLM_Client
+1. WHEN Body_Metric history contains at least 4 weeks of weight data, THE Metrics_Module SHALL generate trend analysis using the LLM_Client with LangChain structured output
 2. THE Metrics_Module SHALL calculate weekly average weight change rate for trend analysis
 3. THE Metrics_Module SHALL include athlete goals and current plan in the trend analysis context
-4. THE Metrics_Module SHALL display trend analysis with recommendations for maintaining, increasing, or decreasing rate of change
-5. THE Metrics_Module SHALL regenerate trend analysis when new Body_Metric data is added
-6. IF trend analysis generation fails, THEN THE Metrics_Module SHALL display metrics without the analysis section
+4. THE Metrics_Module SHALL use temperature=0.1 for consistent trend analysis outputs
+5. THE Metrics_Module SHALL display trend analysis with recommendations for maintaining, increasing, or decreasing rate of change
+6. THE Metrics_Module SHALL regenerate trend analysis when new Body_Metric data is added
+7. IF trend analysis generation fails, THEN THE Metrics_Module SHALL display metrics without the analysis section
 
 
 ### Requirement 8: Daily Log Management
@@ -172,11 +174,12 @@ This document specifies the requirements for transforming the Fitness Evaluator 
 
 1. THE Evaluation_Engine SHALL generate Evaluation_Reports for configurable time periods (weekly, bi-weekly, monthly)
 2. WHEN generating an Evaluation_Report, THE Evaluation_Engine SHALL retrieve all Activity_Records, Body_Metrics, and Daily_Logs within the specified period
-3. THE Evaluation_Engine SHALL use the LLM_Client to analyze retrieved data and generate structured coaching feedback
-4. THE Evaluation_Report SHALL include an overall score (0-100), strengths list, areas for improvement, actionable tips, recommended exercises, and goal alignment assessment
-5. THE Evaluation_Engine SHALL persist Evaluation_Reports to the database with timestamp and period metadata
-6. THE Evaluation_Engine SHALL generate Evaluation_Reports within 10 seconds for periods up to 90 days
-7. IF Evaluation_Report generation fails, THEN THE Evaluation_Engine SHALL log the error and notify the athlete
+3. THE Evaluation_Engine SHALL use the LLM_Client with LangChain structured output parsing to analyze retrieved data and generate structured coaching feedback
+4. THE Evaluation_Engine SHALL use temperature=0.1 for consistent evaluation outputs
+5. THE Evaluation_Report SHALL include an overall score (0-100), strengths list, areas for improvement, actionable tips, recommended exercises, goal alignment assessment, and data confidence score
+6. THE Evaluation_Engine SHALL persist Evaluation_Reports to the database with timestamp and period metadata
+7. THE Evaluation_Engine SHALL generate Evaluation_Reports within 10 seconds for periods up to 90 days
+8. IF Evaluation_Report generation fails, THEN THE Evaluation_Engine SHALL log the error and notify the athlete
 
 ### Requirement 12: Evaluation History Access
 
@@ -199,11 +202,12 @@ This document specifies the requirements for transforming the Fitness Evaluator 
 
 1. THE Coach_Chat SHALL provide a full-height chat interface with message history display and input field
 2. WHEN an athlete sends a message, THE Coach_Chat SHALL create a new Chat_Session if one does not exist
-3. THE Coach_Chat SHALL persist all messages to the chat_messages database table with session association
-4. THE Coach_Chat SHALL display athlete messages and coach responses in chronological order
-5. THE Coach_Chat SHALL render markdown formatting in coach responses including bold, italic, lists, and code blocks
-6. THE Coach_Chat SHALL scroll to the latest message automatically when new messages are added
-7. THE Coach_Chat SHALL support keyboard navigation with Enter to send and Shift+Enter for new lines
+3. THE Coach_Chat SHALL use the LLM_Client with LangChain for generating chat responses
+4. THE Coach_Chat SHALL persist all messages to the chat_messages database table with session association
+5. THE Coach_Chat SHALL display athlete messages and coach responses in chronological order
+6. THE Coach_Chat SHALL render markdown formatting in coach responses including bold, italic, lists, and code blocks
+7. THE Coach_Chat SHALL scroll to the latest message automatically when new messages are added
+8. THE Coach_Chat SHALL support keyboard navigation with Enter to send and Shift+Enter for new lines
 
 ### Requirement 14: LLM Streaming Responses
 
@@ -211,7 +215,7 @@ This document specifies the requirements for transforming the Fitness Evaluator 
 
 #### Acceptance Criteria
 
-1. WHEN the Coach_Chat sends a message to the LLM_Client, THE Coach_Chat SHALL stream the response using Server-Sent Events
+1. WHEN the Coach_Chat sends a message to the LLM_Client, THE Coach_Chat SHALL stream the response using LangChain's streaming capabilities
 2. THE Coach_Chat SHALL display partial response text as it arrives from the LLM_Client
 3. THE Coach_Chat SHALL append new tokens to the current response message in real-time
 4. WHEN streaming completes, THE Coach_Chat SHALL persist the complete response to the database
@@ -302,19 +306,22 @@ This document specifies the requirements for transforming the Fitness Evaluator 
 6. THE Strava_Client SHALL sync new Activity_Records from Strava on a configurable schedule (default: hourly)
 7. IF Strava authorization is revoked, THEN THE Strava_Client SHALL update connection status and notify the athlete
 
-### Requirement 21: Ollama LLM Client Integration
+### Requirement 21: LangChain LLM Integration
 
-**User Story:** As a system administrator, I want the platform to communicate with Ollama for LLM capabilities, so that athletes receive AI-powered coaching and analysis.
+**User Story:** As a system administrator, I want the platform to use LangChain for LLM capabilities, so that athletes receive reliable AI-powered coaching and analysis with structured outputs.
 
 #### Acceptance Criteria
 
-1. THE LLM_Client SHALL connect to Ollama API at the configured endpoint (default: http://localhost:11434)
-2. THE LLM_Client SHALL use the /v1/chat/completions endpoint for generating responses
-3. THE LLM_Client SHALL support streaming responses via Server-Sent Events
+1. THE LLM_Client SHALL use LangChain framework for all LLM interactions
+2. THE LLM_Client SHALL support both Ollama and LM Studio (OpenAI-compatible) backends through LangChain
+3. THE LLM_Client SHALL connect to the configured endpoint (default: http://localhost:11434 for Ollama)
 4. THE LLM_Client SHALL use the configured model name (default: mistral)
-5. THE LLM_Client SHALL include system prompts defining the coach persona and response format
-6. THE LLM_Client SHALL handle connection errors and timeouts gracefully with retry logic (max 3 retries)
-7. IF Ollama is unavailable, THEN THE LLM_Client SHALL return an error message indicating the service is temporarily unavailable
+5. THE LLM_Client SHALL use temperature=0.1 for evaluation and analysis tasks requiring consistency
+6. THE LLM_Client SHALL use LangChain's with_structured_output for generating validated Pydantic schema responses
+7. THE LLM_Client SHALL include system prompts defining the coach persona and response format
+8. THE LLM_Client SHALL handle connection errors and timeouts gracefully with retry logic (max 3 retries)
+9. IF the LLM backend is unavailable, THEN THE LLM_Client SHALL return an error message indicating the service is temporarily unavailable
+10. THE LLM_Client SHALL log all initialization parameters, invocation attempts, and validation errors for debugging
 
 ### Requirement 22: Database Schema Extensions
 
@@ -426,9 +433,10 @@ This document specifies the requirements for transforming the Fitness Evaluator 
 2. WHEN RAG context is available, THE LLM_Client SHALL format retrieved records as structured context before the athlete's message
 3. THE LLM_Client SHALL include athlete profile information (name, goals, current plan) in the system prompt
 4. THE LLM_Client SHALL instruct the model to cite specific data points from the context when making recommendations
-5. THE LLM_Client SHALL set temperature to 0.7 for balanced creativity and consistency (configurable in settings)
-6. THE LLM_Client SHALL limit response length to 500 tokens to maintain conversation flow
-7. THE LLM_Client SHALL include conversation history (last 10 messages) for context continuity
+5. THE LLM_Client SHALL use LangChain prompt templates for consistent prompt formatting
+6. THE LLM_Client SHALL use temperature=0.1 for evaluation and analysis tasks, and configurable temperature (default 0.7) for conversational chat
+7. THE LLM_Client SHALL limit response length to 500 tokens to maintain conversation flow
+8. THE LLM_Client SHALL include conversation history (last 10 messages) for context continuity in chat sessions
 
 ### Requirement 30: Security and Data Protection
 

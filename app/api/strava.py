@@ -6,10 +6,12 @@ from datetime import date, timedelta, datetime
 from typing import Optional
 from app.database import get_db
 from app.models.strava_activity import StravaActivity
+from app.models.activity_analysis import ActivityAnalysis
 from app.services.strava_service import (
     sync_week_activities,
     compute_weekly_aggregates,
 )
+from app.services.llm_client import LLMClient
 
 router = APIRouter()
 
@@ -249,3 +251,79 @@ async def get_weekly_aggregates(week_start: date, db: Session = Depends(get_db))
         "week_start": week_start,
         "aggregates": aggregates
     }
+
+
+
+@router.get("/activities/detail/{activity_id}/analysis", summary="Get or generate activity effort analysis")
+async def get_activity_analysis(activity_id: int, db: Session = Depends(get_db)):
+    """
+    Get AI-generated effort analysis for an activity.
+    
+    Returns cached analysis if available, otherwise generates new analysis.
+    Analysis includes effort level, heart rate zones, pace variation, and recommendations.
+    
+    **Parameters:**
+    - `activity_id`: Strava activity ID
+    
+    **Returns:**
+    - `analysis_text`: Formatted effort analysis
+    - `generated_at`: Timestamp when analysis was generated
+    - `cached`: Boolean indicating if analysis was cached
+    """
+    # Find the activity
+    activity = db.query(StravaActivity).filter(StravaActivity.strava_id == activity_id).first()
+    
+    if not activity:
+        raise HTTPException(status_code=404, detail="Activity not found")
+    
+    # Check for existing analysis
+    existing_analysis = db.query(ActivityAnalysis).filter(
+        ActivityAnalysis.activity_id == activity.id
+    ).first()
+    
+    if existing_analysis:
+        return {
+            "analysis_text": existing_analysis.analysis_text,
+            "generated_at": existing_analysis.generated_at,
+            "cached": True
+        }
+    
+    # Generate new analysis
+    try:
+        llm_client = LLMClient()
+        
+        # Prepare activity data for analysis
+        activity_data = {
+            "activity_type": activity.activity_type,
+            "distance_m": activity.distance_m,
+            "moving_time_s": activity.moving_time_s,
+            "elevation_m": activity.elevation_m,
+            "avg_hr": activity.avg_hr,
+            "max_hr": activity.max_hr,
+            "raw_json": activity.raw_json
+        }
+        
+        # Generate analysis using LLM
+        analysis_text = await llm_client.generate_effort_analysis(activity_data)
+        
+        # Store analysis in database
+        new_analysis = ActivityAnalysis(
+            activity_id=activity.id,
+            analysis_text=analysis_text
+        )
+        db.add(new_analysis)
+        db.commit()
+        db.refresh(new_analysis)
+        
+        return {
+            "analysis_text": new_analysis.analysis_text,
+            "generated_at": new_analysis.generated_at,
+            "cached": False
+        }
+        
+    except Exception as e:
+        # If analysis generation fails, return error but don't break the API
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to generate effort analysis: {str(e)}"
+        )

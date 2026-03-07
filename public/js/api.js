@@ -44,6 +44,23 @@ class APIClient {
     }
   }
 
+  // Generic HTTP methods for flexible API calls
+  async get(endpoint) {
+    return this.request('GET', endpoint);
+  }
+
+  async post(endpoint, data) {
+    return this.request('POST', endpoint, data);
+  }
+
+  async put(endpoint, data) {
+    return this.request('PUT', endpoint, data);
+  }
+
+  async delete(endpoint) {
+    return this.request('DELETE', endpoint);
+  }
+
   // Daily Logs
   async createDailyLog(log) {
     return this.request('POST', '/logs/daily', log);
@@ -101,6 +118,15 @@ class APIClient {
     const params = new URLSearchParams();
     if (dateFrom) params.append('date_from', dateFrom);
     if (dateTo) params.append('date_to', dateTo);
+    if (params.toString()) endpoint += '?' + params.toString();
+    return this.request('GET', endpoint);
+  }
+
+  async getTrendAnalysis(athleteGoals = null, currentPlan = null) {
+    let endpoint = '/metrics/trends/analysis';
+    const params = new URLSearchParams();
+    if (athleteGoals) params.append('athlete_goals', athleteGoals);
+    if (currentPlan) params.append('current_plan', currentPlan);
     if (params.toString()) endpoint += '?' + params.toString();
     return this.request('GET', endpoint);
   }

@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Evaluation History - Fitness Platform</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@4.4.20/dist/full.min.css" rel="stylesheet" type="text/css" />
+    
+    <!-- Design Tokens -->
+    <link rel="stylesheet" href="css/design-tokens.css">
+    
+    <!-- Navigation Sidebar Styles -->
+    <link rel="stylesheet" href="css/navigation-sidebar.css">
+</head>
+<body class="bg-base-200">
+    <!-- Skip to main content link for accessibility -->
+    <a href="#main-content" class="skip-to-main">Skip to main content</a>
+    
+    <!-- Sidebar Container -->
+    <div id="sidebar-container"></div>
+    
+    <!-- Main Content Area -->
+    <main id="main-content" class="main-content">
+        <div class="container mx-auto p-4 max-w-6xl">
+            <div class="flex justify-between items-center mb-6">
+                <h1 class="text-4xl font-bold">📊 Evaluation History</h1>
+                <button onclick="showGenerateModal()" class="btn btn-primary">
+                    ➕ Generate New Evaluation
+                </button>
+            </div>
+
+            <!-- Filters -->
+            <div class="card bg-base-100 shadow-xl mb-6">
+                <div class="card-body">
+                    <h2 class="card-title text-lg mb-4">Filters</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div class="form-control">
+                            <label class="label">
+                                <span class="label-text">From Date</span>
+                            </label>
+                            <input type="date" id="filter-date-from" class="input input-bordered" />
+                        </div>
+                        <div class="form-control">
+                            <label class="label">
+                                <span class="label-text">To Date</span>
+                            </label>
+                            <input type="date" id="filter-date-to" class="input input-bordered" />
+                        </div>
+                        <div class="form-control">
+                            <label class="label">
+                                <span class="label-text">Min Score</span>
+                            </label>
+                            <input type="number" id="filter-score-min" min="0" max="100" class="input input-bordered" placeholder="0" />
+                        </div>
+                        <div class="form-control">
+                            <label class="label">
+                                <span class="label-text">Max Score</span>
+                            </label>
+                            <input type="number" id="filter-score-max" min="0" max="100" class="input input-bordered" placeholder="100" />
+                        </div>
+                    </div>
+                    <div class="flex gap-2 mt-4">
+                        <button onclick="applyFilters()" class="btn btn-primary btn-sm">Apply Filters</button>
+                        <button onclick="clearFilters()" class="btn btn-ghost btn-sm">Clear</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Evaluations List -->
+            <div id="evaluations-container" class="space-y-4">
+                <!-- Loading skeleton -->
+                <div class="card bg-base-100 shadow-xl">
+                    <div class="card-body">
+                        <div class="skeleton h-8 w-1/3 mb-4"></div>
+                        <div class="skeleton h-4 w-full mb-2"></div>
+                        <div class="skeleton h-4 w-2/3"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Empty State -->
+            <div id="empty-state" class="hidden text-center py-12">
+                <div class="text-6xl mb-4">📊</div>
+                <h2 class="text-2xl font-bold mb-2">No Evaluations Yet</h2>
+                <p class="text-base-content/70 mb-6">Generate your first evaluation to get started</p>
+                <button onclick="showGenerateModal()" class="btn btn-primary">
+                    Generate Evaluation
+                </button>
+            </div>
+        </div>
+    </main>
+
+    <!-- Generate Evaluation Modal -->
+    <dialog id="generate-modal" class="modal">
+        <div class="modal-box">
+            <h3 class="font-bold text-lg mb-4">Generate New Evaluation</h3>
+            <form id="generate-form" class="space-y-4">
+                <div class="form-control">
+                    <label class="label">
+                        <span class="label-text">Period Start Date</span>
+                    </label>
+                    <input type="date" id="period-start" class="input input-bordered" required />
+                </div>
+                <div class="form-control">
+                    <label class="label">
+                        <span class="label-text">Period End Date</span>
+                    </label>
+                    <input type="date" id="period-end" class="input input-bordered" required />
+                </div>
+                <div class="form-control">
+                    <label class="label">
+                        <span class="label-text">Period Type</span>
+                    </label>
+                    <select id="period-type" class="select select-bordered" required>
+                        <option value="weekly">Weekly</option>
+                        <option value="bi-weekly">Bi-Weekly</option>
+                        <option value="monthly">Monthly</option>
+                    </select>
+                </div>
+                <div class="modal-action">
+                    <button type="button" onclick="closeGenerateModal()" class="btn btn-ghost">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="generate-btn">
+                        Generate
+                    </button>
+                </div>
+            </form>
+        </div>
+        <form method="dialog" class="modal-backdrop">
+            <button>close</button>
+        </form>
+    </dialog>
+
+    <script src="js/navigation-sidebar.js"></script>
+    <script src="js/utils.js"></script>
+    <script>
+        let currentFilters = {};
+
+        async function loadEvaluations() {
+            try {
+                const params = new URLSearchParams({
+                    athlete_id: 1,
+                    ...currentFilters
+                });
+
+                const response = await fetch(`/api/evaluations?${params}`);
+                if (!response.ok) {
+                    throw new Error('Failed to load evaluations');
+                }
+
+                const evaluations = await response.json();
+                displayEvaluations(evaluations);
+            } catch (error) {
+                console.error('Error loading evaluations:', error);
+                showError('Failed to load evaluations');
+            }
+        }
+
+        function displayEvaluations(evaluations) {
+            const container = document.getElementById('evaluations-container');
+            const emptyState = document.getElementById('empty-state');
+
+            if (evaluations.length === 0) {
+                container.classList.add('hidden');
+                emptyState.classList.remove('hidden');
+                return;
+            }
+
+            container.classList.remove('hidden');
+            emptyState.classList.add('hidden');
+
+            container.innerHTML = evaluations.map(eval => `
+                <div class="card bg-base-100 shadow-xl hover:shadow-2xl transition-shadow cursor-pointer"
+                     onclick="viewEvaluation('${eval.id}')">
+                    <div class="card-body">
+                        <div class="flex justify-between items-start">
+                            <div class="flex-1">
+                                <h2 class="card-title">
+                                    ${formatPeriodType(eval.period_type)} Evaluation
+                                    <span class="badge ${getScoreBadgeClass(eval.overall_score)}">
+                                        ${eval.overall_score}/100
+                                    </span>
+                                </h2>
+                                <p class="text-base-content/70 text-sm mt-1">
+                                    ${formatDate(eval.period_start)} - ${formatDate(eval.period_end)}
+                                </p>
+                                <p class="text-base-content/60 text-xs mt-1">
+                                    Generated: ${formatDateTime(eval.generated_at)}
+                                </p>
+                            </div>
+                            <div class="text-right">
+                                <div class="text-3xl font-bold">${eval.overall_score}</div>
+                                <div class="text-xs text-base-content/60">Score</div>
+                            </div>
+                        </div>
+                        
+                        <div class="mt-4">
+                            <div class="flex flex-wrap gap-2">
+                                <div class="badge badge-success badge-sm">
+                                    ${eval.strengths.length} Strengths
+                                </div>
+                                <div class="badge badge-warning badge-sm">
+                                    ${eval.improvements.length} Improvements
+                                </div>
+                                <div class="badge badge-info badge-sm">
+                                    ${eval.tips.length} Tips
+                                </div>
+                                <div class="badge badge-outline badge-sm">
+                                    Confidence: ${(eval.confidence_score * 100).toFixed(0)}%
+                                </div>
+                            </div>
+                        </div>
+
+                        ${eval.strengths.length > 0 ? `
+                            <div class="mt-3">
+                                <p class="text-sm font-semibold mb-1">Top Strength:</p>
+                                <p class="text-sm text-base-content/80">✓ ${eval.strengths[0]}</p>
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function formatPeriodType(type) {
+            return type.split('-').map(word => 
+                word.charAt(0).toUpperCase() + word.slice(1)
+            ).join('-');
+        }
+
+        function formatDate(dateStr) {
+            const date = new Date(dateStr);
+            return date.toLocaleDateString('en-US', { 
+                year: 'numeric', 
+                month: 'short', 
+                day: 'numeric' 
+            });
+        }
+
+        function formatDateTime(dateStr) {
+            const date = new Date(dateStr);
+            return date.toLocaleString('en-US', { 
+                year: 'numeric', 
+                month: 'short', 
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+
+        function getScoreBadgeClass(score) {
+            if (score >= 80) return 'badge-success';
+            if (score >= 60) return 'badge-warning';
+            if (score >= 40) return 'badge-info';
+            return 'badge-error';
+        }
+
+        function viewEvaluation(id) {
+            window.location.href = `evaluation-detail.html?id=${id}`;
+        }
+
+        function showGenerateModal() {
+            document.getElementById('generate-modal').showModal();
+        }
+
+        function closeGenerateModal() {
+            document.getElementById('generate-modal').close();
+        }
+
+        function applyFilters() {
+            const dateFrom = document.getElementById('filter-date-from').value;
+            const dateTo = document.getElementById('filter-date-to').value;
+            const scoreMin = document.getElementById('filter-score-min').value;
+            const scoreMax = document.getElementById('filter-score-max').value;
+
+            currentFilters = {};
+            if (dateFrom) currentFilters.date_from = dateFrom;
+            if (dateTo) currentFilters.date_to = dateTo;
+            if (scoreMin) currentFilters.score_min = scoreMin;
+            if (scoreMax) currentFilters.score_max = scoreMax;
+
+            loadEvaluations();
+        }
+
+        function clearFilters() {
+            document.getElementById('filter-date-from').value = '';
+            document.getElementById('filter-date-to').value = '';
+            document.getElementById('filter-score-min').value = '';
+            document.getElementById('filter-score-max').value = '';
+            currentFilters = {};
+            loadEvaluations();
+        }
+
+        document.getElementById('generate-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const periodStart = document.getElementById('period-start').value;
+            const periodEnd = document.getElementById('period-end').value;
+            const periodType = document.getElementById('period-type').value;
+
+            const btn = document.getElementById('generate-btn');
+            btn.disabled = true;
+            btn.textContent = 'Generating...';
+
+            try {
+                const response = await fetch('/api/evaluations/generate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        period_start: periodStart,
+                        period_end: periodEnd,
+                        period_type: periodType
+                    })
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Failed to generate evaluation');
+                }
+
+                const evaluation = await response.json();
+                showSuccess('Evaluation generated successfully!');
+                closeGenerateModal();
+                
+                // Redirect to detail view
+                setTimeout(() => {
+                    window.location.href = `evaluation-detail.html?id=${evaluation.id}`;
+                }, 1000);
+            } catch (error) {
+                console.error('Error generating evaluation:', error);
+                showError(error.message);
+                btn.disabled = false;
+                btn.textContent = 'Generate';
+            }
+        });
+
+        function showSuccess(message) {
+            // Simple toast notification
+            const toast = document.createElement('div');
+            toast.className = 'toast toast-top toast-end';
+            toast.innerHTML = `
+                <div class="alert alert-success">
+                    <span>${message}</span>
+                </div>
+            `;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+        }
+
+        function showError(message) {
+            const toast = document.createElement('div');
+            toast.className = 'toast toast-top toast-end';
+            toast.innerHTML = `
+                <div class="alert alert-error">
+                    <span>${message}</span>
+                </div>
+            `;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 5000);
+        }
+
+        // Initialize page
+        document.addEventListener('DOMContentLoaded', () => {
+            const sidebar = new NavigationSidebar('sidebar-container');
+            loadEvaluations();
+        });
+    </script>
+</body>
+</html>
