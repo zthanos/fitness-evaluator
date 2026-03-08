@@ -54,11 +54,11 @@ LangChain provides:
     - Implement active route highlighting
     - _Requirements: 1.1, 1.2, 1.3_
   
-  - [~] 2.3 Write property test for UI responsiveness
+  - [ ] 2.3 Write property test for UI responsiveness
     - **Property 1: UI Responsiveness Invariant**
     - **Validates: Requirements 1.6, 25.1-25.4_
   
-  - [~] 2.4 Write property test for navigation state consistency
+  - [ ] 2.4 Write property test for navigation state consistency
     - **Property 19: Navigation State Consistency**
     - **Validates: Requirements 1.1_
   
@@ -93,15 +93,15 @@ LangChain provides:
     - Update API endpoint to support sort parameters
     - _Requirements: 2.3_
   
-  - [~] 3.5 Write property test for activity filter commutativity
+  - [ ] 3.5 Write property test for activity filter commutativity
     - **Property 2: Activity Filter Commutativity**
     - **Validates: Requirements 2.2_
   
-  - [~] 3.6 Write property test for pagination completeness
+  - [ ] 3.6 Write property test for pagination completeness
     - **Property 8: Pagination Completeness**
     - **Validates: Requirements 2.7_
   
-  - [~] 3.7 Write property test for date range filter correctness
+  - [ ] 3.7 Write property test for date range filter correctness
     - **Property 9: Date Range Filter Correctness**
     - **Validates: Requirements 2.2_
   
@@ -143,11 +143,11 @@ LangChain provides:
     - Display specific validation error messages
     - _Requirements: 5.1, 5.2, 5.3, 5.7_
   
-  - [~] 5.3 Write property test for body metric validation consistency
+  - [ ] 5.3 Write property test for body metric validation consistency
     - **Property 13: Body Metric Validation Consistency**
     - **Validates: Requirements 5.2_
   
-  - [~] 5.4 Write property test for validation idempotence
+  - [ ] 5.4 Write property test for validation idempotence
     - **Property 10: Validation Idempotence**
     - **Validates: Requirements 5.2, 5.3_
   
@@ -192,7 +192,7 @@ LangChain provides:
     - Validate edited values
     - _Requirements: 8.7, 9.1, 9.2, 9.3, 9.4, 9.5_
   
-  - [~] 7.4 Write property test for inline edit atomicity
+  - [ ] 7.4 Write property test for inline edit atomicity
     - **Property 18: Inline Edit Atomicity**
     - **Validates: Requirements 9.6_
   
@@ -204,23 +204,23 @@ LangChain provides:
     - _Requirements: 8.6_
 
 - [ ] 8. Macro auto-calculation
-  - [~] 8.1 Implement macro calculation logic
+  - [ ] 8.1 Implement macro calculation logic
     - Add calculation function: (protein × 4) + (carbs × 4) + (fats × 9)
     - Update calories field automatically on macro changes
     - Support manual override with indicator
     - Support returning to auto-calculation mode
     - _Requirements: 10.1, 10.2, 10.3, 10.4, 10.5_
   
-  - [~] 8.2 Write property test for macro calculation consistency
+  - [ ] 8.2 Write property test for macro calculation consistency
     - **Property 3: Macro Calculation Consistency**
     - **Validates: Requirements 10.1_
   
-  - [~] 8.3 Add macro calculation to API endpoint
+  - [ ] 8.3 Add macro calculation to API endpoint
     - Implement POST /api/logs/calculate-macros
     - Return calculated calories for given macros
     - _Requirements: 10_
 
-- [~] 9. Checkpoint - Phase 1 core functionality complete
+- [ ] 9. Checkpoint - Phase 1 core functionality complete
   - Ensure all tests pass, verify UI renders correctly across viewport sizes, ask the user if questions arise.
 
 
@@ -562,7 +562,7 @@ LangChain provides:
     - Handle generation failures gracefully
     - _Requirements: 7.4, 7.5, 7.6_
 
-- [~] 20. Checkpoint - Phase 2 AI features complete
+- [ ] 20. Checkpoint - Phase 2 AI features complete
   - Ensure all tests pass, verify LLM integration works, test RAG search returns relevant results, ask the user if questions arise.
 
 
@@ -624,7 +624,7 @@ LangChain provides:
     - _Requirements: 19.7_
 
 - [ ] 23. Data export functionality
-  - [~] 23.1 Implement data export service
+  - [ ] 23.1 Implement data export service
     - Create export function for all athlete data
     - Include activities, metrics, logs, evaluations, chat sessions
     - Exclude sensitive authentication tokens
@@ -632,128 +632,128 @@ LangChain provides:
     - Format JSON with proper indentation
     - _Requirements: 26.1, 26.2, 26.3, 26.6, 26.7_
   
-  - [~] 23.2 Create export API endpoint
+  - [ ] 23.2 Create export API endpoint
     - Implement GET /api/settings/export
     - Generate JSON file download
     - _Requirements: 19.5, 26.5_
   
-  - [~] 23.3 Write property test for export-import round-trip
+  - [ ] 23.3 Write property test for export-import round-trip
     - **Property 15: Export-Import Round-Trip**
     - **Validates: Requirements 26_
 
 - [ ] 24. Error handling and user feedback
-  - [~] 24.1 Implement global error handling
+  - [ ] 24.1 Implement global error handling
     - Add error interceptor for network requests
     - Display user-friendly error messages
     - Log errors for debugging
     - _Requirements: 27.1, 27.7_
   
-  - [~] 24.2 Implement form validation feedback
+  - [ ] 24.2 Implement form validation feedback
     - Display specific error messages next to fields
     - Show validation errors in real-time
     - _Requirements: 27.2_
   
-  - [~] 24.3 Implement service availability feedback
+  - [ ] 24.3 Implement service availability feedback
     - Display message when LLM is unavailable
     - Display message when Strava API errors occur
     - _Requirements: 27.3, 27.4_
   
-  - [~] 24.4 Implement loading and success indicators
+  - [ ] 24.4 Implement loading and success indicators
     - Add loading spinners for async operations
     - Display success messages for completed actions
     - _Requirements: 27.5, 27.6_
 
 - [ ] 25. Security implementation
-  - [~] 25.1 Implement CSRF protection
+  - [ ] 25.1 Implement CSRF protection
     - Add CSRF token generation and validation
     - Apply to all state-changing operations
     - _Requirements: 30.4_
   
-  - [~] 25.2 Implement input sanitization
+  - [ ] 25.2 Implement input sanitization
     - Add SQL injection prevention
     - Add XSS prevention for user input
     - _Requirements: 30.5_
   
-  - [~] 25.3 Implement rate limiting
+  - [ ] 25.3 Implement rate limiting
     - Add rate limiter middleware (100 requests/minute per athlete)
     - Return 429 status for exceeded limits
     - _Requirements: 30.6_
   
-  - [~] 25.4 Write property test for rate limiting fairness
+  - [ ] 25.4 Write property test for rate limiting fairness
     - **Property 20: Rate Limiting Fairness**
     - **Validates: Requirements 30.6_
   
-  - [~] 25.5 Implement security logging
+  - [ ] 25.5 Implement security logging
     - Log authentication events
     - Log security-relevant actions for audit
     - _Requirements: 30.7_
 
-- [~] 26. Checkpoint - Phase 3 administrative features complete
+- [ ] 26. Checkpoint - Phase 3 administrative features complete
   - Ensure all tests pass, verify settings work correctly, test data export, ask the user if questions arise.
 
 
 ### Phase 4: Performance Optimization and Accessibility
 
 - [ ] 27. Performance optimization
-  - [~] 27.1 Optimize database queries
+  - [ ] 27.1 Optimize database queries
     - Add indexes on frequently queried columns (athlete_id, created_at, session_id)
     - Optimize N+1 query patterns
     - Add query result caching where appropriate
     - _Requirements: 22.6, 23.7_
   
-  - [~] 27.2 Optimize frontend rendering
+  - [ ] 27.2 Optimize frontend rendering
     - Implement lazy loading for large lists
     - Optimize Chart.js rendering for large datasets
     - Debounce filter and search inputs
     - _Requirements: 2.5, 3.5, 6.5_
   
-  - [~] 27.3 Optimize RAG search performance
+  - [ ] 27.3 Optimize RAG search performance
     - Ensure FAISS search completes within 200ms for 10k vectors
     - Optimize embedding generation
     - Batch index updates
     - _Requirements: 15.5, 23.4_
   
-  - [~] 27.4 Optimize page load times
+  - [ ] 27.4 Optimize page load times
     - Ensure dashboard loads within 1000ms
     - Ensure list pages load within 300ms
     - Ensure detail pages load within 500ms
     - Minimize JavaScript bundle size
     - _Requirements: 18.7, 23.1, 23.2, 23.3_
   
-  - [~] 27.5 Optimize LLM response streaming
+  - [ ] 27.5 Optimize LLM response streaming
     - Ensure streaming begins within 1000ms
     - Optimize prompt size
     - _Requirements: 23.5_
   
-  - [~] 27.6 Test concurrent user performance
+  - [ ] 27.6 Test concurrent user performance
     - Verify performance with 10 concurrent athletes
     - Ensure no degradation under load
     - _Requirements: 23.6_
 
 - [ ] 28. Accessibility implementation
-  - [~] 28.1 Implement keyboard navigation
+  - [ ] 28.1 Implement keyboard navigation
     - Ensure all interactive elements are keyboard accessible
     - Support Tab, Enter, arrow keys
     - Add skip navigation links
     - _Requirements: 24.1, 24.6_
   
-  - [~] 28.2 Implement focus management
+  - [ ] 28.2 Implement focus management
     - Add visible focus indicators to all focusable elements
     - Ensure focus order is logical
     - _Requirements: 24.4_
   
-  - [~] 28.3 Implement color contrast compliance
+  - [ ] 28.3 Implement color contrast compliance
     - Ensure minimum 4.5:1 contrast ratio for all text
     - Ensure contrast for interactive elements
     - _Requirements: 24.2_
   
-  - [~] 28.4 Implement ARIA labels and roles
+  - [ ] 28.4 Implement ARIA labels and roles
     - Add ARIA labels for icon buttons
     - Add ARIA labels for interactive components
     - Add ARIA roles where appropriate
     - _Requirements: 24.3_
   
-  - [~] 28.5 Implement screen reader support
+  - [ ] 28.5 Implement screen reader support
     - Add screen reader announcements for dynamic content
     - Announce new messages in chat
     - Announce loading states
@@ -762,56 +762,56 @@ LangChain provides:
     - _Requirements: 24.5, 24.7_
 
 - [ ] 29. Responsive design refinement
-  - [~] 29.1 Test and refine mobile layout (375px)
+  - [ ] 29.1 Test and refine mobile layout (375px)
     - Verify all pages render correctly
     - Ensure navigation collapses properly
     - Test table responsiveness (vertical stacking or horizontal scroll)
     - _Requirements: 25.1, 25.5, 25.6_
   
-  - [~] 29.2 Test and refine tablet layout (768px)
+  - [ ] 29.2 Test and refine tablet layout (768px)
     - Verify all pages render correctly
     - Test navigation transition point
     - _Requirements: 25.2, 25.5_
   
-  - [~] 29.3 Test and refine desktop layouts (1024px, 1280px+)
+  - [ ] 29.3 Test and refine desktop layouts (1024px, 1280px+)
     - Verify all pages render correctly
     - Ensure optimal use of screen space
     - _Requirements: 25.3, 25.4_
   
-  - [~] 29.4 Implement responsive typography
+  - [ ] 29.4 Implement responsive typography
     - Scale typography based on viewport width
     - _Requirements: 25.7_
 
 - [ ] 30. Final integration and testing
-  - [~] 30.1 End-to-end integration testing
+  - [ ] 30.1 End-to-end integration testing
     - Test complete user flows (signup → connect Strava → view activities → chat)
     - Test data flow between all modules
     - Verify RAG context appears in chat responses
     - Test evaluation generation with real data
   
-  - [~] 30.2 Cross-browser testing
+  - [ ] 30.2 Cross-browser testing
     - Test on Chrome, Firefox, Safari, Edge
     - Fix any browser-specific issues
   
-  - [~] 30.3 Performance profiling
+  - [ ] 30.3 Performance profiling
     - Profile page load times
     - Profile database query performance
     - Profile FAISS search performance
     - Optimize bottlenecks
   
-  - [~] 30.4 Security audit
+  - [ ] 30.4 Security audit
     - Review authentication and authorization
     - Verify token encryption
     - Test rate limiting
     - Review input sanitization
   
-  - [~] 30.5 Documentation
+  - [ ] 30.5 Documentation
     - Document API endpoints
     - Document environment variables
     - Document deployment process
     - Create user guide for key features
 
-- [~] 31. Final checkpoint - Platform ready for deployment
+- [ ] 31. Final checkpoint - Platform ready for deployment
   - Ensure all tests pass, verify all features work end-to-end, confirm performance targets met, ask the user if questions arise.
 
 ## Notes

@@ -203,7 +203,13 @@
                 document.getElementById('stat-activities').textContent = stats.total_activities || '0';
                 document.getElementById('stat-weight').textContent = stats.current_weight ? `${stats.current_weight} kg` : '--';
                 document.getElementById('stat-adherence').textContent = stats.weekly_adherence_avg ? `${stats.weekly_adherence_avg}/10` : '--';
-                document.getElementById('stat-eval-score').textContent = stats.latest_evaluation_score ? `${stats.latest_evaluation_score}/10` : '--';
+                
+                // Latest evaluation score (now 0-10 scale from API)
+                if (stats.latest_evaluation_score) {
+                    document.getElementById('stat-eval-score').textContent = `${stats.latest_evaluation_score}/10`;
+                } else {
+                    document.getElementById('stat-eval-score').textContent = '--';
+                }
                 
                 if (stats.latest_evaluation_date) {
                     document.getElementById('stat-eval-date').textContent = formatDateDisplay(stats.latest_evaluation_date);
@@ -376,27 +382,60 @@
                 const container = document.getElementById('latest-eval-summary');
                 
                 if (!data.score) {
-                    container.innerHTML = '<p class="text-base-content/60">No evaluations yet. Generate your first weekly evaluation!</p>';
+                    container.innerHTML = `
+                        <div class="text-center py-8">
+                            <p class="text-base-content/60 mb-4">No evaluations yet. Generate your first evaluation!</p>
+                            <a href="evaluations-list.html" class="btn btn-primary">
+                                Generate Evaluation
+                            </a>
+                        </div>
+                    `;
                     return;
                 }
                 
                 const strengthsList = data.top_strengths.length > 0 
-                    ? data.top_strengths.map(s => `<li class="flex items-start gap-2"><span class="text-success">✓</span><span>${s}</span></li>`).join('')
+                    ? data.top_strengths.map(s => `<li class="flex items-start gap-2"><span class="text-success text-xl">✓</span><span>${s}</span></li>`).join('')
                     : '<li class="text-base-content/60">No strengths recorded</li>';
+                
+                const improvementsList = data.top_improvements.length > 0
+                    ? data.top_improvements.map(i => `<li class="flex items-start gap-2"><span class="text-warning text-xl">⚠</span><span>${i}</span></li>`).join('')
+                    : '<li class="text-base-content/60">No improvements recorded</li>';
+                
+                const scoreColor = getScoreColor(data.score);
+                const scorePercentage = data.score; // Already 0-100
                 
                 container.innerHTML = `
                     <div class="flex flex-col md:flex-row gap-6">
-                        <div class="flex-shrink-0">
-                            <div class="radial-progress text-primary" style="--value:${data.score * 10}; --size:8rem; --thickness:0.5rem;" role="progressbar">
-                                <span class="text-2xl font-bold">${data.score}/10</span>
+                        <div class="flex-shrink-0 text-center">
+                            <div class="radial-progress ${scoreColor}" style="--value:${scorePercentage}; --size:10rem; --thickness:0.6rem;" role="progressbar">
+                                <div class="flex flex-col">
+                                    <span class="text-3xl font-bold">${data.score}</span>
+                                    <span class="text-sm text-base-content/60">out of 100</span>
+                                </div>
                             </div>
-                            <p class="text-center text-sm text-base-content/60 mt-2">${formatDateDisplay(data.week_start)}</p>
+                            <p class="text-sm text-base-content/60 mt-3">
+                                ${formatPeriodType(data.period_type)} Evaluation
+                            </p>
+                            <p class="text-xs text-base-content/50">
+                                ${formatDateDisplay(data.period_start)} - ${formatDateDisplay(data.period_end)}
+                            </p>
+                            <a href="evaluation-detail.html?id=${data.evaluation_id}" class="btn btn-sm btn-primary mt-3">
+                                View Full Report
+                            </a>
                         </div>
-                        <div class="flex-1">
-                            <h3 class="font-semibold mb-2">Top Strengths:</h3>
-                            <ul class="space-y-1">
-                                ${strengthsList}
-                            </ul>
+                        <div class="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <h3 class="font-semibold mb-2 text-success">✓ Top Strengths:</h3>
+                                <ul class="space-y-2">
+                                    ${strengthsList}
+                                </ul>
+                            </div>
+                            <div>
+                                <h3 class="font-semibold mb-2 text-warning">⚠ Areas for Improvement:</h3>
+                                <ul class="space-y-2">
+                                    ${improvementsList}
+                                </ul>
+                            </div>
                         </div>
                     </div>
                 `;
@@ -404,6 +443,20 @@
                 console.error('Error loading latest evaluation:', error);
                 document.getElementById('latest-eval-summary').innerHTML = '<p class="text-error">Failed to load evaluation</p>';
             }
+        }
+        
+        function getScoreColor(score) {
+            if (score >= 80) return 'text-success';
+            if (score >= 60) return 'text-warning';
+            if (score >= 40) return 'text-info';
+            return 'text-error';
+        }
+        
+        function formatPeriodType(type) {
+            if (!type) return '';
+            return type.split('-').map(word => 
+                word.charAt(0).toUpperCase() + word.slice(1)
+            ).join('-');
         }
     </script>
 </body>

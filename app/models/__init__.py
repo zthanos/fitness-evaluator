@@ -10,3 +10,4 @@ from app.models.chat_session import ChatSession  # noqa: F401
 from app.models.chat_message import ChatMessage  # noqa: F401
 from app.models.activity_analysis import ActivityAnalysis  # noqa: F401
 from app.models.strava_token import StravaToken  # noqa: F401
+from app.models.evaluation import Evaluation  # noqa: F401

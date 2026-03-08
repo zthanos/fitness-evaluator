@@ -16,13 +16,9 @@ from app.schemas.evaluation_schemas import (
     EvaluationResponse,
     EvaluationReport
 )
+from app.models.evaluation import Evaluation
 
 router = APIRouter()
-
-
-# In-memory storage for evaluations (replace with database model in production)
-# This is a temporary solution until the database schema is updated
-evaluations_store = {}
 
 
 @router.post("/generate", response_model=EvaluationResponse, summary="Generate evaluation report")
@@ -38,7 +34,7 @@ async def generate_evaluation(
     1. Gathers all activities, metrics, and logs for the period
     2. Uses LangChain LLM to analyze data and generate structured report
     3. Validates output against EvaluationReport schema
-    4. Stores report with metadata
+    4. Stores report with metadata in database
     
     **Parameters:**
     - `period_start`: Start date of evaluation period (YYYY-MM-DD)
@@ -84,28 +80,40 @@ async def generate_evaluation(
             period_type=request.period_type
         )
         
-        # Store evaluation
+        # Create database model
         eval_id = str(uuid.uuid4())
-        evaluation_data = {
-            'id': eval_id,
-            'athlete_id': athlete_id,
-            'period_start': request.period_start,
-            'period_end': request.period_end,
-            'period_type': request.period_type,
-            'overall_score': evaluation.overall_score,
-            'strengths': evaluation.strengths,
-            'improvements': evaluation.improvements,
-            'tips': evaluation.tips,
-            'recommended_exercises': evaluation.recommended_exercises,
-            'goal_alignment': evaluation.goal_alignment,
-            'confidence_score': evaluation.confidence_score,
-            'generated_at': datetime.now().isoformat()
-        }
+        db_evaluation = Evaluation(
+            id=eval_id,
+            athlete_id=athlete_id,
+            period_start=request.period_start,
+            period_end=request.period_end,
+            period_type=request.period_type,
+            overall_score=evaluation.overall_score,
+            strengths=evaluation.strengths,
+            improvements=evaluation.improvements,
+            tips=evaluation.tips,
+            recommended_exercises=evaluation.recommended_exercises,
+            goal_alignment=evaluation.goal_alignment,
+            confidence_score=evaluation.confidence_score
+        )
         
-        evaluations_store[eval_id] = evaluation_data
+        # Save to database
+        try:
+            db.add(db_evaluation)
+            db.commit()
+            db.refresh(db_evaluation)
+        except Exception as db_error:
+            db.rollback()
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to save evaluation: {str(db_error)}"
+            )
         
-        return EvaluationResponse(**evaluation_data)
+        # Convert to response
+        return EvaluationResponse(**db_evaluation.to_dict())
         
+    except HTTPException:
+        raise
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -122,7 +130,8 @@ async def get_evaluations(
     date_to: Optional[date] = Query(None, description="Filter by end date"),
     score_min: Optional[int] = Query(None, ge=0, le=100, description="Minimum score filter"),
     score_max: Optional[int] = Query(None, ge=0, le=100, description="Maximum score filter"),
-    limit: int = Query(50, ge=1, le=100, description="Maximum number of results")
+    limit: int = Query(50, ge=1, le=100, description="Maximum number of results"),
+    db: Session = Depends(get_db)
 ):
     """
     Retrieve evaluation history for an athlete.
@@ -144,34 +153,30 @@ async def get_evaluations(
     **Requirements:** 12.1, 12.5
     """
     try:
-        # Filter evaluations
-        filtered = []
-        for eval_data in evaluations_store.values():
-            # Filter by athlete
-            if eval_data['athlete_id'] != athlete_id:
-                continue
-            
-            # Filter by date range
-            if date_from and eval_data['period_start'] < date_from:
-                continue
-            if date_to and eval_data['period_end'] > date_to:
-                continue
-            
-            # Filter by score range
-            if score_min is not None and eval_data['overall_score'] < score_min:
-                continue
-            if score_max is not None and eval_data['overall_score'] > score_max:
-                continue
-            
-            filtered.append(eval_data)
+        # Build query
+        query = db.query(Evaluation).filter(Evaluation.athlete_id == athlete_id)
         
-        # Sort by generated_at (newest first)
-        filtered.sort(key=lambda x: x['generated_at'], reverse=True)
+        # Apply filters
+        if date_from:
+            query = query.filter(Evaluation.period_start >= date_from)
+        if date_to:
+            query = query.filter(Evaluation.period_end <= date_to)
+        if score_min is not None:
+            query = query.filter(Evaluation.overall_score >= score_min)
+        if score_max is not None:
+            query = query.filter(Evaluation.overall_score <= score_max)
+        
+        # Sort by created_at descending (newest first)
+        query = query.order_by(Evaluation.created_at.desc())
         
         # Apply limit
-        filtered = filtered[:limit]
+        query = query.limit(limit)
         
-        return [EvaluationResponse(**eval_data) for eval_data in filtered]
+        # Execute query
+        evaluations = query.all()
+        
+        # Convert to response models
+        return [EvaluationResponse(**eval.to_dict()) for eval in evaluations]
         
     except Exception as e:
         raise HTTPException(
@@ -181,7 +186,7 @@ async def get_evaluations(
 
 
 @router.get("/{evaluation_id}", response_model=EvaluationResponse, summary="Get evaluation detail")
-async def get_evaluation(evaluation_id: str):
+async def get_evaluation(evaluation_id: str, db: Session = Depends(get_db)):
     """
     Retrieve a specific evaluation report by ID.
     
@@ -194,14 +199,15 @@ async def get_evaluation(evaluation_id: str):
     **Requirements:** 12.2
     """
     try:
-        if evaluation_id not in evaluations_store:
+        evaluation = db.query(Evaluation).filter(Evaluation.id == evaluation_id).first()
+        
+        if not evaluation:
             raise HTTPException(
                 status_code=404,
                 detail=f"Evaluation {evaluation_id} not found"
             )
         
-        eval_data = evaluations_store[evaluation_id]
-        return EvaluationResponse(**eval_data)
+        return EvaluationResponse(**evaluation.to_dict())
         
     except HTTPException:
         raise
@@ -209,4 +215,182 @@ async def get_evaluation(evaluation_id: str):
         raise HTTPException(
             status_code=500,
             detail=f"Failed to retrieve evaluation: {str(e)}"
+        )
+
+
+@router.post("/{evaluation_id}/re-evaluate", response_model=EvaluationResponse, summary="Re-evaluate with same parameters")
+async def re_evaluate(evaluation_id: str, db: Session = Depends(get_db)):
+    """
+    Generate a new evaluation using the same parameters as an existing evaluation.
+
+    This endpoint retrieves an existing evaluation and generates a new one with
+    the same period_start, period_end, period_type, and athlete_id. The new
+    evaluation gets a new UUID and is saved as a separate record.
+
+    **Parameters:**
+    - `evaluation_id`: UUID of the original evaluation to re-evaluate
+
+    **Returns:**
+    - New evaluation report with a new ID but same parameters as the original
+
+    **Requirements:** 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 4.7
+    """
+    try:
+        # Retrieve original evaluation by ID
+        original = db.query(Evaluation).filter(Evaluation.id == evaluation_id).first()
+
+        # Return 404 if not found
+        if not original:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Evaluation {evaluation_id} not found"
+            )
+
+        # Extract parameters from original evaluation
+        athlete_id = original.athlete_id
+        period_start = original.period_start
+        period_end = original.period_end
+        period_type = original.period_type
+
+        # Create evaluation engine
+        engine = EvaluationEngine(db)
+
+        # Generate new evaluation with same parameters
+        evaluation = await engine.generate_evaluation(
+            athlete_id=athlete_id,
+            period_start=period_start,
+            period_end=period_end,
+            period_type=period_type
+        )
+
+        # Generate new UUID for new evaluation
+        new_eval_id = str(uuid.uuid4())
+
+        # Create database model for new evaluation
+        db_evaluation = Evaluation(
+            id=new_eval_id,
+            athlete_id=athlete_id,
+            period_start=period_start,
+            period_end=period_end,
+            period_type=period_type,
+            overall_score=evaluation.overall_score,
+            strengths=evaluation.strengths,
+            improvements=evaluation.improvements,
+            tips=evaluation.tips,
+            recommended_exercises=evaluation.recommended_exercises,
+            goal_alignment=evaluation.goal_alignment,
+            confidence_score=evaluation.confidence_score
+        )
+
+        # Save new evaluation to database
+        try:
+            db.add(db_evaluation)
+            db.commit()
+            db.refresh(db_evaluation)
+        except Exception as db_error:
+            db.rollback()
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to save evaluation: {str(db_error)}"
+            )
+
+        # Return new evaluation in response
+        return EvaluationResponse(**db_evaluation.to_dict())
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Re-evaluation failed: {str(e)}"
+        )
+
+
+
+
+@router.post("/{evaluation_id}/re-evaluate", response_model=EvaluationResponse, summary="Re-evaluate with same parameters")
+async def re_evaluate(evaluation_id: str, db: Session = Depends(get_db)):
+    """
+    Generate a new evaluation using the same parameters as an existing evaluation.
+    
+    This endpoint retrieves an existing evaluation and generates a new one with
+    the same period_start, period_end, period_type, and athlete_id. The new
+    evaluation gets a new UUID and is saved as a separate record.
+    
+    **Parameters:**
+    - `evaluation_id`: UUID of the original evaluation to re-evaluate
+    
+    **Returns:**
+    - New evaluation report with a new ID but same parameters as the original
+    
+    **Requirements:** 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 4.7
+    """
+    try:
+        # Retrieve original evaluation by ID
+        original = db.query(Evaluation).filter(Evaluation.id == evaluation_id).first()
+        
+        # Return 404 if not found
+        if not original:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Evaluation {evaluation_id} not found"
+            )
+        
+        # Extract parameters from original evaluation
+        athlete_id = original.athlete_id
+        period_start = original.period_start
+        period_end = original.period_end
+        period_type = original.period_type
+        
+        # Create evaluation engine
+        engine = EvaluationEngine(db)
+        
+        # Generate new evaluation with same parameters
+        evaluation = await engine.generate_evaluation(
+            athlete_id=athlete_id,
+            period_start=period_start,
+            period_end=period_end,
+            period_type=period_type
+        )
+        
+        # Generate new UUID for new evaluation
+        new_eval_id = str(uuid.uuid4())
+        
+        # Create database model for new evaluation
+        db_evaluation = Evaluation(
+            id=new_eval_id,
+            athlete_id=athlete_id,
+            period_start=period_start,
+            period_end=period_end,
+            period_type=period_type,
+            overall_score=evaluation.overall_score,
+            strengths=evaluation.strengths,
+            improvements=evaluation.improvements,
+            tips=evaluation.tips,
+            recommended_exercises=evaluation.recommended_exercises,
+            goal_alignment=evaluation.goal_alignment,
+            confidence_score=evaluation.confidence_score
+        )
+        
+        # Save new evaluation to database
+        try:
+            db.add(db_evaluation)
+            db.commit()
+            db.refresh(db_evaluation)
+        except Exception as db_error:
+            db.rollback()
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to save evaluation: {str(db_error)}"
+            )
+        
+        # Return new evaluation in response
+        return EvaluationResponse(**db_evaluation.to_dict())
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Re-evaluation failed: {str(e)}"
         )

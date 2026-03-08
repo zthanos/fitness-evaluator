@@ -10,6 +10,7 @@ from app.models.strava_activity import StravaActivity
 from app.models.weekly_measurement import WeeklyMeasurement
 from app.models.daily_log import DailyLog
 from app.models.weekly_eval import WeeklyEval
+from app.models.evaluation import Evaluation
 
 router = APIRouter()
 
@@ -49,22 +50,18 @@ async def get_dashboard_stats(db: Session = Depends(get_db)):
     else:
         weekly_adherence_avg = None
     
-    # Latest evaluation score
-    latest_eval = db.query(WeeklyEval).order_by(
-        desc(WeeklyEval.generated_at)
+    # Latest evaluation score (from new Evaluation model)
+    latest_eval = db.query(Evaluation).order_by(
+        desc(Evaluation.created_at)
     ).first()
     
     latest_evaluation_score = None
     latest_evaluation_date = None
     
-    if latest_eval and latest_eval.parsed_output_json:
-        latest_evaluation_score = latest_eval.parsed_output_json.get('overall_score')
-        # Get the week_start from the associated WeeklyMeasurement
-        measurement = db.query(WeeklyMeasurement).filter(
-            WeeklyMeasurement.id == latest_eval.week_id
-        ).first()
-        if measurement:
-            latest_evaluation_date = measurement.week_start
+    if latest_eval:
+        # Convert 0-100 score to 0-10 scale for consistency with old dashboard
+        latest_evaluation_score = round(latest_eval.overall_score / 10, 1)
+        latest_evaluation_date = latest_eval.period_start
     
     return {
         "total_activities": total_activities,
@@ -208,44 +205,47 @@ async def get_recent_logs(db: Session = Depends(get_db)):
 @router.get("/latest-evaluation", summary="Get latest evaluation summary")
 async def get_latest_evaluation(db: Session = Depends(get_db)):
     """
-    Get summary of the most recent evaluation.
+    Get summary of the most recent evaluation from the new Evaluation model.
     
     **Requirements: 18.5**
     
     **Returns:**
-    - `score`: Overall evaluation score (0-10)
+    - `score`: Overall evaluation score (0-100)
     - `top_strengths`: Top 3 strengths from the evaluation
-    - `week_start`: Date of the evaluated week
+    - `top_improvements`: Top 3 areas for improvement
+    - `period_start`: Start date of the evaluation period
+    - `period_end`: End date of the evaluation period
+    - `period_type`: Type of period (weekly, bi-weekly, monthly)
     - `generated_at`: When the evaluation was generated
+    - `evaluation_id`: ID of the evaluation for linking to detail page
     """
-    latest_eval = db.query(WeeklyEval).order_by(
-        desc(WeeklyEval.generated_at)
+    latest_eval = db.query(Evaluation).order_by(
+        desc(Evaluation.created_at)
     ).first()
     
     if not latest_eval:
         return {
             "score": None,
             "top_strengths": [],
-            "week_start": None,
-            "generated_at": None
+            "top_improvements": [],
+            "period_start": None,
+            "period_end": None,
+            "period_type": None,
+            "generated_at": None,
+            "evaluation_id": None
         }
     
-    # Get week_start from associated measurement
-    measurement = db.query(WeeklyMeasurement).filter(
-        WeeklyMeasurement.id == latest_eval.week_id
-    ).first()
-    
-    week_start = measurement.week_start if measurement else None
-    
-    # Extract top 3 strengths from parsed output
-    top_strengths = []
-    if latest_eval.parsed_output_json:
-        wins = latest_eval.parsed_output_json.get('wins', [])
-        top_strengths = wins[:3] if wins else []
+    # Get top 3 strengths and improvements
+    top_strengths = latest_eval.strengths[:3] if latest_eval.strengths else []
+    top_improvements = latest_eval.improvements[:3] if latest_eval.improvements else []
     
     return {
-        "score": latest_eval.parsed_output_json.get('overall_score') if latest_eval.parsed_output_json else None,
+        "score": latest_eval.overall_score,
         "top_strengths": top_strengths,
-        "week_start": week_start,
-        "generated_at": latest_eval.generated_at
+        "top_improvements": top_improvements,
+        "period_start": latest_eval.period_start,
+        "period_end": latest_eval.period_end,
+        "period_type": latest_eval.period_type,
+        "generated_at": latest_eval.created_at,
+        "evaluation_id": latest_eval.id
     }

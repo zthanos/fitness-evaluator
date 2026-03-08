@@ -114,6 +114,9 @@
                         <div class="card-body">
                             <h2 class="card-title text-sm">Actions</h2>
                             <div class="space-y-2">
+                                <button onclick="reEvaluate()" id="re-evaluate-btn" class="btn btn-sm btn-primary w-full">
+                                    🔄 Re-evaluate
+                                </button>
                                 <button onclick="downloadReport()" class="btn btn-sm btn-secondary w-full">
                                     📥 Download Report
                                 </button>
@@ -350,6 +353,47 @@ ${eval.recommended_exercises.map((e, i) => `${i + 1}. ${e}`).join('\n')}
                     console.error('Error copying:', err);
                     showError('Failed to copy link');
                 });
+            }
+        }
+
+        async function reEvaluate() {
+            if (!currentEvaluation) return;
+
+            const button = document.getElementById('re-evaluate-btn');
+            const originalText = button.innerHTML;
+            
+            try {
+                // Disable button and show loading state
+                button.disabled = true;
+                button.innerHTML = '⏳ Re-evaluating...';
+                
+                const response = await fetch(
+                    `/api/evaluations/${currentEvaluation.id}/re-evaluate`,
+                    { method: 'POST' }
+                );
+                
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(errorData.detail || 'Re-evaluation failed');
+                }
+                
+                const newEval = await response.json();
+                
+                // Show success message briefly before redirect
+                showSuccess('Re-evaluation complete! Redirecting...');
+                
+                // Redirect to new evaluation detail page
+                setTimeout(() => {
+                    window.location.href = `evaluation-detail.html?id=${newEval.id}`;
+                }, 1000);
+                
+            } catch (error) {
+                console.error('Re-evaluation error:', error);
+                showError(error.message || 'Failed to re-evaluate. Please try again.');
+                
+                // Re-enable button
+                button.disabled = false;
+                button.innerHTML = originalText;
             }
         }
 
