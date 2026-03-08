@@ -51,8 +51,6 @@ def construct_openai_endpoint(base_url: str) -> str:
     normalized = normalize_base_url(base_url)
     return f"{normalized}/v1/chat/completions"
 
-SYSTEM_PROMPT_PATH = "app/prompts/system_prompt.txt"
-
 
 class LLMClient:
     """
@@ -949,12 +947,11 @@ async def generate_evaluation(contract: dict) -> str:
     """
     settings = get_settings()
     
-    # Read system prompt from file
-    try:
-        with open(SYSTEM_PROMPT_PATH, 'r') as f:
-            system_prompt = f.read()
-    except FileNotFoundError:
-        raise ValueError(f"System prompt file not found at {SYSTEM_PROMPT_PATH}")
+    # Use a simple default system prompt since this is legacy code
+    # DEPRECATED: This function is maintained for backward compatibility with tests only.
+    # New code should use EvaluationEngine or LangChainEvaluationService with Context Engineering.
+    system_prompt = """You are an expert fitness coach analyzing weekly performance data.
+Analyze the provided data and generate a comprehensive evaluation in JSON format."""
     
     user_message = json.dumps(contract, indent=2, default=str)
 

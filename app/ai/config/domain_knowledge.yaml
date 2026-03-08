@@ -1,0 +1,56 @@
+# Domain Knowledge Configuration
+# Sport science reference values for training zones, effort levels, recovery, and nutrition
+
+training_zones:
+  z1_recovery:
+    hr_pct_max: [50, 60]
+    rpe: [1, 2]
+    description: "Active recovery, very easy effort"
+  
+  z2_aerobic:
+    hr_pct_max: [60, 70]
+    rpe: [3, 4]
+    description: "Aerobic base building, conversational pace"
+  
+  z3_tempo:
+    hr_pct_max: [70, 80]
+    rpe: [5, 6]
+    description: "Tempo effort, comfortably hard"
+  
+  z4_threshold:
+    hr_pct_max: [80, 90]
+    rpe: [7, 8]
+    description: "Lactate threshold, hard effort"
+  
+  z5_vo2max:
+    hr_pct_max: [90, 100]
+    rpe: [9, 10]
+    description: "VO2 max intervals, maximum effort"
+
+effort_levels:
+  easy:
+    zones: [z1_recovery, z2_aerobic]
+    target_pct: 80
+  
+  moderate:
+    zones: [z3_tempo]
+    target_pct: 15
+  
+  hard:
+    zones: [z4_threshold]
+    target_pct: 5
+  
+  max:
+    zones: [z5_vo2max]
+    target_pct: 0  # Rare, only for specific workouts
+
+recovery_guidelines:
+  rest_days_per_week: 1
+  max_consecutive_training_days: 6
+  hard_sessions_per_week: 2
+  recovery_week_frequency: 4  # Every 4th week
+
+nutrition_targets:
+  protein_g_per_kg: [1.6, 2.2]
+  carbs_pct_calories: [45, 65]
+  fat_pct_calories: [20, 35]

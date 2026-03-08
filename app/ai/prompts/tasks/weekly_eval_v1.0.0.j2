@@ -1,0 +1,122 @@
+{# Task Instructions: Weekly Evaluation v1.0.0 #}
+{# Runtime Parameters: athlete_id={{ athlete_id }}, week_id={{ week_id }}, period_start={{ period_start }}, period_end={{ period_end }} #}
+
+# Objective
+
+Analyze the athlete's training week and generate a comprehensive evaluation report that assesses training consistency, effort distribution, recovery adequacy, nutrition adherence, and progress toward stated goals.
+
+# Input Description
+
+You will receive the following data for analysis:
+
+## Activities
+- List of workouts completed during the week
+- Each activity includes:
+  - Activity type (run, ride, swim, etc.)
+  - Distance (kilometers)
+  - Duration (minutes)
+  - Heart rate data (average HR, max HR)
+  - Elevation gain (meters)
+  - Date and time
+
+## Metrics
+- Body measurements and physiological data:
+  - Weight (kg)
+  - Body fat percentage
+  - Waist circumference (cm)
+  - Resting heart rate (bpm)
+  - Average sleep duration (hours)
+
+## Logs
+- Daily nutrition logs:
+  - Calories consumed
+  - Macronutrient breakdown (protein, carbs, fat in grams)
+  - Adherence score (0-100)
+
+## Derived Metrics
+- Pre-computed aggregates for the week:
+  - Total distance (km)
+  - Total duration (minutes)
+  - Total elevation gain (meters)
+  - Activity count
+  - Effort distribution (percentage of activities in easy/moderate/hard/max zones)
+  - Training load (duration × effort multiplier)
+  - Rest days count
+  - Consecutive training days
+  - Heart rate zone distribution
+
+## Goals
+- Active athlete goals with:
+  - Goal title and description
+  - Target date
+  - Category (training, nutrition, recovery, mindset)
+
+# Analytical Focus
+
+Evaluate the following aspects of the athlete's training week:
+
+1. **Training Consistency and Volume Trends**
+   - Assess adherence to training schedule
+   - Evaluate total volume (distance, duration, elevation) relative to athlete's baseline
+   - Identify patterns in training frequency and rest days
+
+2. **Effort Distribution**
+   - Analyze the balance between easy, moderate, hard, and max effort activities
+   - Compare actual effort distribution to optimal training principles (80% easy, 15% moderate, 5% hard)
+   - Identify potential overtraining or undertraining patterns
+
+3. **Recovery Adequacy**
+   - Evaluate rest day frequency (target: at least 1 per week)
+   - Assess consecutive training days (max recommended: 6 days)
+   - Consider sleep quality and resting heart rate trends
+   - Identify signs of inadequate recovery
+
+4. **Nutrition Adherence and Macro Balance**
+   - Assess calorie intake consistency
+   - Evaluate macronutrient balance (protein, carbs, fat)
+   - Review adherence scores and identify patterns
+   - Consider nutrition relative to training load
+
+5. **Progress Toward Stated Goals**
+   - Evaluate activities and metrics in context of active goals
+   - Assess whether training aligns with goal requirements
+   - Identify gaps between current performance and goal targets
+   - Provide specific feedback on goal progress
+
+# Output Schema Reference
+
+Respond using the **WeeklyEvalContract** schema with the following fields:
+
+- **overall_score**: Integer (0-100)
+  - Holistic assessment of the training week
+  - Consider all analytical dimensions (consistency, effort, recovery, nutrition, goal progress)
+
+- **strengths**: List of strings (minimum 1, maximum 5)
+  - Specific achievements and positive aspects of the week
+  - Each item should be 10-500 characters
+  - Reference actual data points from the input
+
+- **areas_for_improvement**: List of strings (minimum 1, maximum 5)
+  - Specific areas needing attention or adjustment
+  - Each item should be 10-500 characters
+  - Reference actual data points from the input
+
+- **recommendations**: List of Recommendation objects (maximum 5)
+  - Each recommendation includes:
+    - **text**: Actionable recommendation (10-500 characters)
+    - **priority**: Integer (1-5, where 1 is highest priority)
+    - **category**: One of: training, nutrition, recovery, mindset
+
+- **confidence_score**: Float (0.0-1.0)
+  - Your self-assessed confidence in this evaluation
+  - Consider data completeness, recency, and clarity of patterns
+  - Be honest about uncertainty when data is limited
+
+# Important Guidelines
+
+- Base all assessments on the provided data only (no assumptions)
+- Provide specific, actionable recommendations
+- Reference actual metrics when making claims
+- Acknowledge data gaps explicitly
+- Use supportive, data-driven language
+- Prioritize recommendations by impact and feasibility

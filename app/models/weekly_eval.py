@@ -19,3 +19,19 @@ class WeeklyEval(Base, TimestampMixin):
     __table_args__ = (
         UniqueConstraint('week_id'),
     )
+    
+    @property
+    def evidence_cards(self) -> list:
+        """
+        Get evidence cards with backward compatibility.
+        
+        Returns empty list if evidence_map_json is null (for old records).
+        This ensures backward compatibility with existing WeeklyEval records
+        that were created before evidence tracking was implemented.
+        
+        Returns:
+            List of evidence card dictionaries
+        """
+        if self.evidence_map_json is None:
+            return []
+        return self.evidence_map_json.get("evidence_cards", [])

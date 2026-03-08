@@ -23,6 +23,9 @@ except ImportError:
 from app.services.goal_service import GoalService
 from app.services.rag_service import RAGSystem
 from app.config import get_settings
+from app.ai.tools.get_athlete_goals import get_athlete_goals
+from app.ai.tools.get_recent_activities import get_recent_activities
+from app.ai.tools.get_weekly_metrics import get_weekly_metrics
 
 
 class LangChainChatService:
@@ -45,6 +48,7 @@ class LangChainChatService:
         self.db = db
         self.goal_service = GoalService(db)
         self.settings = get_settings()
+        self.default_athlete_id = 1  # For single-athlete MVP
         
         # Initialize RAG system for context retrieval
         try:
@@ -58,14 +62,14 @@ class LangChainChatService:
         llm_type = self.settings.LLM_TYPE.lower()
         
         if llm_type == "lm-studio" or llm_type == "openai":
-            # Use OpenAI-compatible endpoint (LM Studio)
+            # Use OpenAI-compatible endpoint (LM Studio or OpenAI)
             print(f"[LangChain] Initializing with LM Studio/OpenAI backend")
             # Note: LangChain's ChatOpenAI automatically adds /chat/completions to base_url
             # So if base_url is http://localhost:1234/v1, it becomes http://localhost:1234/v1/chat/completions
             base_url = self.settings.llm_base_url
-            # Remove /v1 if it's already in the URL since ChatOpenAI handles it
-            if base_url.endswith('/v1'):
-                base_url = base_url[:-3]
+            # Ensure /v1 is in the URL for OpenAI-compatible endpoints
+            if not base_url.endswith('/v1'):
+                base_url = f"{base_url}/v1"
             
             self.llm = ChatOpenAI(
                 base_url=base_url,
@@ -117,7 +121,58 @@ class LangChainChatService:
             except Exception as e:
                 return f"❌ Error: {str(e)}"
         
-        return [save_athlete_goal]
+        @langchain_tool
+        def get_my_goals() -> List[Dict[str, Any]]:
+            """Retrieve your active fitness goals."""
+            return get_athlete_goals.invoke({"athlete_id": self.default_athlete_id})
+        
+        @langchain_tool
+        def get_my_recent_activities(days_back: int) -> List[Dict[str, Any]]:
+            """Retrieve your recent Strava activities. Specify how many days back to look (max 365)."""
+            return get_recent_activities.invoke({
+                "athlete_id": self.default_athlete_id,
+                "days_back": days_back
+            })
+        
+        @langchain_tool
+        def get_my_weekly_metrics(week_id: str) -> Dict[str, Any]:
+            """Retrieve your weekly body metrics. Provide week_id in format YYYY-WW (e.g., '2024-W15')."""
+            return get_weekly_metrics.invoke({
+                "athlete_id": self.default_athlete_id,
+                "week_id": week_id
+            })
+        
+        @langchain_tool
+        def search_web(query: str) -> str:
+            """Search the web for current information about fitness, training, nutrition, or sports science. Use this when you need up-to-date information beyond your training data."""
+            try:
+                # Try to use Tavily if available
+                try:
+                    from langchain_community.tools.tavily_search import TavilySearchResults
+                    tavily_api_key = self.settings.TAVILY_API_KEY if hasattr(self.settings, 'TAVILY_API_KEY') else None
+                    
+                    if tavily_api_key:
+                        search = TavilySearchResults(api_key=tavily_api_key, max_results=3)
+                        results = search.invoke(query)
+                        
+                        # Format results
+                        formatted = f"Web search results for '{query}':\n\n"
+                        for i, result in enumerate(results, 1):
+                            formatted += f"{i}. {result.get('title', 'No title')}\n"
+                            formatted += f"   {result.get('content', 'No content')}\n"
+                            formatted += f"   Source: {result.get('url', 'No URL')}\n\n"
+                        
+                        return formatted
+                except ImportError:
+                    pass
+                
+                # Fallback: return message that web search is not configured
+                return "⚠️ Web search is not configured. To enable web search, set TAVILY_API_KEY in your .env file. Get a free API key at https://tavily.com"
+                
+            except Exception as e:
+                return f"❌ Web search error: {str(e)}"
+        
+        return [save_athlete_goal, get_my_goals, get_my_recent_activities, get_my_weekly_metrics, search_web]
     
     async def get_chat_response(
         self,
@@ -261,11 +316,16 @@ class LangChainChatService:
         Returns:
             System prompt string
         """
+        from datetime import datetime
+        
         try:
             with open('app/prompts/goal_setting_prompt.txt', 'r', encoding='utf-8') as f:
                 base_prompt = f.read()
         except FileNotFoundError:
             base_prompt = """You are an expert fitness coach. When athletes want to set goals, gather information and use the save_athlete_goal tool."""
+        
+        # Get current date for temporal context
+        current_date = datetime.now().strftime("%B %d, %Y")
         
         # Get athlete profile information (for now, using default athlete)
         athlete_profile = self._get_athlete_profile()
@@ -273,8 +333,10 @@ class LangChainChatService:
         # Get active goals
         active_goals = self._get_active_goals_context()
         
-        # Build enhanced system prompt
-        enhanced_prompt = base_prompt
+        # Build enhanced system prompt with current date
+        enhanced_prompt = f"""Today's date is {current_date}.
+
+{base_prompt}"""
         
         # Add athlete profile
         if athlete_profile:

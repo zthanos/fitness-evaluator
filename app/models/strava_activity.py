@@ -1,8 +1,9 @@
 from datetime import datetime
-from sqlalchemy import Column, DateTime, Float, Integer, String, Text, UniqueConstraint, ForeignKey
-from sqlalchemy.orm import relationship
+from sqlalchemy import Column, DateTime, Float, Integer, String, Text, UniqueConstraint, ForeignKey, event
+from sqlalchemy.orm import relationship, validates
 from app.models.base import Base, TimestampMixin
 import uuid
+import re
 
 class StravaActivity(Base, TimestampMixin):
     __tablename__ = 'strava_activities'
@@ -29,3 +30,41 @@ class StravaActivity(Base, TimestampMixin):
     __table_args__ = (
         UniqueConstraint('strava_id'),
     )
+    
+    @validates('week_id')
+    def validate_week_id(self, key, value):
+        """Validate week_id format matches ISO week format: YYYY-WW"""
+        if value is not None:
+            pattern = r'^\d{4}-W\d{2}$'
+            if not re.match(pattern, value):
+                raise ValueError(f"week_id must match format YYYY-WW (e.g., '2024-W15'), got: {value}")
+        return value
+    
+    @staticmethod
+    def compute_week_id(start_date: datetime) -> str:
+        """Compute ISO week_id from start_date.
+        
+        Args:
+            start_date: The activity start date
+            
+        Returns:
+            ISO week identifier in format YYYY-WW (e.g., "2024-W15")
+        """
+        iso_calendar = start_date.isocalendar()
+        year = iso_calendar[0]
+        week = iso_calendar[1]
+        return f"{year}-W{week:02d}"
+    
+    def populate_week_id(self):
+        """Automatically populate week_id from start_date if not already set."""
+        if self.start_date and not self.week_id:
+            self.week_id = self.compute_week_id(self.start_date)
+
+
+# SQLAlchemy event listener to automatically populate week_id before insert/update
+@event.listens_for(StravaActivity, 'before_insert')
+@event.listens_for(StravaActivity, 'before_update')
+def populate_week_id_on_save(mapper, connection, target):
+    """Automatically populate week_id from start_date when saving."""
+    if target.start_date and not target.week_id:
+        target.week_id = StravaActivity.compute_week_id(target.start_date)

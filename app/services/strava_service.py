@@ -87,19 +87,19 @@ async def sync_week_activities(week_start: date, db: Session) -> int:
     Calls /v3/athlete/activities?after={unix_start}&before={unix_end} with a valid access token.
     For each activity: upsert into strava_activities using strava_id as the conflict key.
     Returns the number of activities upserted.
+    
+    Note: week_id is automatically populated by the StravaActivity model from start_date.
     """
     from app.models.strava_activity import StravaActivity
     from app.models.weekly_measurement import WeeklyMeasurement
 
-    # Look up WeeklyMeasurement by week_start to get the correct week_id
+    # Look up WeeklyMeasurement by week_start to verify it exists
     weekly_measurement = db.query(WeeklyMeasurement).filter(
         WeeklyMeasurement.week_start == week_start
     ).first()
     
     if not weekly_measurement:
         raise ValueError(f"No WeeklyMeasurement found for week starting {week_start}")
-    
-    week_id = weekly_measurement.id
 
     # Calculate start and end times for the week
     week_end = week_start + timedelta(days=7)
@@ -140,9 +140,10 @@ async def sync_week_activities(week_start: date, db: Session) -> int:
                 existing_activity.max_hr = activity_data.get("max_heartrate")
                 existing_activity.calories = activity_data.get("calories")
                 existing_activity.raw_json = str(activity_data)
-                existing_activity.week_id = week_id
+                # week_id will be auto-populated from start_date by the model
             else:
                 # Create new activity
+                # week_id will be auto-populated from start_date by the model
                 activity = StravaActivity(
                     strava_id=strava_id,
                     activity_type=activity_data.get("type", "Unknown"),
@@ -153,8 +154,7 @@ async def sync_week_activities(week_start: date, db: Session) -> int:
                     avg_hr=activity_data.get("average_heartrate"),
                     max_hr=activity_data.get("max_heartrate"),
                     calories=activity_data.get("calories"),
-                    raw_json=str(activity_data),
-                    week_id=week_id
+                    raw_json=str(activity_data)
                 )
                 db.add(activity)
 

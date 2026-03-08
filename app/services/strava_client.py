@@ -83,7 +83,7 @@ class StravaClient:
         Raises:
             httpx.HTTPStatusError: If token exchange fails
         """
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=300.0) as client:
             response = await client.post(
                 "https://www.strava.com/oauth/token",
                 data={
@@ -168,7 +168,7 @@ class StravaClient:
         # Token expired or expiring soon, refresh it
         refresh_token = self._decrypt_token(strava_token.refresh_token_encrypted)
         
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=300.0) as client:
             response = await client.post(
                 "https://www.strava.com/oauth/token",
                 data={
@@ -225,7 +225,7 @@ class StravaClient:
                 params["after"] = int(after.timestamp())
             
             # Fetch activities from Strava
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(timeout=300.0) as client:
                 response = await client.get(
                     "https://www.strava.com/api/v3/athlete/activities",
                     headers={"Authorization": f"Bearer {access_token}"},

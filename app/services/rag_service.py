@@ -3,6 +3,11 @@
 Manages FAISS vector index for semantic search across athlete data.
 Generates embeddings using Ollama's nomic-embed-text model.
 Provides context retrieval for AI coach chat.
+
+Migrated to Context Engineering architecture with:
+- IntentRouter for query classification
+- RAGRetriever for intent-based data retrieval
+- Evidence card generation for traceability
 """
 import os
 import pickle
@@ -24,6 +29,10 @@ from app.models.weekly_measurement import WeeklyMeasurement
 from app.models.daily_log import DailyLog
 from app.models.weekly_eval import WeeklyEval
 from app.models.faiss_metadata import FaissMetadata
+
+# Context Engineering imports
+from app.ai.retrieval.intent_router import IntentRouter, Intent
+from app.ai.retrieval.rag_retriever import RAGRetriever
 
 
 class RAGSystem:
@@ -66,6 +75,10 @@ class RAGSystem:
         self.index = None
         
         self.load_index()
+        
+        # Initialize Context Engineering components
+        self.intent_router = IntentRouter()
+        self.rag_retriever = RAGRetriever(db)
     
     def generate_embedding(self, text: str, max_length: int = 2048) -> np.ndarray:
         """
@@ -419,3 +432,66 @@ class RAGSystem:
         self.save_index()
         
         print(f"[RAG] Index rebuilt with {self.index.ntotal} vectors")
+    
+    # ========== Context Engineering Methods ==========
+    
+    def retrieve_with_intent(
+        self,
+        query: str,
+        athlete_id: int,
+        top_k: int = 20
+    ) -> List[Dict[str, Any]]:
+        """
+        Retrieve data using intent-aware retrieval (Context Engineering).
+        
+        This method replaces manual query classification with IntentRouter
+        and uses retrieval_policies.yaml for intent-specific retrieval.
+        
+        Args:
+            query: User query string
+            athlete_id: Athlete ID for filtering
+            top_k: Maximum number of results (default: 20)
+        
+        Returns:
+            List of evidence card dictionaries with fields:
+                - claim_text: Descriptive text about the data point
+                - source_type: Type of source (activity/goal/metric/log)
+                - source_id: Database record ID
+                - source_date: ISO format date
+                - relevance_score: Float 0.0-1.0
+        
+        Requirements: 5.3.3 - Use IntentRouter and retrieval_policies.yaml
+        """
+        # Classify query intent using IntentRouter
+        intent = self.intent_router.classify(query)
+        
+        print(f"[RAG] Classified query intent as: {intent.value}")
+        
+        # Retrieve data using RAGRetriever with intent-specific policy
+        evidence_cards = self.rag_retriever.retrieve(
+            query=query,
+            athlete_id=athlete_id,
+            intent=intent,
+            generate_cards=True  # Generate evidence cards per requirement 4.1.3
+        )
+        
+        # Limit to top_k results
+        evidence_cards = evidence_cards[:top_k]
+        
+        print(f"[RAG] Retrieved {len(evidence_cards)} evidence cards for intent {intent.value}")
+        
+        return evidence_cards
+    
+    def classify_intent(self, query: str) -> Intent:
+        """
+        Classify query intent using IntentRouter.
+        
+        Args:
+            query: User query string
+        
+        Returns:
+            Intent enum value
+        
+        Requirements: 5.3.3 - Use IntentRouter for query classification
+        """
+        return self.intent_router.classify(query)
