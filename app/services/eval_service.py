@@ -1,5 +1,5 @@
 # app/services/eval_service.py
-from datetime import datetime
+from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from app.services.prompt_engine import build_contract, hash_contract
 from app.services.langchain_eval_service import LangChainEvaluationService
@@ -148,15 +148,92 @@ class EvaluationService:
         weekly_eval.parsed_output_json = eval_data.model_dump()
         weekly_eval.generated_at = datetime.now()
         
-        # Collect evidence for traceability
+        # Collect evidence for traceability using EvidenceMapper
         try:
-            from app.services.evidence_collector import collect_evidence
-            evidence = collect_evidence(eval_data, week_id, self.db)
-            weekly_eval.evidence_map_json = evidence
-            logger.info(
-                "Evidence collection completed",
-                extra={"week_id": week_id, "evidence_items": len(evidence) if isinstance(evidence, dict) else 0}
-            )
+            from app.ai.retrieval.evidence_mapper import EvidenceMapper
+            from datetime import timedelta
+            
+            # Get the WeeklyMeasurement to derive week_start
+            weekly_measurement = self.db.query(WeeklyMeasurement).filter(
+                WeeklyMeasurement.id == week_id
+            ).first()
+            
+            if weekly_measurement:
+                week_start = weekly_measurement.week_start
+                week_end = week_start + timedelta(days=7)
+                
+                # Calculate ISO week_id for activity queries
+                iso_week_id = week_start.strftime("%Y-W%W")
+                
+                # Query source data for the week
+                daily_logs = self.db.query(DailyLog).filter(
+                    DailyLog.log_date >= week_start,
+                    DailyLog.log_date < week_end
+                ).all()
+                
+                strava_activities = self.db.query(StravaActivity).filter(
+                    StravaActivity.week_id == iso_week_id
+                ).all()
+                
+                # Format as evidence cards (retrieved_data format)
+                retrieved_data = []
+                
+                # Add activity cards
+                for activity in strava_activities:
+                    retrieved_data.append({
+                        "type": "activity",
+                        "id": activity.id,
+                        "date": activity.start_date.isoformat() if activity.start_date else None,
+                        "activity_type": activity.activity_type,
+                        "distance_km": round(activity.distance_m / 1000, 2) if activity.distance_m else None,
+                        "duration_min": round(activity.moving_time_s / 60, 1) if activity.moving_time_s else None,
+                        "elevation_m": activity.elevation_m,
+                        "avg_hr": activity.avg_hr,
+                        "max_hr": activity.max_hr
+                    })
+                
+                # Add log cards
+                for log in daily_logs:
+                    retrieved_data.append({
+                        "type": "log",
+                        "id": log.id,
+                        "date": log.log_date.isoformat() if log.log_date else None,
+                        "calories_in": log.calories_in,
+                        "protein_g": log.protein_g,
+                        "carbs_g": log.carbs_g,
+                        "fat_g": log.fat_g,
+                        "adherence_score": log.adherence_score
+                    })
+                
+                # Add metric card
+                retrieved_data.append({
+                    "type": "metric",
+                    "id": weekly_measurement.id,
+                    "week_start": weekly_measurement.week_start.isoformat(),
+                    "weight_kg": weekly_measurement.weight_kg,
+                    "body_fat_pct": weekly_measurement.body_fat_pct,
+                    "waist_cm": weekly_measurement.waist_cm,
+                    "rhr_bpm": weekly_measurement.rhr_bpm,
+                    "sleep_avg_hrs": weekly_measurement.sleep_avg_hrs
+                })
+                
+                # Use EvidenceMapper to map claims to evidence
+                evidence_mapper = EvidenceMapper()
+                evidence_cards = evidence_mapper.map_claims_to_evidence(eval_data, retrieved_data)
+                
+                # Store evidence cards as JSON array
+                weekly_eval.evidence_map_json = {"evidence_cards": evidence_cards}
+                
+                logger.info(
+                    "Evidence collection completed using EvidenceMapper",
+                    extra={"week_id": week_id, "evidence_cards_count": len(evidence_cards)}
+                )
+            else:
+                logger.warning(
+                    f"No WeeklyMeasurement found for week_id={week_id}, skipping evidence collection"
+                )
+                weekly_eval.evidence_map_json = {"evidence_cards": []}
+                
         except Exception as e:
             logger.warning(
                 f"Evidence collection failed: {e}",
@@ -167,7 +244,7 @@ class EvaluationService:
                 }
             )
             # Continue without evidence - it's not critical
-            weekly_eval.evidence_map_json = {}
+            weekly_eval.evidence_map_json = {"evidence_cards": []}
         
         try:
             self.db.commit()

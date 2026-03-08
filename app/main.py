@@ -6,7 +6,7 @@ from fastapi.responses import FileResponse
 from pathlib import Path
 from app.database import engine
 from app.models.base import Base
-from app.api import auth, logs, strava, evaluate, metrics, goals, chat, dashboard, settings
+from app.api import auth, logs, strava, metrics, goals, chat, dashboard, settings, evaluations
 
 # Import all models to register them with SQLAlchemy
 from app.models import daily_log, weekly_measurement, strava_activity, plan_targets, weekly_eval, athlete_goal
@@ -113,7 +113,7 @@ Comprehensive fitness and nutrition evaluation system with:
     app.include_router(logs.router, prefix="/api/logs", tags=["logs"])
     app.include_router(metrics.router, prefix="/api/metrics", tags=["metrics"])
     app.include_router(strava.router, prefix="/api/strava", tags=["strava"])
-    app.include_router(evaluate.router, prefix="/api/evaluate", tags=["evaluate"])
+    app.include_router(evaluations.router, prefix="/api/evaluations", tags=["evaluations"])
     app.include_router(goals.router, prefix="/api/goals", tags=["goals"])
     app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
     app.include_router(dashboard.router, prefix="/api/dashboard", tags=["dashboard"])

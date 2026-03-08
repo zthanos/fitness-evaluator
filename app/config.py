@@ -12,16 +12,19 @@ class Settings(BaseSettings):
     STRAVA_CLIENT_ID: str = ""
     STRAVA_CLIENT_SECRET: str = ""
     STRAVA_REDIRECT_URI: str = "http://localhost:8000/api/auth/strava/callback"
-    STRAVA_ENCRYPTION_KEY: str = ""  # Fernet encryption key for tokens
+    STRAVA_ENCRYPTION_KEY: str = ""
 
     # LLM Configuration - supports both LM Studio and Ollama
     LLM_TYPE: Literal["lm-studio", "ollama"] = "ollama"
-    LM_STUDIO_ENDPOINT: str = "http://localhost:11434/api"
+    LM_STUDIO_ENDPOINT: str = "http://localhost:1234"
     LM_STUDIO_MODEL: str = "mistral"
 
     # Ollama-specific configuration (OpenAI-compatible endpoint)
     OLLAMA_ENDPOINT: str = ""
     OLLAMA_MODEL: str = "mistral"
+    
+    # Web Search Configuration
+    TAVILY_API_KEY: str = ""  # Get free API key at https://tavily.com
     
     # Backward compatibility with old env var name
     LM_STUDIO_BASE_URL: str = ""  # Deprecated, use LM_STUDIO_ENDPOINT

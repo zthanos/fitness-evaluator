@@ -20,4 +20,5 @@ dependencies = [
     "sentence-transformers>=3.3.0", # Embeddings generation (all-MiniLM-L6-v2)
     "sse-starlette>=2.2.1", # Server-Sent Events for LLM streaming
     "hypothesis>=6.122.3", # Property-based testing
+    "langchain-openai>=1.1.10",
 ]

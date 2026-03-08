@@ -15,19 +15,10 @@ from app.schemas.chat_schemas import (
     SessionCreate, SessionResponse, SessionWithMessages,
     MessageCreate, MessageResponse
 )
-# Try LangChain service first, fall back to regular service
+# Use LangChain service for all LLM providers (Ollama, OpenAI, LM Studio)
 try:
-    from app.config import get_settings
-    settings = get_settings()
-    
-    if settings.LLM_TYPE == "lm-studio":
-        # Use native LM Studio service (uses /api/v1/chat endpoint)
-        from app.services.lmstudio_chat_service import LMStudioChatService as ChatService
-        print("[Chat API] Using LM Studio native chat service")
-    else:
-        # Use LangChain service for Ollama
-        from app.services.langchain_chat_service import LangChainChatService as ChatService
-        print("[Chat API] Using LangChain-based chat service with agentic tool calling")
+    from app.services.langchain_chat_service import LangChainChatService as ChatService
+    print("[Chat API] Using LangChain-based chat service with agentic tool calling")
 except ImportError as e:
     print(f"[Chat API] LangChain not available ({e}), using regular chat service")
     from app.services.chat_service import ChatService

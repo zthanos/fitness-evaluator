@@ -94,12 +94,17 @@ def test_latest_evaluation_endpoint():
     data = response.json()
     assert "score" in data
     assert "top_strengths" in data
-    assert "week_start" in data
+    assert "top_improvements" in data
+    assert "period_start" in data
+    assert "period_end" in data
+    assert "period_type" in data
     assert "generated_at" in data
+    assert "evaluation_id" in data
     
     # With empty database, should return nulls
     assert data["score"] is None
     assert data["top_strengths"] == []
+    assert data["top_improvements"] == []
 
 
 if __name__ == "__main__":

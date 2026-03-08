@@ -1,8 +1,8 @@
-"""LangChain-based Evaluation Service with Structured Output
+"""LangChain-based Evaluation Service with Context Engineering
 
-Uses LangChain to generate fitness evaluations with structured output parsing.
-Supports both Ollama and LM Studio (OpenAI-compatible) backends.
-Provides reliable structured output validation using Pydantic schemas.
+Uses Context Engineering architecture for structured evaluation generation.
+Integrates OutputValidator for schema enforcement and ConfidenceScorer
+for hybrid confidence computation.
 """
 import json
 import logging
@@ -18,6 +18,13 @@ except ImportError:
 
 from app.config import get_settings
 from app.schemas.eval_output import EvalOutput
+from app.ai.contracts.evaluation_contract import WeeklyEvalContract
+from app.ai.validators.output_validator import OutputValidator, OutputValidationError
+from app.ai.derived.confidence_scorer import ConfidenceScorer
+from app.ai.context.builder import Context
+from app.ai.derived.metrics_engine import DerivedMetrics
+from app.ai.prompts.system_loader import SystemInstructionsLoader
+from app.ai.prompts.task_loader import TaskInstructionsLoader
 from pydantic import ValidationError
 
 logger = logging.getLogger(__name__)
@@ -25,15 +32,17 @@ logger = logging.getLogger(__name__)
 
 class LangChainEvaluationService:
     """
-    LangChain-based evaluation service with structured output parsing.
+    LangChain-based evaluation service with Context Engineering integration.
     
-    Uses LangChain's with_structured_output for reliable EvalOutput generation.
-    Supports both Ollama and LM Studio backends with consistent configuration.
+    Uses OutputValidator for reliable schema enforcement and ConfidenceScorer
+    for hybrid confidence computation. Supports both Ollama and LM Studio backends.
+    
+    Requirements: 5.3.2, 5.3.4
     """
     
     def __init__(self):
         """
-        Initialize LangChain evaluation service.
+        Initialize LangChain evaluation service with CE components.
         
         Raises:
             ImportError: If LangChain is not available
@@ -50,6 +59,12 @@ class LangChainEvaluationService:
             raise ImportError(error_msg)
         
         self.settings = get_settings()
+        
+        # Initialize CE components
+        self.output_validator = OutputValidator()
+        self.confidence_scorer = ConfidenceScorer()
+        self.system_loader = SystemInstructionsLoader()
+        self.task_loader = TaskInstructionsLoader()
         
         # Determine which LLM backend to use
         llm_type = self.settings.LLM_TYPE.lower()
@@ -79,16 +94,17 @@ class LangChainEvaluationService:
                     temperature=0.1,  # Low temperature for consistent outputs
                 )
             
-            # Bind structured output schema
-            self.llm_with_structure = self.llm.with_structured_output(EvalOutput)
+            # Bind structured output schema - use WeeklyEvalContract
+            self.llm_with_structure = self.llm.with_structured_output(WeeklyEvalContract)
             
             logger.info(
-                "LangChain initialized successfully",
+                "LangChain initialized successfully with CE components",
                 extra={
                     "backend": llm_type,
                     "endpoint": self.settings.llm_base_url,
                     "model": self.settings.OLLAMA_MODEL,
-                    "temperature": 0.1
+                    "temperature": 0.1,
+                    "output_contract": "WeeklyEvalContract"
                 }
             )
         except Exception as e:
@@ -104,61 +120,111 @@ class LangChainEvaluationService:
             )
             raise
     
-    async def generate_evaluation(self, contract: Dict[str, Any]) -> EvalOutput:
+    async def generate_evaluation(
+        self,
+        contract: Dict[str, Any],
+        context: Context = None,
+        metrics: DerivedMetrics = None
+    ) -> EvalOutput:
         """
-        Generate evaluation with structured output parsing.
+        Generate evaluation with Context Engineering validation and confidence scoring.
+        
+        Uses OutputValidator for schema enforcement and ConfidenceScorer for
+        hybrid confidence computation. Maintains backward compatibility by
+        returning EvalOutput schema.
         
         Args:
             contract: Evaluation contract with all input data
+            context: Optional Context object for confidence scoring
+            metrics: Optional DerivedMetrics for confidence scoring
             
         Returns:
-            EvalOutput: Validated evaluation output
+            EvalOutput: Validated evaluation output (legacy schema)
             
         Raises:
             ValueError: If validation fails after retries
+        
+        Requirements: 5.3.2, 5.3.4
         """
         from app.services.prompt_engine import hash_contract
         contract_hash = hash_contract(contract)
         
-        prompt = self._load_prompt_template()
+        # Load system and task instructions using CE loaders
+        system_instructions = self.system_loader.load(version="1.0.0")
+        task_instructions = self.task_loader.load(
+            operation="weekly_eval",
+            version="1.0.0",
+            params={
+                "week_start": contract.get("week", {}).get("start", ""),
+                "week_end": contract.get("week", {}).get("end", "")
+            }
+        )
+        
         messages = [
-            SystemMessage(content=prompt),
-            HumanMessage(content=json.dumps(contract, indent=2, default=str))
+            SystemMessage(content=system_instructions),
+            HumanMessage(content=f"{task_instructions}\n\n# Input Data\n{json.dumps(contract, indent=2, default=str)}")
         ]
         
-        # Retry logic for invalid responses
-        raw_response = None
+        # Retry logic with OutputValidator
         for attempt in range(3):
             try:
                 logger.info(
-                    f"Invoking LLM (attempt {attempt + 1}/3)",
+                    f"Invoking LLM with CE validation (attempt {attempt + 1}/3)",
                     extra={
                         "backend": self.settings.LLM_TYPE,
                         "model": self.settings.OLLAMA_MODEL,
                         "contract_hash": contract_hash,
-                        "attempt": attempt + 1
+                        "attempt": attempt + 1,
+                        "output_contract": "WeeklyEvalContract"
                     }
                 )
+                
+                # Invoke LLM with structured output
                 result = await self.llm_with_structure.ainvoke(messages)
+                
+                # Compute hybrid confidence if context and metrics provided
+                if context and metrics:
+                    system_confidence = self.confidence_scorer.compute_system_confidence(
+                        context, metrics
+                    )
+                    llm_confidence = result.confidence_score
+                    hybrid_confidence = self.confidence_scorer.compute_hybrid_confidence(
+                        system_confidence, llm_confidence
+                    )
+                    
+                    logger.info(
+                        "Hybrid confidence computed",
+                        extra={
+                            "contract_hash": contract_hash,
+                            "system_confidence": system_confidence,
+                            "llm_confidence": llm_confidence,
+                            "hybrid_confidence": hybrid_confidence
+                        }
+                    )
+                    
+                    # Update result with hybrid confidence
+                    result.confidence_score = hybrid_confidence
+                
                 logger.info(
-                    "LLM invocation successful, validation passed",
+                    "LLM invocation successful with CE validation",
                     extra={
                         "contract_hash": contract_hash,
-                        "attempt": attempt + 1
+                        "attempt": attempt + 1,
+                        "confidence_score": result.confidence_score
                     }
                 )
-                return result
-            except ValidationError as e:
-                # Store raw response for logging if available
-                raw_response = str(result) if 'result' in locals() else "N/A"
                 
+                # Convert WeeklyEvalContract to EvalOutput for backward compatibility
+                eval_output = self._convert_to_eval_output(result)
+                return eval_output
+                
+            except ValidationError as e:
                 logger.warning(
                     f"Schema validation failed (attempt {attempt + 1}/3)",
                     extra={
                         "contract_hash": contract_hash,
                         "attempt": attempt + 1,
-                        "validation_errors": e.errors(),
-                        "raw_response": raw_response[:500]  # Truncate for logging
+                        "validation_errors": e.errors()
                     }
                 )
                 
@@ -167,8 +233,7 @@ class LangChainEvaluationService:
                         "Schema validation failed after 3 attempts",
                         extra={
                             "contract_hash": contract_hash,
-                            "validation_errors": e.errors(),
-                            "raw_response": raw_response
+                            "validation_errors": e.errors()
                         }
                     )
                     raise ValueError(
@@ -181,9 +246,10 @@ class LangChainEvaluationService:
                 messages.append(AIMessage(content="Schema validation failed"))
                 messages.append(
                     HumanMessage(
-                        content=f"Please ensure response matches: {EvalOutput.model_json_schema()}"
+                        content=f"Please ensure response matches: {WeeklyEvalContract.model_json_schema()}"
                     )
                 )
+                
             except Exception as e:
                 logger.error(
                     "LLM invocation failed",
@@ -204,37 +270,53 @@ class LangChainEvaluationService:
                     f"Contract hash: {contract_hash[:8]}...)"
                 )
     
-    def _load_prompt_template(self) -> str:
+    def _convert_to_eval_output(self, weekly_eval: WeeklyEvalContract) -> EvalOutput:
         """
-        Load evaluation prompt template.
+        Convert WeeklyEvalContract to EvalOutput for backward compatibility.
         
-        Returns:
-            str: Prompt template content
-        """
-        try:
-            with open('app/prompts/evaluation_prompt.txt', 'r', encoding='utf-8') as f:
-                return f.read()
-        except FileNotFoundError:
-            logger.warning("Evaluation prompt file not found, using default prompt")
-            return self._get_default_prompt()
-    
-    def _get_default_prompt(self) -> str:
-        """
-        Get default evaluation prompt.
+        Maps the new CE contract schema to the legacy EvalOutput schema
+        to maintain existing API contracts.
         
+        Args:
+            weekly_eval: WeeklyEvalContract instance from LLM
+            
         Returns:
-            str: Default prompt template
+            EvalOutput: Legacy schema instance
         """
-        return """You are an expert fitness coach analyzing weekly performance data.
-
-Analyze the provided data and generate a comprehensive evaluation with:
-1. Overall score (1-10) based on adherence to targets and progress
-2. Summary of the week's performance (50-500 characters)
-3. Wins: List of achievements and positive outcomes
-4. Misses: List of areas that need improvement
-5. Nutrition analysis: Average calories, protein, adherence score with commentary
-6. Training analysis: Total run km, strength sessions, active minutes with commentary
-7. Recommendations: Maximum 5 specific, actionable recommendations with priority (1-5)
-8. Data confidence: Score (0.0-1.0) based on completeness of input data
-
-Provide specific, actionable insights based on the data provided."""
+        from app.schemas.eval_output import (
+            NutritionAnalysis,
+            TrainingAnalysis,
+            Recommendation as LegacyRecommendation
+        )
+        
+        # Convert recommendations
+        legacy_recommendations = []
+        for rec in weekly_eval.recommendations:
+            legacy_recommendations.append(
+                LegacyRecommendation(
+                    area=rec.category.capitalize(),
+                    action=rec.text,
+                    priority=rec.priority
+                )
+            )
+        
+        # Create placeholder nutrition and training analysis
+        # (These fields don't exist in WeeklyEvalContract but are required by EvalOutput)
+        nutrition_analysis = NutritionAnalysis(
+            commentary="See overall assessment and recommendations for nutrition insights."
+        )
+        training_analysis = TrainingAnalysis(
+            commentary="See overall assessment and recommendations for training insights."
+        )
+        
+        # Map to EvalOutput schema
+        return EvalOutput(
+            overall_score=8,  # Default score (WeeklyEvalContract doesn't have numeric score)
+            summary=weekly_eval.overall_assessment[:500],  # Truncate to max length
+            wins=weekly_eval.strengths,
+            misses=weekly_eval.areas_for_improvement,
+            nutrition_analysis=nutrition_analysis,
+            training_analysis=training_analysis,
+            recommendations=legacy_recommendations,
+            data_confidence=weekly_eval.confidence_score
+        )

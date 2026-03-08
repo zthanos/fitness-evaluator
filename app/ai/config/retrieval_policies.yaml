@@ -1,0 +1,69 @@
+# Retrieval Policies Configuration
+# Defines intent-specific retrieval strategies for the RAG system
+# Each policy specifies how to retrieve data based on the classified query intent
+
+# Intent: Recent Performance
+# Use case: "How did I do this week?", "What were my recent workouts?"
+recent_performance:
+  days_back: 14  # Look back 14 days
+  max_records: 20  # Limit to 20 records
+  data_types:
+    - activities
+    - metrics
+    - logs
+
+# Intent: Trend Analysis
+# Use case: "How has my training progressed?", "What are my trends?"
+trend_analysis:
+  days_back: 90  # Look back 90 days for trend analysis
+  max_records: 20  # Limit to 20 records
+  data_types:
+    - activities
+    - metrics
+
+# Intent: Goal Progress
+# Use case: "Am I on track for my goal?", "How close am I to my target?"
+goal_progress:
+  days_back: null  # All time - retrieve all relevant data
+  max_records: 20  # Limit to 20 records
+  data_types:
+    - goals
+    - activities
+
+# Intent: Recovery Status
+# Use case: "Am I recovered?", "Should I rest today?"
+recovery_status:
+  days_back: 7  # Look back 7 days for recovery assessment
+  max_records: 20  # Limit to 20 records
+  data_types:
+    - activities
+    - metrics
+
+# Intent: Training Plan
+# Use case: "What should I do next week?", "What's my upcoming schedule?"
+training_plan:
+  days_back: -7  # Look forward 7 days (negative = future)
+  max_records: 20  # Limit to 20 records
+  data_types:
+    - goals
+    - planned_activities
+
+# Intent: Comparison
+# Use case: "How does this compare to last month?", "Am I improving?"
+comparison:
+  days_back: 180  # Look back 180 days for comparison
+  max_records: 40  # Higher limit for comparison (need more data points)
+  data_types:
+    - activities
+    - metrics
+
+# Intent: General
+# Use case: Fallback for queries that don't match specific intents
+general:
+  days_back: 30  # Look back 30 days as default
+  max_records: 20  # Limit to 20 records
+  data_types:
+    - activities
+    - metrics
+    - logs
+    - goals

@@ -1,0 +1,57 @@
+# LLM model configurations and tool settings
+
+# Model definitions
+models:
+  mixtral:
+    name: "mixtral:8x7b-instruct"
+    provider: "ollama"
+    temperature: 0.1
+    max_tokens: 2048
+    timeout_seconds: 30
+    use_cases: ["evaluation", "chat"]
+    
+  llama:
+    name: "llama3.1:8b-instruct"
+    provider: "ollama"
+    temperature: 0.1
+    max_tokens: 2048
+    timeout_seconds: 30
+    use_cases: ["evaluation", "chat"]
+
+# Operation-specific configurations
+operations:
+  weekly_evaluation:
+    primary_model: "mixtral"
+    fallback_model: "llama"
+    token_budget: 3200
+    temperature: 0.1
+    system_version: "1.0.0"
+    task_version: "1.0.0"
+    
+  coach_chat:
+    primary_model: "mixtral"
+    fallback_model: "llama"
+    token_budget: 2400
+    temperature: 0.7
+    system_version: "1.0.0"
+    task_version: "1.0.0"
+
+# Tool configuration
+tools:
+  # Enable/disable tool categories
+  enabled_categories:
+    - "data_retrieval"  # GetRecentActivities, GetAthleteGoals, GetWeeklyMetrics
+    # - "web_search"    # Web search tools (disabled by default)
+  
+  # Web search configuration (for future intent-gated use)
+  web_search:
+    enabled: false  # Disabled by default for security
+    intent_gating: true  # Require explicit intent classification before enabling
+    allowed_intents: []  # Empty list means no intents allow web search
+    # Future: could enable for specific intents like ["research", "external_info"]
+  
+  # Data retrieval tools configuration
+  data_retrieval:
+    enabled: true
+    max_results_per_query: 20
+    timeout_seconds: 5

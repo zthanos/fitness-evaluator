@@ -21,7 +21,7 @@ class NavigationSidebar {
       { id: 'activities', label: 'Activities', icon: '⚡', path: '/activities' },
       { id: 'metrics', label: 'Metrics', icon: '📈', path: '/metrics' },
       { id: 'logs', label: 'Logs', icon: '📝', path: '/logs' },
-      { id: 'evaluations', label: 'Evaluations', icon: '🎯', path: '/evaluation.html' },
+      { id: 'evaluations', label: 'Evaluations', icon: '🎯', path: '/evaluations-list.html' },
       { id: 'chat', label: 'Chat', icon: '💬', path: '/chat.html' },
       { id: 'settings', label: 'Settings', icon: '⚙️', path: '/settings.html' }
     ];
