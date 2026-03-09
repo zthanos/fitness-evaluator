@@ -8,3 +8,10 @@
 {"timestamp": "2026-03-08T07:28:28.356872", "tool_name": "get_weekly_metrics", "parameters": {"athlete_id": 1, "week_id": "2026-W09"}, "result_count": 0, "success_status": true, "error_message": null}
 {"timestamp": "2026-03-08T16:19:51.477559", "tool_name": "get_recent_activities", "parameters": {"athlete_id": 1, "days_back": 7}, "result_count": 6, "success_status": true, "error_message": null}
 {"timestamp": "2026-03-08T16:19:51.484073", "tool_name": "get_weekly_metrics", "parameters": {"athlete_id": 1, "week_id": "2026-W10"}, "result_count": 0, "success_status": true, "error_message": null}
+{"timestamp": "2026-03-09T04:43:45.906181", "tool_name": "get_recent_activities", "parameters": {"athlete_id": 1, "days_back": 7}, "result_count": 6, "success_status": true, "error_message": null}
+{"timestamp": "2026-03-09T04:46:09.795220", "tool_name": "get_recent_activities", "parameters": {"athlete_id": 1, "days_back": 7}, "result_count": 6, "success_status": true, "error_message": null}
+{"timestamp": "2026-03-09T04:46:45.945983", "tool_name": "get_recent_activities", "parameters": {"athlete_id": 1, "days_back": 28}, "result_count": 24, "success_status": true, "error_message": null}
+{"timestamp": "2026-03-09T04:46:45.954110", "tool_name": "get_weekly_metrics", "parameters": {"athlete_id": 1, "week_id": "2026-W10"}, "result_count": 0, "success_status": true, "error_message": null}
+{"timestamp": "2026-03-09T04:50:40.702006", "tool_name": "get_recent_activities", "parameters": {"athlete_id": 1, "days_back": 7}, "result_count": 6, "success_status": true, "error_message": null}
+{"timestamp": "2026-03-09T04:51:59.584997", "tool_name": "get_recent_activities", "parameters": {"athlete_id": 1, "days_back": 7}, "result_count": 6, "success_status": true, "error_message": null}
+{"timestamp": "2026-03-09T04:51:59.593374", "tool_name": "get_weekly_metrics", "parameters": {"athlete_id": 1, "week_id": "2026-W09"}, "result_count": 0, "success_status": true, "error_message": null}

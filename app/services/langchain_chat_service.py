@@ -136,7 +136,7 @@ class LangChainChatService:
         
         @langchain_tool
         def get_my_weekly_metrics(week_id: str) -> Dict[str, Any]:
-            """Retrieve your weekly body metrics. Provide week_id in format YYYY-WW (e.g., '2024-W15')."""
+            """Retrieve your weekly body metrics. Provide week_id in format YYYY-WW with zero-padded week (e.g., '2024-W15', '2026-W09' not '2026-W9')."""
             return get_weekly_metrics.invoke({
                 "athlete_id": self.default_athlete_id,
                 "week_id": week_id

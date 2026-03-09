@@ -26,7 +26,7 @@ class GetWeeklyMetricsInput(BaseModel):
     )
     week_id: str = Field(
         ...,
-        description="ISO week identifier in format YYYY-WW (e.g., '2024-W15')"
+        description="ISO week identifier in format YYYY-WW with zero-padded week number (e.g., '2024-W15', '2026-W09'). Week must be 2 digits."
     )
     
     @field_validator('week_id')
@@ -61,7 +61,7 @@ def get_weekly_metrics(athlete_id: int, week_id: str) -> Optional[Dict[str, Any]
     
     Args:
         athlete_id: The ID of the athlete whose metrics to retrieve
-        week_id: ISO week identifier in format YYYY-WW (e.g., '2024-W15')
+        week_id: ISO week identifier in format YYYY-WW with zero-padded week (e.g., '2024-W15', '2026-W09' not '2026-W9')
         
     Returns:
         Dictionary with formatted metrics data, or None if no metrics found for the week

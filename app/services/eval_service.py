@@ -163,7 +163,8 @@ class EvaluationService:
                 week_end = week_start + timedelta(days=7)
                 
                 # Calculate ISO week_id for activity queries
-                iso_week_id = week_start.strftime("%Y-W%W")
+                iso_calendar = week_start.isocalendar()
+                iso_week_id = f"{iso_calendar[0]}-W{iso_calendar[1]:02d}"
                 
                 # Query source data for the week
                 daily_logs = self.db.query(DailyLog).filter(

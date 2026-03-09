@@ -126,7 +126,8 @@ class EvaluationEngine:
         )
         
         # Compute week_id from period_start (ISO week format: YYYY-WW)
-        week_id = period_start.strftime("%Y-W%W")
+        iso_calendar = period_start.isocalendar()
+        week_id = f"{iso_calendar[0]}-W{iso_calendar[1]:02d}"
         
         # Step 1: Build context using EvaluationContextBuilder
         context_builder = EvaluationContextBuilder(self.db, token_budget=8000)
