@@ -96,7 +96,8 @@ def test_evidence_mapper_generates_evidence_cards(db_session: Session, mock_eval
     week_id = str(measurement.id)
     
     # Calculate ISO week_id for activities
-    iso_week_id = week_start.strftime("%Y-W%W")
+    iso_calendar = week_start.isocalendar()
+    iso_week_id = f"{iso_calendar[0]}-W{iso_calendar[1]:02d}"
     
     # Create some activities for the week
     activity1 = StravaActivity(
