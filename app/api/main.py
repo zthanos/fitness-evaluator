@@ -4,6 +4,7 @@ from app.api.v1.evaluations import router as evaluations_router
 from app.api.evaluations import router as evaluations_v2_router
 from app.api.goals import router as goals_router
 from app.api.auth import router as auth_router
+from app.api.training_plans import router as training_plans_router
 from app.database import engine
 from app.models.base import Base
 from app.models import *  
@@ -22,6 +23,7 @@ app.include_router(evaluations_router)
 app.include_router(evaluations_v2_router, prefix="/api/evaluations", tags=["evaluations-v2"])
 app.include_router(goals_router, prefix="/api/goals", tags=["goals"])
 app.include_router(auth_router, prefix="/auth", tags=["authentication"])
+app.include_router(training_plans_router, prefix="/api/training-plans", tags=["training-plans"])
 @app.get("/", tags=["health"])
 async def root():
     return {"message": "Fitness Evaluation API is running!"}

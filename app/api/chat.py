@@ -226,12 +226,13 @@ async def create_message(
     db: Session = Depends(get_db)
 ):
     """
-    Send a message in a chat session.
+    Send a message in a chat session with RAG-based context retrieval.
     
     This endpoint:
-    1. Saves the user message
-    2. Sends it to the LLM for processing
-    3. Saves and returns the assistant response
+    1. Retrieves context from active session buffer and vector store (RAG)
+    2. Sends message to LLM with retrieved context
+    3. Executes any tool calls requested by LLM
+    4. Saves and returns the assistant response
     
     **Parameters:**
     - `session_id`: Session identifier
@@ -243,74 +244,122 @@ async def create_message(
     - The assistant's response message
     
     **Note:** For streaming responses, use the `/chat/stream` endpoint instead
+    
+    Requirements: 1.1, 1.2, 1.3, 1.4, 17.1
     """
     # Verify session exists
     session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
     if not session:
         raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
     
-    # Save user message
-    user_message = ChatMessage(
-        session_id=session_id,
-        role='user',
-        content=message.content,
-        created_at=datetime.utcnow()
-    )
-    db.add(user_message)
+    # Get athlete_id for user scoping
+    athlete_id = session.athlete_id or 1  # Default to 1 if not set
     
-    # Get conversation history
-    chat_service = ChatService(db)
-    prev_messages = db.query(ChatMessage).filter(
-        ChatMessage.session_id == session_id
-    ).order_by(ChatMessage.created_at.asc()).limit(10).all()
+    # Initialize RAG Engine and Chat Message Handler
+    from app.services.rag_engine import RAGEngine
+    from app.services.llm_client import LLMClient
+    from app.services.chat_message_handler import ChatMessageHandler
     
-    messages = []
-    for msg in prev_messages:
-        messages.append({
-            'role': msg.role,
-            'content': msg.content
-        })
-    
-    # Add current user message
-    messages.append({
-        'role': 'user',
-        'content': message.content
-    })
-    
-    # Get LLM response
     try:
-        response = await chat_service.get_chat_response(messages)
-        assistant_content = response.get('content', 'I apologize, but I encountered an error processing your request.')
+        rag_engine = RAGEngine(db)
+        llm_client = LLMClient()
+        
+        # Create chat message handler with RAG integration
+        handler = ChatMessageHandler(
+            db=db,
+            rag_engine=rag_engine,
+            llm_client=llm_client,
+            user_id=athlete_id,
+            session_id=session_id
+        )
+        
+        # Load existing session messages into active buffer
+        prev_messages = db.query(ChatMessage).filter(
+            ChatMessage.session_id == session_id
+        ).order_by(ChatMessage.created_at.asc()).all()
+        
+        handler.load_session_messages(prev_messages)
+        
+        # Handle message with RAG context retrieval and tool orchestration
+        response = await handler.handle_message(message.content)
+        
+        assistant_content = response['content']
+        
+        # Save user message
+        user_message = ChatMessage(
+            session_id=session_id,
+            role='user',
+            content=message.content,
+            created_at=datetime.utcnow()
+        )
+        db.add(user_message)
+        
+        # Save assistant message
+        assistant_message = ChatMessage(
+            session_id=session_id,
+            role='assistant',
+            content=assistant_content,
+            created_at=datetime.utcnow()
+        )
+        db.add(assistant_message)
+        
+        # Update session timestamp
+        session.updated_at = datetime.utcnow()
+        
+        # Update session title from first user message if needed
+        if session.title == "New Chat":
+            session.title = message.content[:50]
+        
+        db.commit()
+        db.refresh(assistant_message)
+        
+        return {
+            'id': str(assistant_message.id),
+            'session_id': str(assistant_message.session_id),
+            'role': assistant_message.role,
+            'content': assistant_message.content,
+            'created_at': assistant_message.created_at
+        }
+        
     except Exception as e:
-        print(f"Error getting LLM response: {e}")
-        assistant_content = "I'm having trouble connecting to my AI brain right now. Please try again in a moment."
-    
-    # Save assistant message
-    assistant_message = ChatMessage(
-        session_id=session_id,
-        role='assistant',
-        content=assistant_content,
-        created_at=datetime.utcnow()
-    )
-    db.add(assistant_message)
-    
-    # Update session timestamp
-    session.updated_at = datetime.utcnow()
-    
-    # Update session title from first user message if needed
-    if session.title == "New Chat":
-        session.title = message.content[:50]
-    
-    db.commit()
-    db.refresh(assistant_message)
-    
-    return {
-        'id': str(assistant_message.id),
-        'session_id': str(assistant_message.session_id),
-        'role': assistant_message.role,
-        'content': assistant_message.content,
-        'created_at': assistant_message.created_at
-    }
+        print(f"Error processing message with RAG: {e}")
+        import traceback
+        traceback.print_exc()
+        
+        # Fallback to simple response
+        assistant_content = "I'm having trouble processing your request right now. Please try again in a moment."
+        
+        # Save user message
+        user_message = ChatMessage(
+            session_id=session_id,
+            role='user',
+            content=message.content,
+            created_at=datetime.utcnow()
+        )
+        db.add(user_message)
+        
+        # Save assistant message
+        assistant_message = ChatMessage(
+            session_id=session_id,
+            role='assistant',
+            content=assistant_content,
+            created_at=datetime.utcnow()
+        )
+        db.add(assistant_message)
+        
+        # Update session timestamp
+        session.updated_at = datetime.utcnow()
+        
+        db.commit()
+        db.refresh(assistant_message)
+        
+        return {
+            'id': str(assistant_message.id),
+            'session_id': str(assistant_message.session_id),
+            'role': assistant_message.role,
+            'content': assistant_message.content,
+            'created_at': assistant_message.created_at
+        }
 
 
 @router.delete("/sessions/{session_id}", summary="Delete a chat session")
@@ -321,15 +370,30 @@ async def delete_session(
     """
     Delete a chat session and all its messages.
     
+    Also removes the session from the vector store.
+    
     **Parameters:**
     - `session_id`: Session identifier
     
     **Returns:**
     - Success message
+    
+    Requirements: 2.1, 2.2, 2.3, 2.4
     """
     session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
     if not session:
         raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
+    
+    athlete_id = session.athlete_id or 1
+    
+    # Delete from vector store first
+    try:
+        from app.services.rag_engine import RAGEngine
+        rag_engine = RAGEngine(db)
+        rag_engine.delete_session(user_id=athlete_id, session_id=session_id)
+    except Exception as e:
+        print(f"Error deleting session from vector store: {e}")
+        # Continue with database deletion even if vector store deletion fails
     
     # Delete all messages in session (cascade should handle this, but explicit is better)
     db.query(ChatMessage).filter(ChatMessage.session_id == session_id).delete()
@@ -341,23 +405,92 @@ async def delete_session(
     return {"success": True, "message": f"Session {session_id} deleted"}
 
 
-@router.post("/stream", summary="Stream chat response")
-async def stream_chat(
-    message: MessageCreate,
-    session_id: Optional[int] = None,
+@router.post("/sessions/{session_id}/persist", summary="Persist session to vector store")
+async def persist_session(
+    session_id: int,
+    eval_score: Optional[float] = None,
     db: Session = Depends(get_db)
 ):
     """
-    Stream a chat response using Server-Sent Events.
+    Persist a chat session to the vector store for future context retrieval.
+    
+    This should be called when a session ends or when the user navigates away.
+    The session messages will be embedded and stored in the vector store for
+    semantic search in future conversations.
+    
+    **Parameters:**
+    - `session_id`: Session identifier
+    - `eval_score`: Optional evaluation score for the session (0-10)
+    
+    **Returns:**
+    - Success message with count of persisted messages
+    
+    Requirements: 1.4, 1.5, 1.6
+    """
+    session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
+    if not session:
+        raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
+    
+    athlete_id = session.athlete_id or 1
+    
+    # Get all messages in session
+    messages = db.query(ChatMessage).filter(
+        ChatMessage.session_id == session_id
+    ).order_by(ChatMessage.created_at.asc()).all()
+    
+    if not messages:
+        return {
+            "success": True,
+            "message": "No messages to persist",
+            "messages_persisted": 0
+        }
+    
+    try:
+        from app.services.rag_engine import RAGEngine
+        rag_engine = RAGEngine(db)
+        
+        # Persist session to vector store
+        rag_engine.persist_session(
+            user_id=athlete_id,
+            session_id=session_id,
+            messages=messages,
+            eval_score=eval_score
+        )
+        
+        return {
+            "success": True,
+            "message": f"Session {session_id} persisted to vector store",
+            "messages_persisted": len(messages)
+        }
+        
+    except Exception as e:
+        print(f"Error persisting session to vector store: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to persist session: {str(e)}"
+        )
+
+
+@router.post("/stream", summary="Stream chat response")
+async def stream_chat(
+    message: MessageCreate,
+    db: Session = Depends(get_db)
+):
+    """
+    Stream a chat response using Server-Sent Events with RAG-based context retrieval.
     
     This endpoint:
-    1. Takes a user message
-    2. Streams the LLM response in real-time
-    3. Returns chunks as they're generated
+    1. Retrieves context from active session buffer and vector store (RAG)
+    2. Streams the LLM response in real-time with retrieved context
+    3. Executes any tool calls requested by LLM
+    4. Saves messages to database
+    5. Returns chunks as they're generated
     
     **Fields:**
-    - `message`: User message content
-    - `session_id`: Optional session ID for context
+    - `message.content`: User message content
+    - `message.session_id`: Session ID for context (required for RAG)
     
     **Returns:**
     - Server-Sent Events stream with response chunks
@@ -369,48 +502,131 @@ async def stream_chat(
     
     data: {"type": "done"}
     ```
+    
+    Requirements: 1.1, 1.2, 1.3, 1.4, 17.1
     """
-    chat_service = ChatService(db)
+    # Get session_id from message body
+    session_id = message.session_id
     
-    # Build conversation history
-    messages = []
+    # If no session_id provided, create a new session
+    if not session_id:
+        new_session = ChatSession(
+            athlete_id=1,  # Default athlete
+            title=message.content[:50] if message.content else "New Chat",
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow()
+        )
+        db.add(new_session)
+        db.commit()
+        db.refresh(new_session)
+        session_id = new_session.id
     
-    # Load previous messages if session_id provided
-    if session_id:
-        session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
-        if session:
-            prev_messages = db.query(ChatMessage).filter(
-                ChatMessage.session_id == session_id
-            ).order_by(ChatMessage.created_at.asc()).limit(10).all()
-            
-            for msg in prev_messages:
-                messages.append({
-                    'role': msg.role,
-                    'content': msg.content
-                })
+    # Verify session exists
+    session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
+    if not session:
+        raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
     
-    # Add current user message
-    messages.append({
-        'role': 'user',
-        'content': message.content
-    })
+    # Get athlete_id for user scoping
+    athlete_id = session.athlete_id or 1
     
     async def event_generator():
-        """Generate Server-Sent Events."""
+        """Generate Server-Sent Events with RAG integration."""
         try:
-            async for chunk in chat_service.stream_chat_response(messages):
-                # Send chunk as SSE
+            # Initialize RAG Engine and Chat Message Handler
+            from app.services.rag_engine import RAGEngine
+            from app.services.llm_client import LLMClient
+            from app.services.chat_message_handler import ChatMessageHandler
+            
+            rag_engine = RAGEngine(db)
+            llm_client = LLMClient()
+            
+            # Create chat message handler with RAG integration
+            handler = ChatMessageHandler(
+                db=db,
+                rag_engine=rag_engine,
+                llm_client=llm_client,
+                user_id=athlete_id,
+                session_id=session_id
+            )
+            
+            # Load existing session messages into active buffer
+            prev_messages = db.query(ChatMessage).filter(
+                ChatMessage.session_id == session_id
+            ).order_by(ChatMessage.created_at.asc()).all()
+            
+            handler.load_session_messages(prev_messages)
+            
+            # Handle message with RAG context retrieval and tool orchestration
+            response = await handler.handle_message(message.content)
+            
+            assistant_content = response['content']
+            
+            # Stream the response in chunks
+            chunk_size = 50  # Characters per chunk
+            for i in range(0, len(assistant_content), chunk_size):
+                chunk = assistant_content[i:i+chunk_size]
                 event_data = json.dumps({
                     'type': 'chunk',
                     'content': chunk
                 })
                 yield f"data: {event_data}\n\n"
             
+            # Save user message
+            user_message = ChatMessage(
+                session_id=session_id,
+                role='user',
+                content=message.content,
+                created_at=datetime.utcnow()
+            )
+            db.add(user_message)
+            
+            # Save assistant message
+            assistant_message = ChatMessage(
+                session_id=session_id,
+                role='assistant',
+                content=assistant_content,
+                created_at=datetime.utcnow()
+            )
+            db.add(assistant_message)
+            
+            # Update session timestamp
+            session.updated_at = datetime.utcnow()
+            
+            # Update session title from first user message if needed
+            if session.title == "New Chat":
+                session.title = message.content[:50]
+            
+            db.commit()
+            
+            # Persist session to vector store for future context retrieval
+            # This ensures the conversation is available for RAG in future sessions
+            try:
+                # Get all messages in this session
+                all_messages = db.query(ChatMessage).filter(
+                    ChatMessage.session_id == session_id
+                ).order_by(ChatMessage.created_at.asc()).all()
+                
+                # Persist to vector store (Requirement 1.4, 1.5, 1.6)
+                rag_engine.persist_session(
+                    user_id=athlete_id,
+                    session_id=session_id,
+                    messages=all_messages,
+                    eval_score=None  # Could be calculated based on conversation quality
+                )
+                print(f"[Chat API] Persisted session {session_id} to vector store")
+            except Exception as e:
+                print(f"[Chat API] Warning: Failed to persist session to vector store: {e}")
+                # Don't fail the request if persistence fails
+            
             # Send done event
-            done_data = json.dumps({'type': 'done'})
+            done_data = json.dumps({'type': 'done', 'session_id': session_id})
             yield f"data: {done_data}\n\n"
             
         except Exception as e:
+            print(f"Error in stream_chat with RAG: {e}")
+            import traceback
+            traceback.print_exc()
+            
             # Send error event
             error_data = json.dumps({
                 'type': 'error',

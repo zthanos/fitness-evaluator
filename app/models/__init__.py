@@ -11,3 +11,7 @@ from app.models.chat_message import ChatMessage  # noqa: F401
 from app.models.activity_analysis import ActivityAnalysis  # noqa: F401
 from app.models.strava_token import StravaToken  # noqa: F401
 from app.models.evaluation import Evaluation  # noqa: F401
+from app.models.training_plan import TrainingPlan  # noqa: F401
+from app.models.training_plan_week import TrainingPlanWeek  # noqa: F401
+from app.models.training_plan_session import TrainingPlanSession  # noqa: F401
+from app.models.faiss_metadata import FaissMetadata  # noqa: F401

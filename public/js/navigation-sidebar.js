@@ -19,6 +19,7 @@ class NavigationSidebar {
     this.navItems = [
       { id: 'dashboard', label: 'Dashboard', icon: '📊', path: '/index.html' },
       { id: 'activities', label: 'Activities', icon: '⚡', path: '/activities' },
+      { id: 'training-plans', label: 'Training Plans', icon: '🎯', path: '/training-plans.html' },
       { id: 'metrics', label: 'Metrics', icon: '📈', path: '/metrics' },
       { id: 'logs', label: 'Logs', icon: '📝', path: '/logs' },
       { id: 'evaluations', label: 'Evaluations', icon: '🎯', path: '/evaluations-list.html' },
