@@ -400,6 +400,14 @@ The following information from the athlete's history may be relevant to this con
             try:
                 async with httpx.AsyncClient(timeout=120.0) as client:
                     response = await client.post(self.endpoint_url, json=payload)
+                    
+                    # Log the error response for debugging
+                    if response.status_code == 400:
+                        error_detail = response.text
+                        print(f"[LLMClient] 400 Bad Request from {self.backend}")
+                        print(f"[LLMClient] Request payload: {json.dumps(payload, indent=2)}")
+                        print(f"[LLMClient] Error response: {error_detail}")
+                    
                     response.raise_for_status()
                     
                     data = response.json()

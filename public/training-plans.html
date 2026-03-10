@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Training Plans - Fitness Platform</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@4.4.20/dist/full.min.css" rel="stylesheet" type="text/css" />
+    
+    <!-- Design Tokens -->
+    <link rel="stylesheet" href="css/design-tokens.css">
+    
+    <!-- Navigation Sidebar Styles -->
+    <link rel="stylesheet" href="css/navigation-sidebar.css">
+</head>
+<body class="bg-base-200 h-full">
+    <!-- Skip to main content link for accessibility -->
+    <a href="#main-content" class="skip-to-main">Skip to main content</a>
+    
+    <!-- Sidebar Container -->
+    <div id="sidebar-container"></div>
+    
+    <!-- Main Content Area -->
+    <main id="main-content" class="main-content min-h-screen">
+        <div class="p-6">
+            <!-- Header -->
+            <div class="flex justify-between items-center mb-6">
+                <h1 class="text-4xl font-bold">🎯 Training Plans</h1>
+            </div>
+
+            <!-- Plans Container -->
+            <div id="plans-container">
+                <div class="flex justify-center items-center py-8">
+                    <span class="loading loading-spinner loading-lg"></span>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script src="js/api.js"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/training-plans-list.js"></script>
+    
+    <!-- Navigation Sidebar Script -->
+    <script src="js/navigation-sidebar.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', async () => {
+            // Initialize sidebar
+            const sidebar = new NavigationSidebar('sidebar-container');
+            
+            // Initialize plans list
+            const plansList = new TrainingPlansList('plans-container', {
+                onPlanClick: (planId) => {
+                    window.location.href = `/training-plan-detail.html?id=${planId}`;
+                }
+            });
+            
+            await plansList.init();
+        });
+    </script>
+</body>
+</html>

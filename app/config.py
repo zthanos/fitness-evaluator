@@ -23,6 +23,12 @@ class Settings(BaseSettings):
     OLLAMA_ENDPOINT: str = ""
     OLLAMA_MODEL: str = "mistral"
     
+    # Embedding Configuration
+    # Options: "ollama" or "lm-studio" (defaults to same as LLM_TYPE)
+    EMBEDDING_TYPE: str = ""  # If empty, uses LLM_TYPE
+    EMBEDDING_ENDPOINT: str = ""  # If empty, uses OLLAMA_ENDPOINT or LM_STUDIO_ENDPOINT
+    EMBEDDING_MODEL: str = "nomic-embed-text"  # Default embedding model
+    
     # Web Search Configuration
     TAVILY_API_KEY: str = ""  # Get free API key at https://tavily.com
     
@@ -61,6 +67,22 @@ class Settings(BaseSettings):
     def is_lm_studio(self) -> bool:
         """Check if using LM Studio as LLM backend."""
         return self.LLM_TYPE.lower() == "lm-studio"
+    
+    @property
+    def embedding_type(self) -> str:
+        """Get the embedding backend type (defaults to LLM_TYPE if not specified)."""
+        return self.EMBEDDING_TYPE.lower() if self.EMBEDDING_TYPE else self.LLM_TYPE.lower()
+    
+    @property
+    def embedding_endpoint(self) -> str:
+        """Get the embedding endpoint URL."""
+        if self.EMBEDDING_ENDPOINT:
+            return self.EMBEDDING_ENDPOINT
+        # Default to appropriate endpoint based on embedding type
+        if self.embedding_type == "lm-studio":
+            return self.LM_STUDIO_ENDPOINT
+        else:
+            return self.OLLAMA_ENDPOINT if self.OLLAMA_ENDPOINT else "http://localhost:11434"
 
 @lru_cache
 def get_settings() -> Settings:

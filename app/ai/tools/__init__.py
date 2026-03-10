@@ -13,6 +13,13 @@ from pathlib import Path
 from app.ai.tools.get_recent_activities import get_recent_activities
 from app.ai.tools.get_athlete_goals import get_athlete_goals
 from app.ai.tools.get_weekly_metrics import get_weekly_metrics
+from app.ai.tools.save_athlete_goal import save_athlete_goal
+from app.ai.tools.get_my_goals import get_my_goals
+from app.ai.tools.get_my_recent_activities import get_my_recent_activities
+from app.ai.tools.get_my_weekly_metrics import get_my_weekly_metrics
+from app.ai.tools.save_training_plan import save_training_plan
+from app.ai.tools.get_training_plan import get_training_plan
+from app.ai.tools.search_web import search_web
 
 
 # All available tools organized by category
@@ -21,10 +28,20 @@ TOOL_CATEGORIES = {
         get_recent_activities,
         get_athlete_goals,
         get_weekly_metrics,
+        get_my_goals,
+        get_my_recent_activities,
+        get_my_weekly_metrics,
+    ],
+    "goal_management": [
+        save_athlete_goal,
+        get_my_goals,
+    ],
+    "training_plan_management": [
+        save_training_plan,
+        get_training_plan,
     ],
     "web_search": [
-        # Web search tools would go here
-        # Currently disabled by default (see model_profiles.yaml)
+        search_web,
     ],
 }
 
@@ -125,6 +142,13 @@ __all__ = [
     "get_recent_activities",
     "get_athlete_goals",
     "get_weekly_metrics",
+    "save_athlete_goal",
+    "get_my_goals",
+    "get_my_recent_activities",
+    "get_my_weekly_metrics",
+    "save_training_plan",
+    "get_training_plan",
+    "search_web",
     "get_enabled_tools",
     "is_web_search_enabled",
     "load_tool_config",

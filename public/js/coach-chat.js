@@ -410,8 +410,13 @@ class CoachChat {
                         } else if (data.type === 'done') {
                             // Streaming complete
                             assistantMessage.isStreaming = false;
-                            // Reload session to get the saved message
-                            await this.loadSession(this.currentSessionId);
+                            // Just update the UI to show streaming is done
+                            // No need to reload - messages are already displayed
+                            this.updateStreamingMessage(assistantMessage);
+                            
+                            // Refresh sessions list to update message count
+                            await this.loadSessions();
+                            this.renderSessions();
                         } else if (data.type === 'error') {
                             throw new Error(data.message);
                         }

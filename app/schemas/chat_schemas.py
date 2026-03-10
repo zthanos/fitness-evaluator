@@ -8,11 +8,13 @@ from typing import List, Optional
 class MessageCreate(BaseModel):
     """Schema for creating a chat message."""
     content: str = Field(..., min_length=1, max_length=2000, description="Message content")
+    session_id: Optional[int] = Field(None, description="Session identifier (optional for stream endpoint)")
     
     class Config:
         json_schema_extra = {
             "example": {
-                "content": "I want to set a new fitness goal"
+                "content": "I want to set a new fitness goal",
+                "session_id": 123
             }
         }
 

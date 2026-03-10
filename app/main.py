@@ -6,7 +6,7 @@ from fastapi.responses import FileResponse
 from pathlib import Path
 from app.database import engine
 from app.models.base import Base
-from app.api import auth, logs, strava, metrics, goals, chat, dashboard, settings, evaluations
+from app.api import auth, logs, strava, metrics, goals, chat, dashboard, settings, evaluations, training_plans
 
 # Import all models to register them with SQLAlchemy
 from app.models import daily_log, weekly_measurement, strava_activity, plan_targets, weekly_eval, athlete_goal
@@ -96,6 +96,7 @@ Comprehensive fitness and nutrition evaluation system with:
             {"name": "chat", "description": "AI coach chat interface"},
             {"name": "dashboard", "description": "Dashboard overview statistics and charts"},
             {"name": "settings", "description": "Profile, Strava, and LLM settings management"},
+            {"name": "training-plans", "description": "Training plan management and progress tracking"},
         ]
     )
     
@@ -118,6 +119,7 @@ Comprehensive fitness and nutrition evaluation system with:
     app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
     app.include_router(dashboard.router, prefix="/api/dashboard", tags=["dashboard"])
     app.include_router(settings.router, prefix="/api/settings", tags=["settings"])
+    app.include_router(training_plans.router, prefix="/api/training-plans", tags=["training-plans"])
     
     # Health check endpoints
     @app.get("/health", tags=["health"])

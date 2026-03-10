@@ -11,6 +11,8 @@ class FaissMetadata(Base):
     
     Stores metadata mapping between FAISS vector IDs and database record IDs.
     This allows the RAG system to retrieve full record details after semantic search.
+    
+    The user_id column enables user-scoped vector queries for security.
     """
     
     __tablename__ = "faiss_metadata"
@@ -21,9 +23,10 @@ class FaissMetadata(Base):
     record_id = Column(String(100), nullable=False, index=True)
     embedding_text = Column(Text, nullable=False)
     created_at = Column(DateTime, nullable=False, server_default=func.current_timestamp(), index=True)
+    user_id = Column(Integer, nullable=True, index=True)  # Added for user-scoped vector queries
     
     __table_args__ = (
-        CheckConstraint("record_type IN ('activity', 'metric', 'log', 'evaluation')", name='check_record_type'),
+        CheckConstraint("record_type IN ('activity', 'metric', 'log', 'evaluation', 'chat_message')", name='check_record_type'),
         UniqueConstraint('vector_id', name='uq_faiss_metadata_vector_id'),
     )
     
