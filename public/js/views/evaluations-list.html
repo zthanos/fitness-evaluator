@@ -1,0 +1,109 @@
+<div class="container mx-auto p-4 max-w-6xl">
+    <div class="flex justify-between items-center mb-6">
+        <h1 class="text-4xl font-bold">📊 Evaluation History</h1>
+        <button id="generate-eval-btn" class="btn btn-primary">
+            ➕ Generate New Evaluation
+        </button>
+    </div>
+
+    <!-- Filters -->
+    <div class="card bg-base-100 shadow-xl mb-6">
+        <div class="card-body">
+            <h2 class="card-title text-lg mb-4">Filters</h2>
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div class="form-control">
+                    <label class="label">
+                        <span class="label-text">From Date</span>
+                    </label>
+                    <input type="date" id="filter-date-from" class="input input-bordered" />
+                </div>
+                <div class="form-control">
+                    <label class="label">
+                        <span class="label-text">To Date</span>
+                    </label>
+                    <input type="date" id="filter-date-to" class="input input-bordered" />
+                </div>
+                <div class="form-control">
+                    <label class="label">
+                        <span class="label-text">Min Score</span>
+                    </label>
+                    <input type="number" id="filter-score-min" min="0" max="100" class="input input-bordered"
+                        placeholder="0" />
+                </div>
+                <div class="form-control">
+                    <label class="label">
+                        <span class="label-text">Max Score</span>
+                    </label>
+                    <input type="number" id="filter-score-max" min="0" max="100" class="input input-bordered"
+                        placeholder="100" />
+                </div>
+            </div>
+            <div class="flex gap-2 mt-4">
+                <button id="apply-filters-btn" class="btn btn-primary btn-sm">Apply Filters</button>
+                <button id="clear-filters-btn" class="btn btn-ghost btn-sm">Clear</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Evaluations List -->
+    <div id="evaluations-container" class="space-y-4">
+        <!-- Loading skeleton -->
+        <div class="card bg-base-100 shadow-xl">
+            <div class="card-body">
+                <div class="skeleton h-8 w-1/3 mb-4"></div>
+                <div class="skeleton h-4 w-full mb-2"></div>
+                <div class="skeleton h-4 w-2/3"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Empty State -->
+    <div id="empty-state" class="hidden text-center py-12">
+        <div class="text-6xl mb-4">📊</div>
+        <h2 class="text-2xl font-bold mb-2">No Evaluations Yet</h2>
+        <p class="text-base-content/70 mb-6">Generate your first evaluation to get started</p>
+        <button id="generate-eval-empty-btn" class="btn btn-primary">
+            Generate Evaluation
+        </button>
+    </div>
+</div>
+
+<!-- Generate Evaluation Modal -->
+<dialog id="generate-modal" class="modal">
+    <div class="modal-box">
+        <h3 class="font-bold text-lg mb-4">Generate New Evaluation</h3>
+        <form id="generate-form" class="space-y-4">
+            <div class="form-control">
+                <label class="label">
+                    <span class="label-text">Period Start Date</span>
+                </label>
+                <input type="date" id="period-start" class="input input-bordered" required />
+            </div>
+            <div class="form-control">
+                <label class="label">
+                    <span class="label-text">Period End Date</span>
+                </label>
+                <input type="date" id="period-end" class="input input-bordered" required />
+            </div>
+            <div class="form-control">
+                <label class="label">
+                    <span class="label-text">Period Type</span>
+                </label>
+                <select id="period-type" class="select select-bordered" required>
+                    <option value="weekly">Weekly</option>
+                    <option value="bi-weekly">Bi-Weekly</option>
+                    <option value="monthly">Monthly</option>
+                </select>
+            </div>
+            <div class="modal-action">
+                <button type="button" id="cancel-generate-btn" class="btn btn-ghost">Cancel</button>
+                <button type="submit" class="btn btn-primary" id="submit-generate-btn">
+                    Generate
+                </button>
+            </div>
+        </form>
+    </div>
+    <form method="dialog" class="modal-backdrop">
+        <button>close</button>
+    </form>
+</dialog>

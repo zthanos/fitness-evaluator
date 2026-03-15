@@ -179,7 +179,7 @@ class CoachChat {
             return `
                 <button 
                     class="btn btn-ghost w-full justify-start text-left ${isActive ? 'btn-active' : ''}"
-                    onclick="coachChat.loadSession('${session.id}')"
+                    onclick="window._coachChat?.loadSession('${session.id}')"
                 >
                     <div class="flex-1 overflow-hidden">
                         <div class="font-semibold truncate">${session.title || 'New Chat'}</div>
@@ -479,3 +479,4 @@ class CoachChat {
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = CoachChat;
 }
+export { CoachChat };

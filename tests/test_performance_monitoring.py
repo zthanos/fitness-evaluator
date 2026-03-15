@@ -6,7 +6,7 @@ when performance thresholds are exceeded.
 Requirements: 17.1, 17.2, 17.3, 18.1, 18.2, 18.3
 """
 import pytest
-from unittest.mock import Mock, MagicMock, patch, call
+from unittest.mock import Mock, MagicMock, AsyncMock, patch, call
 from sqlalchemy.orm import Session
 import numpy as np
 import time
@@ -15,6 +15,7 @@ from app.services.rag_engine import RAGEngine
 from app.services.session_matcher import SessionMatcher
 from app.services.chat_message_handler import ChatMessageHandler
 from app.models.strava_activity import StravaActivity
+from app.config import Settings
 from datetime import datetime, timedelta
 
 
@@ -79,19 +80,26 @@ class TestChatMessageHandlerPerformanceMonitoring:
     async def test_handle_message_logs_latency(self, mock_logger):
         """Verify handle_message logs chat response latency"""
         db = Mock(spec=Session)
-        rag_engine = Mock(spec=RAGEngine)
-        llm_client = Mock()
+        session_service = Mock()
+        session_service.get_active_buffer = Mock(return_value=[])
+        session_service.append_messages = Mock()
         
-        # Mock RAG engine
-        rag_engine.retrieve_context = Mock(return_value="")
-        
-        # Mock LLM client
-        llm_client.chat_completion = Mock(return_value={
+        agent = Mock()
+        agent.execute = AsyncMock(return_value={
             'content': 'Test response',
-            'tool_calls': None
+            'tool_calls_made': 0,
+            'iterations': 1,
+            'context_token_count': 500,
         })
         
-        handler = ChatMessageHandler(db, rag_engine, llm_client, user_id=1, session_id=1)
+        handler = ChatMessageHandler(
+            db=db,
+            session_service=session_service,
+            agent=agent,
+            user_id=1,
+            session_id=1,
+            settings=Settings(USE_CE_CHAT_RUNTIME=True, LEGACY_CHAT_ENABLED=True),
+        )
         
         # Handle message
         result = await handler.handle_message("test message")
@@ -102,7 +110,7 @@ class TestChatMessageHandlerPerformanceMonitoring:
         
         # Verify logger.info was called with latency
         info_calls = [call for call in mock_logger.info.call_args_list 
-                     if 'Chat message handled' in str(call)]
+                     if 'runtime handled message' in str(call)]
         assert len(info_calls) > 0
     
     @pytest.mark.asyncio
@@ -114,26 +122,33 @@ class TestChatMessageHandlerPerformanceMonitoring:
         mock_time.time.side_effect = [0.0, 3.5]
         
         db = Mock(spec=Session)
-        rag_engine = Mock(spec=RAGEngine)
-        llm_client = Mock()
+        session_service = Mock()
+        session_service.get_active_buffer = Mock(return_value=[])
+        session_service.append_messages = Mock()
         
-        # Mock RAG engine
-        rag_engine.retrieve_context = Mock(return_value="")
-        
-        # Mock LLM client
-        llm_client.chat_completion = Mock(return_value={
+        agent = Mock()
+        agent.execute = AsyncMock(return_value={
             'content': 'Test response',
-            'tool_calls': None
+            'tool_calls_made': 0,
+            'iterations': 1,
+            'context_token_count': 500,
         })
         
-        handler = ChatMessageHandler(db, rag_engine, llm_client, user_id=1, session_id=1)
+        handler = ChatMessageHandler(
+            db=db,
+            session_service=session_service,
+            agent=agent,
+            user_id=1,
+            session_id=1,
+            settings=Settings(USE_CE_CHAT_RUNTIME=True, LEGACY_CHAT_ENABLED=True),
+        )
         
         # Handle message
         await handler.handle_message("test message")
         
         # Verify warning was logged
         warning_calls = [call for call in mock_logger.warning.call_args_list 
-                        if 'Chat latency exceeded 3s target' in str(call)]
+                        if 'latency exceeded 3 s target' in str(call)]
         assert len(warning_calls) > 0
 
 

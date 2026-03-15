@@ -1,0 +1,175 @@
+<div class="container mx-auto p-4 max-w-4xl">
+    <h1 class="text-4xl font-bold mb-6">📊 Weekly Measurements</h1>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Measurement Form -->
+        <div class="lg:col-span-2">
+            <div class="card bg-base-100 shadow-xl">
+                <div class="card-body">
+                    <h2 class="card-title">Record This Week's Metrics</h2>
+
+                    <form id="measurement-form" class="space-y-4">
+                        <div class="form-control">
+                            <label class="label">
+                                <span class="label-text font-semibold">Week Starting (Monday)</span>
+                            </label>
+                            <input type="date" id="measurement-week" class="input input-bordered" required />
+                        </div>
+
+                        <div class="divider">Body Metrics</div>
+
+                        <div class="grid grid-cols-2 gap-4">
+                            <div class="form-control">
+                                <label class="label">
+                                    <span class="label-text font-semibold">Weight</span>
+                                    <span class="label-text-alt">lbs</span>
+                                </label>
+                                <input type="number" id="weight" class="input input-bordered" placeholder="185"
+                                    step="0.1" min="0" />
+                            </div>
+
+                            <div class="form-control">
+                                <label class="label">
+                                    <span class="label-text font-semibold">Body Fat %</span>
+                                </label>
+                                <input type="number" id="body-fat-percent" class="input input-bordered"
+                                    placeholder="18.5" step="0.1" min="0" max="100" />
+                            </div>
+
+                            <div class="form-control">
+                                <label class="label">
+                                    <span class="label-text font-semibold">Chest</span>
+                                    <span class="label-text-alt">in</span>
+                                </label>
+                                <input type="number" id="chest" class="input input-bordered" step="0.1" min="0" />
+                            </div>
+
+                            <div class="form-control">
+                                <label class="label">
+                                    <span class="label-text font-semibold">Waist</span>
+                                    <span class="label-text-alt">in</span>
+                                </label>
+                                <input type="number" id="waist" class="input input-bordered" step="0.1" min="0" />
+                            </div>
+
+                            <div class="form-control">
+                                <label class="label">
+                                    <span class="label-text font-semibold">Hips</span>
+                                    <span class="label-text-alt">in</span>
+                                </label>
+                                <input type="number" id="hips" class="input input-bordered" step="0.1" min="0" />
+                            </div>
+
+                            <div class="form-control">
+                                <label class="label">
+                                    <span class="label-text font-semibold">Thigh</span>
+                                    <span class="label-text-alt">in</span>
+                                </label>
+                                <input type="number" id="thigh" class="input input-bordered" step="0.1" min="0" />
+                            </div>
+                        </div>
+
+                        <div class="divider">Recovery & Wellness</div>
+
+                        <div class="grid grid-cols-2 gap-4">
+                            <div class="form-control">
+                                <label class="label">
+                                    <span class="label-text font-semibold">Resting Heart Rate</span>
+                                    <span class="label-text-alt">bpm</span>
+                                </label>
+                                <input type="number" id="resting-hr" class="input input-bordered" placeholder="60"
+                                    min="30" max="120" />
+                            </div>
+
+                            <div class="form-control">
+                                <label class="label">
+                                    <span class="label-text font-semibold">Avg Sleep</span>
+                                    <span class="label-text-alt">hrs</span>
+                                </label>
+                                <input type="number" id="avg-sleep" class="input input-bordered" placeholder="7.5"
+                                    step="0.5" min="0" max="12" />
+                            </div>
+
+                            <div class="form-control">
+                                <label class="label">
+                                    <span class="label-text font-semibold">Avg Energy</span>
+                                    <span class="label-text-alt">1-10</span>
+                                </label>
+                                <input type="range" id="avg-energy" min="1" max="10" class="range" />
+                                <div class="flex justify-between text-xs px-2">
+                                    <span>1</span>
+                                    <span id="energy-display" class="font-bold">5</span>
+                                    <span>10</span>
+                                </div>
+                            </div>
+
+                            <div class="form-control">
+                                <label class="label">
+                                    <span class="label-text font-semibold">Sleep Quality</span>
+                                    <span class="label-text-alt">1-10</span>
+                                </label>
+                                <input type="range" id="sleep-quality" min="1" max="10" class="range" />
+                                <div class="flex justify-between text-xs px-2">
+                                    <span>1</span>
+                                    <span id="quality-display" class="font-bold">5</span>
+                                    <span>10</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="divider">Notes</div>
+
+                        <div class="form-control">
+                            <label class="label">
+                                <span class="label-text font-semibold">Weekly Notes</span>
+                            </label>
+                            <textarea id="measurement-notes" class="textarea textarea-bordered"
+                                placeholder="Any observations about your week..."></textarea>
+                        </div>
+
+                        <div class="form-control mt-6">
+                            <button type="submit" class="btn btn-primary">Save Measurements</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Measurement History -->
+        <div class="lg:col-span-1">
+            <div class="card bg-base-100 shadow-xl">
+                <div class="card-body">
+                    <h2 class="card-title text-lg">Measurement History</h2>
+                    <div id="measurement-history" class="space-y-2">
+                        <p class="text-base-content/60 text-sm">Loading...</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="divider"></div>
+
+            <!-- Progress Tracker -->
+            <div class="card bg-base-100 shadow-xl">
+                <div class="card-body">
+                    <h2 class="card-title text-lg">Progress</h2>
+                    <div class="space-y-3 text-sm">
+                        <div>
+                            <div class="flex justify-between mb-1">
+                                <span>Weight</span>
+                                <span class="font-bold" id="weight-change">--</span>
+                            </div>
+                            <progress class="progress w-full" id="weight-progress"></progress>
+                        </div>
+                        <div>
+                            <div class="flex justify-between mb-1">
+                                <span>Body Fat</span>
+                                <span class="font-bold" id="fat-change">--</span>
+                            </div>
+                            <progress class="progress w-full" id="fat-progress"></progress>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

@@ -6,7 +6,8 @@
 
 class DailyLogForm {
   constructor(containerId) {
-    this.container = document.getElementById(containerId);
+    this.containerId = containerId;
+    this.container = null;
     this.successCallback = null;
     this.errorCallback = null;
     
@@ -24,6 +25,11 @@ class DailyLogForm {
    * Render the form
    */
   render() {
+    // Get container if not already set
+    if (!this.container) {
+      this.container = document.getElementById(this.containerId);
+    }
+    
     if (!this.container) {
       console.error('Container not found');
       return;
@@ -313,10 +319,14 @@ class DailyLogForm {
           return;
         }
       } catch (error) {
-        // 404 error means no existing log, which is what we want
-        if (!error.message.includes('404')) {
+        // 404 error or "not found" means no existing log, which is what we want
+        const isNotFound = error.message.includes('404') || 
+                          error.message.includes('not found') || 
+                          error.message.includes('Not Found');
+        if (!isNotFound) {
           throw error;
         }
+        // Otherwise, continue to create the log
       }
 
       // Call API to create log
@@ -477,3 +487,5 @@ class DailyLogForm {
     this.errorCallback = callback;
   }
 }
+
+export { DailyLogForm };

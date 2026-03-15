@@ -129,3 +129,4 @@ function getScoreBadge(score) {
   if (score >= 3) return 'badge-error';
   return 'badge-error';
 }
+export { getWeekStart };

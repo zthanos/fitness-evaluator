@@ -653,3 +653,4 @@ class MetricsChart {
 if (typeof window !== 'undefined') {
   window.MetricsChart = MetricsChart;
 }
+export { MetricsChart };

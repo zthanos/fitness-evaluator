@@ -3,7 +3,7 @@
  * Manages profile, goals, Strava integration, LLM settings, and data export
  */
 
-class SettingsPage {
+class SettingsManager {
     constructor() {
         this.activeGoals = [];
         this.goalHistory = [];
@@ -666,3 +666,5 @@ let settingsPage;
 
 // Note: DOMContentLoaded handler is in settings.html, not here
 // The global settingsPage variable is set there
+
+export { SettingsManager }

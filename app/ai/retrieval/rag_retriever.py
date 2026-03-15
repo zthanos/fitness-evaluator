@@ -20,7 +20,8 @@ class RAGRetriever:
     def __init__(
         self,
         db: Session,
-        policies_path: Optional[str] = None
+        policies_path: Optional[str] = None,
+        token_budget_for_retrieval: int = 600
     ):
         """
         Initialize RAG retriever.
@@ -29,6 +30,8 @@ class RAGRetriever:
             db: SQLAlchemy database session
             policies_path: Optional path to retrieval_policies.yaml
                           (defaults to app/ai/config/)
+            token_budget_for_retrieval: Maximum tokens to allocate for retrieved data
+                                       (default: 600 tokens, ~25% of 2400 total budget)
         """
         self.db = db
         
@@ -38,6 +41,14 @@ class RAGRetriever:
         
         self.policies_path = policies_path
         self._policies_cache: Optional[Dict[str, Any]] = None
+        self.token_budget_for_retrieval = token_budget_for_retrieval
+        
+        # Initialize token encoder for counting
+        try:
+            import tiktoken
+            self.encoding = tiktoken.get_encoding("cl100k_base")
+        except ImportError:
+            self.encoding = None
     
     def retrieve(
         self,
@@ -94,6 +105,9 @@ class RAGRetriever:
         # Generate evidence cards if requested
         if generate_cards:
             results = self.generate_evidence_cards(results, query)
+        
+        # Apply token budget limiting to retrieved results
+        results = self._limit_by_token_budget(results)
 
         return results
 
@@ -444,3 +458,53 @@ class RAGRetriever:
             "description": goal.description,
             "status": goal.status
         }
+
+    def _limit_by_token_budget(
+        self,
+        results: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """
+        Limit retrieved results to fit within token budget.
+        
+        Iterates through results and includes them until token budget
+        would be exceeded. Prioritizes most recent/relevant results first.
+        
+        Args:
+            results: List of retrieved data or evidence cards
+            
+        Returns:
+            Limited list of results that fit within token budget
+        """
+        if not self.encoding:
+            # If tiktoken not available, return all results
+            return results
+        
+        if not results:
+            return results
+        
+        limited_results = []
+        current_tokens = 0
+        
+        for result in results:
+            # Estimate tokens for this result
+            # Convert to JSON string for accurate token counting
+            import json
+            result_str = json.dumps(result)
+            result_tokens = len(self.encoding.encode(result_str))
+            
+            # Check if adding this result would exceed budget
+            if current_tokens + result_tokens > self.token_budget_for_retrieval:
+                # Stop adding results
+                break
+            
+            # Add result and update token count
+            limited_results.append(result)
+            current_tokens += result_tokens
+        
+        # Log if we had to trim results
+        if len(limited_results) < len(results):
+            trimmed_count = len(results) - len(limited_results)
+            print(f"[RAGRetriever] Token budget limit: trimmed {trimmed_count} results "
+                  f"(kept {len(limited_results)}/{len(results)}, {current_tokens}/{self.token_budget_for_retrieval} tokens)")
+        
+        return limited_results

@@ -1,0 +1,234 @@
+<div class="flex flex-col h-full overflow-hidden">
+    <!-- Fixed Header -->
+    <div class="flex-shrink-0 p-6 pb-0">
+        <h1 class="text-4xl font-bold">⚙️ Settings</h1>
+        <p class="text-base-content/70 mt-2 mb-6">Manage your profile, goals, and integrations</p>
+    </div>
+
+    <!-- Scrollable Content -->
+    <div class="flex-1 overflow-y-auto px-6 pb-6">
+        <!-- Goals Section -->
+        <div class="card bg-base-100 shadow-xl mb-6">
+            <div class="card-body">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="card-title">🎯 Goals</h2>
+                    <button id="set-goal-btn" class="btn btn-primary gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd"
+                                d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z"
+                                clip-rule="evenodd" />
+                        </svg>
+                        Set New Goal with Coach
+                    </button>
+                </div>
+
+                <!-- Active Goals -->
+                <div id="active-goals-container">
+                    <!-- Active goals will be rendered here -->
+                </div>
+
+                <!-- Goal History Toggle -->
+                <div class="divider"></div>
+                <div class="collapse collapse-arrow bg-base-200">
+                    <input type="checkbox" id="goal-history-toggle" />
+                    <div class="collapse-title text-lg font-medium">
+                        Goal History
+                    </div>
+                    <div class="collapse-content">
+                        <div id="goal-history-container">
+                            <!-- Goal history will be rendered here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Profile Section -->
+        <div class="card bg-base-100 shadow-xl mb-6">
+            <div class="card-body">
+                <h2 class="card-title mb-4">👤 Profile</h2>
+                <form id="profile-form" class="space-y-4">
+                    <div class="form-control">
+                        <label class="label">
+                            <span class="label-text">Name</span>
+                        </label>
+                        <input type="text" id="profile-name" placeholder="Your name" class="input input-bordered"
+                            required />
+                    </div>
+
+                    <div class="form-control">
+                        <label class="label">
+                            <span class="label-text">Email</span>
+                        </label>
+                        <input type="email" id="profile-email" placeholder="your.email@example.com"
+                            class="input input-bordered" />
+                    </div>
+
+                    <div class="form-control">
+                        <label class="label">
+                            <span class="label-text">Date of Birth</span>
+                        </label>
+                        <input type="date" id="profile-dob" class="input input-bordered" />
+                    </div>
+
+                    <div class="flex justify-end">
+                        <button type="submit" class="btn btn-primary">Save Profile</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Training Plan Section -->
+        <div class="card bg-base-100 shadow-xl mb-6">
+            <div class="card-body">
+                <h2 class="card-title mb-4">📋 Training Plan</h2>
+                <form id="training-plan-form" class="space-y-4">
+                    <div class="form-control">
+                        <label class="label">
+                            <span class="label-text">Plan Name</span>
+                        </label>
+                        <input type="text" id="plan-name" placeholder="e.g., Marathon Training, Weight Loss Program"
+                            class="input input-bordered" />
+                    </div>
+
+                    <div class="form-control">
+                        <label class="label">
+                            <span class="label-text">Start Date</span>
+                        </label>
+                        <input type="date" id="plan-start-date" class="input input-bordered" />
+                    </div>
+
+                    <div class="form-control">
+                        <label class="label">
+                            <span class="label-text">Goal Description</span>
+                        </label>
+                        <textarea id="plan-goal-description" placeholder="Describe your training goals and objectives..."
+                            class="textarea textarea-bordered h-24"></textarea>
+                    </div>
+
+                    <div class="flex justify-end">
+                        <button type="submit" class="btn btn-primary">Save Training Plan</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Strava Integration Section -->
+        <div class="card bg-base-100 shadow-xl mb-6">
+            <div class="card-body">
+                <h2 class="card-title mb-4">🏃 Strava Integration</h2>
+                <div id="strava-status-container">
+                    <!-- Strava connection status will be rendered here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- LLM Settings Section -->
+        <div class="card bg-base-100 shadow-xl mb-6">
+            <div class="card-body">
+                <h2 class="card-title mb-4">🤖 AI Coach Settings</h2>
+                <form id="llm-form" class="space-y-4">
+                    <div class="alert alert-info">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                            class="stroke-current shrink-0 w-6 h-6">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                        <div>
+                            <div class="font-bold">LLM Configuration</div>
+                            <div class="text-sm">Configure your AI backend (Ollama or LM Studio). Changes require server
+                                restart.</div>
+                        </div>
+                    </div>
+
+                    <div class="form-control">
+                        <label class="label">
+                            <span class="label-text">LLM Type</span>
+                        </label>
+                        <select id="llm-type" class="select select-bordered">
+                            <option value="ollama">Ollama</option>
+                            <option value="lm-studio">LM Studio</option>
+                        </select>
+                    </div>
+
+                    <div class="form-control">
+                        <label class="label">
+                            <span class="label-text">Endpoint URL</span>
+                        </label>
+                        <select id="llm-endpoint-preset" class="select select-bordered mb-2">
+                            <option value="custom">Custom</option>
+                            <option value="http://localhost:11434">Ollama Local (http://localhost:11434)</option>
+                            <option value="http://ollama:11434">Ollama Docker (http://ollama:11434)</option>
+                            <option value="http://localhost:1234">LM Studio (http://localhost:1234)</option>
+                        </select>
+                        <input type="text" id="llm-endpoint" placeholder="http://localhost:11434"
+                            class="input input-bordered" />
+                        <label class="label">
+                            <span class="label-text-alt">The base URL for your LLM server</span>
+                        </label>
+                    </div>
+
+                    <div class="form-control">
+                        <label class="label">
+                            <span class="label-text">Model Name</span>
+                        </label>
+                        <input type="text" id="llm-model" placeholder="mistral or openai/gpt-oss-20b"
+                            class="input input-bordered" />
+                        <label class="label">
+                            <span class="label-text-alt">The model to use (Ollama: mistral, llama2 | LM Studio:
+                                openai/gpt-oss-20b, etc.)</span>
+                        </label>
+                    </div>
+
+                    <div class="form-control">
+                        <label class="label">
+                            <span class="label-text">Temperature</span>
+                            <span class="label-text-alt" id="temperature-value">0.7</span>
+                        </label>
+                        <input type="range" id="llm-temperature" min="0" max="1" step="0.1" value="0.7"
+                            class="range range-primary" />
+                        <div class="w-full flex justify-between text-xs px-2 mt-1">
+                            <span>Focused</span>
+                            <span>Balanced</span>
+                            <span>Creative</span>
+                        </div>
+                    </div>
+
+                    <div class="divider"></div>
+
+                    <div class="flex gap-2">
+                        <button type="button" id="test-llm-btn" class="btn btn-outline gap-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd"
+                                    d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                                    clip-rule="evenodd" />
+                            </svg>
+                            Test Connection
+                        </button>
+                        <button type="submit" class="btn btn-primary">Save Settings</button>
+                    </div>
+
+                    <div id="llm-status" class="hidden"></div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Data Export Section -->
+        <div class="card bg-base-100 shadow-xl mb-6">
+            <div class="card-body">
+                <h2 class="card-title mb-4">📦 Data Export</h2>
+                <p class="text-base-content/70 mb-4">
+                    Export all your data including activities, metrics, logs, evaluations, and chat sessions.
+                </p>
+                <button id="export-data-btn" class="btn btn-outline gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd"
+                            d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z"
+                            clip-rule="evenodd" />
+                    </svg>
+                    Export Data
+                </button>
+            </div>
+        </div>
+    </div>
+</div>

@@ -453,3 +453,4 @@ class MetricsList {
     });
   }
 }
+export { MetricsList };

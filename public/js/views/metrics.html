@@ -1,0 +1,61 @@
+<div class="p-6 flex-1 flex flex-col overflow-hidden">
+    <!-- Header with Add Button and Extended Mode Toggle -->
+    <div class="flex justify-between items-center mb-6 flex-shrink-0">
+        <div class="flex items-center gap-4">
+            <h1 class="text-4xl font-bold">📊 Body Metrics</h1>
+            <div class="form-control">
+                <label class="label cursor-pointer gap-2">
+                    <span class="label-text">Extended Mode</span>
+                    <input type="checkbox" id="extended-mode-toggle" class="toggle toggle-primary" />
+                </label>
+            </div>
+        </div>
+        <button id="add-metric-btn" class="btn btn-primary gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd"
+                    d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z"
+                    clip-rule="evenodd" />
+            </svg>
+            Add Measurement
+        </button>
+    </div>
+
+    <!-- Metrics Charts (Full Width) -->
+    <div class="card bg-base-100 shadow-xl mb-6 flex-shrink-0">
+        <div class="card-body">
+            <h2 class="card-title mb-4">Metrics History</h2>
+            <div id="metrics-charts-container">
+                <!-- MetricsChart component will be rendered here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- All Metrics Table (Fills remaining space with internal scroll) -->
+    <div class="card bg-base-100 shadow-xl flex-1 flex flex-col overflow-hidden">
+        <div class="card-body flex flex-col overflow-hidden">
+            <div class="flex-shrink-0">
+                <h2 class="card-title">All Measurements</h2>
+                <p class="text-sm text-base-content/70 mb-4">
+                    Click on any field to edit it inline (within 24 hours of creation). Changes are saved
+                    immediately.
+                </p>
+            </div>
+
+            <!-- Metrics List Component with scroll -->
+            <div id="metrics-list-container" class="flex-1 overflow-y-auto"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Metric Modal -->
+<dialog id="metric-form-modal" class="modal">
+    <div class="modal-box max-w-2xl">
+        <h3 class="font-bold text-lg mb-4">Add Body Measurement</h3>
+        <div id="metrics-form-container">
+            <!-- MetricsForm component will be rendered here -->
+        </div>
+    </div>
+    <form method="dialog" class="modal-backdrop">
+        <button>close</button>
+    </form>
+</dialog>

@@ -5,10 +5,18 @@
 
 class ActivityList {
   constructor(containerId, options = {}) {
-    this.container = document.getElementById(containerId);
-    if (!this.container) {
-      throw new Error(`Container with id "${containerId}" not found`);
-    }
+    this.containerId = containerId;
+    this.container = null;
+
+    // Optional split containers — if provided, container can be null
+    this.filtersContainer = null;
+    this.tableContainer = null;
+    this.pagerContainer = null;
+    
+    // Store container IDs for later lookup
+    this.filtersContainerId = options.filtersContainerId || null;
+    this.tableContainerId = options.tableContainerId || null;
+    this.pagerContainerId = options.pagerContainerId || null;
     
     // Configuration
     this.pageSize = options.pageSize || 25;
@@ -31,12 +39,42 @@ class ActivityList {
     
     // Callbacks
     this.onRowClick = options.onRowClick || null;
+
   }
 
   /**
    * Initialize the component and load data
    */
   async init() {
+    // Wait a bit for DOM to be ready, then get the container element
+    await new Promise(resolve => setTimeout(resolve, 50));
+    
+    this.container = document.getElementById(this.containerId);
+    
+    // Look up optional split containers
+    if (this.filtersContainerId) {
+      this.filtersContainer = document.getElementById(this.filtersContainerId);
+    }
+    if (this.tableContainerId) {
+      this.tableContainer = document.getElementById(this.tableContainerId);
+    }
+    if (this.pagerContainerId) {
+      this.pagerContainer = document.getElementById(this.pagerContainerId);
+    }
+    
+    const hasSplitContainers = this.filtersContainer && this.tableContainer && this.pagerContainer;
+    
+    if (!this.container && !hasSplitContainers) {
+      // Try one more time after another delay
+      await new Promise(resolve => setTimeout(resolve, 100));
+      this.container = document.getElementById(this.containerId);
+      
+      if (!this.container && !hasSplitContainers) {
+        console.error('DOM state:', document.getElementById('main-content')?.innerHTML.substring(0, 200));
+        throw new Error(`Container with id "${this.containerId}" not found`);
+      }
+    }
+    
     await this.loadActivities();
     this.render();
   }
@@ -69,14 +107,30 @@ class ActivityList {
    * Render the complete component
    */
   render() {
-    this.container.innerHTML = `
-      <div class="activity-list">
-        ${this.renderFilters()}
-        ${this.renderTable()}
-        ${this.renderPagination()}
-      </div>
-    `;
-    
+    if (this.filtersContainer && this.tableContainer && this.pagerContainer) {
+      // Split layout: filters / scrollable table / sticky pager
+      this.filtersContainer.innerHTML = this.renderFilters();
+      this.tableContainer.innerHTML   = this.renderTable();
+      this.pagerContainer.innerHTML   = this.renderPagination();
+    } else {
+      // Fallback: render everything in single container
+      if (!this.container) {
+        console.error('ActivityList.render: this.container is null!', {
+          containerId: this.containerId,
+          filtersContainer: this.filtersContainer,
+          tableContainer: this.tableContainer,
+          pagerContainer: this.pagerContainer
+        });
+        throw new Error('Cannot render: container is null');
+      }
+      this.container.innerHTML = `
+        <div class="activity-list">
+          ${this.renderFilters()}
+          ${this.renderTable()}
+          ${this.renderPagination()}
+        </div>
+      `;
+    }
     this.attachEventListeners();
   }
 
@@ -319,9 +373,17 @@ class ActivityList {
    * Attach event listeners
    */
   attachEventListeners() {
+    // Determine which container to use for querying elements
+    const rootContainer = this.container || this.filtersContainer?.parentElement || document;
+    
+    if (!rootContainer) {
+      console.error('attachEventListeners: No valid container found');
+      return;
+    }
+    
     // Filter button handlers
-    const applyFiltersBtn = this.container.querySelector('#apply-filters-btn');
-    const clearFiltersBtn = this.container.querySelector('#clear-filters-btn');
+    const applyFiltersBtn = rootContainer.querySelector('#apply-filters-btn');
+    const clearFiltersBtn = rootContainer.querySelector('#clear-filters-btn');
     
     if (applyFiltersBtn) {
       applyFiltersBtn.addEventListener('click', () => {
@@ -336,7 +398,7 @@ class ActivityList {
     }
 
     // Sortable column header handlers
-    const sortableHeaders = this.container.querySelectorAll('th.sortable[data-sort-column]');
+    const sortableHeaders = rootContainer.querySelectorAll('th.sortable[data-sort-column]');
     sortableHeaders.forEach(header => {
       header.addEventListener('click', () => {
         const column = header.dataset.sortColumn;
@@ -345,7 +407,7 @@ class ActivityList {
     });
 
     // Row click handlers
-    const rows = this.container.querySelectorAll('tr[data-activity-id]');
+    const rows = rootContainer.querySelectorAll('tr[data-activity-id]');
     rows.forEach(row => {
       row.addEventListener('click', () => {
         const activityId = row.dataset.activityId;
@@ -359,7 +421,7 @@ class ActivityList {
     });
 
     // Pagination handlers
-    const paginationButtons = this.container.querySelectorAll('button[data-page]');
+    const paginationButtons = rootContainer.querySelectorAll('button[data-page]');
     paginationButtons.forEach(button => {
       button.addEventListener('click', async () => {
         const page = button.dataset.page;
@@ -402,11 +464,12 @@ class ActivityList {
    * Handle apply filters button click
    */
   async handleApplyFilters() {
-    const typeSelect = this.container.querySelector('#filter-type');
-    const dateFromInput = this.container.querySelector('#filter-date-from');
-    const dateToInput = this.container.querySelector('#filter-date-to');
-    const distanceMinInput = this.container.querySelector('#filter-distance-min');
-    const distanceMaxInput = this.container.querySelector('#filter-distance-max');
+    const rootContainer = this.container || document;
+    const typeSelect = rootContainer.querySelector('#filter-type');
+    const dateFromInput = rootContainer.querySelector('#filter-date-from');
+    const dateToInput = rootContainer.querySelector('#filter-date-to');
+    const distanceMinInput = rootContainer.querySelector('#filter-distance-min');
+    const distanceMaxInput = rootContainer.querySelector('#filter-distance-max');
     
     const filters = {
       type: typeSelect.value || null,
@@ -532,3 +595,5 @@ class ActivityList {
     return `${Math.round(calories)} kcal`;
   }
 }
+
+export { ActivityList };

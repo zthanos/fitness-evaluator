@@ -1,0 +1,74 @@
+<div class="p-6 flex-1 flex flex-col overflow-hidden">
+    <!-- Header with Add Button -->
+    <div class="flex justify-between items-center mb-6 flex-shrink-0">
+        <h1 class="text-4xl font-bold">📝 Daily Logs</h1>
+        <button id="add-log-btn" class="btn btn-primary gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd"
+                    d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z"
+                    clip-rule="evenodd" />
+            </svg>
+            Add Log Entry
+        </button>
+    </div>
+
+    <!-- This Week Statistics (Full Width) -->
+    <div class="card bg-base-100 shadow-xl mb-6 flex-shrink-0">
+        <div class="card-body">
+            <h2 class="card-title">This Week</h2>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-6 mt-2">
+                <div class="stat">
+                    <div class="stat-title">Avg Calories</div>
+                    <div class="stat-value text-primary" id="avg-calories">--</div>
+                    <div class="stat-desc">kcal per day</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-title">Avg Adherence</div>
+                    <div class="stat-value text-secondary" id="avg-adherence">--</div>
+                    <div class="stat-desc">out of 100</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-title">Avg Protein</div>
+                    <div class="stat-value text-accent" id="avg-sleep">--</div>
+                    <div class="stat-desc">grams per day</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-title">Entries</div>
+                    <div class="stat-value" id="avg-energy">--</div>
+                    <div class="stat-desc">logs this week</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- All Daily Logs (Fills remaining space with internal scroll) -->
+    <div class="card bg-base-100 shadow-xl flex-1 flex flex-col overflow-hidden">
+        <div class="card-body flex flex-col overflow-hidden">
+            <div class="flex-shrink-0">
+                <h2 class="card-title">All Daily Logs</h2>
+                <p class="text-sm text-base-content/70 mb-4">
+                    Click on any field to edit it inline. Changes are saved immediately.
+                </p>
+            </div>
+
+            <!-- Daily Log List Component with scroll -->
+            <div id="daily-log-list-container" class="flex-1 overflow-y-auto"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Log Entry Modal -->
+<dialog id="log-form-modal" class="modal">
+    <div class="modal-box max-w-2xl">
+        <form method="dialog">
+            <button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
+        </form>
+        <h3 class="font-bold text-lg mb-4">Add Today's Log</h3>
+        
+        <!-- Daily Log Form Component -->
+        <div id="daily-log-form-container"></div>
+    </div>
+    <form method="dialog" class="modal-backdrop">
+        <button>close</button>
+    </form>
+</dialog>

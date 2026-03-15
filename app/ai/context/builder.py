@@ -34,15 +34,31 @@ class Context:
     
     def _format_task_and_data(self) -> str:
         """Format task instructions, domain knowledge, and retrieved data"""
+        import json as _json
+        from dataclasses import asdict, fields as dc_fields
+        
+        def _make_serializable(obj):
+            if isinstance(obj, dict):
+                return {k: _make_serializable(v) for k, v in obj.items()}
+            if isinstance(obj, (list, tuple)):
+                return [_make_serializable(item) for item in obj]
+            if hasattr(obj, 'to_dict'):
+                return obj.to_dict()
+            try:
+                dc_fields(obj)
+                return asdict(obj)
+            except TypeError:
+                return obj
+        
         parts = [
             "# Task Instructions",
             self.task_instructions,
             "",
             "# Domain Knowledge",
-            json.dumps(self.domain_knowledge, indent=2),
+            _json.dumps(_make_serializable(self.domain_knowledge), indent=2),
             "",
             "# Retrieved Data",
-            json.dumps(self.retrieved_data, indent=2)
+            _json.dumps(_make_serializable(self.retrieved_data), indent=2)
         ]
         return "\n".join(parts)
 

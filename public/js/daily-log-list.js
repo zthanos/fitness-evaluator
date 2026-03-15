@@ -6,7 +6,8 @@
 
 class DailyLogList {
   constructor(containerId) {
-    this.container = document.getElementById(containerId);
+    this.containerId = containerId;
+    this.container = null;
     this.logs = [];
     this.editingState = {}; // Track which fields are being edited
     
@@ -24,6 +25,15 @@ class DailyLogList {
    * Load and render logs
    */
   async load() {
+    // Get container if not already set
+    if (!this.container) {
+      this.container = document.getElementById(this.containerId);
+    }
+    
+    if (!this.container) {
+      console.error('DailyLogList: Container not found');
+      return;
+    }
     try {
       const response = await api.listDailyLogs();
       this.logs = response.logs || response; // Handle both paginated and array responses
@@ -402,3 +412,4 @@ class DailyLogList {
     return Math.round((p * 4) + (c * 4) + (f * 9));
   }
 }
+export { DailyLogList };

@@ -546,3 +546,4 @@ class ActivityDetail {
         }
     }
 }
+export { ActivityDetail };

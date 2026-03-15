@@ -6,7 +6,7 @@
 
 class MetricsForm {
   constructor(containerId, existingMetric = null, extendedMode = false) {
-    this.container = document.getElementById(containerId);
+    this.containerId = containerId;
     this.existingMetric = existingMetric;
     this.isEditMode = !!existingMetric;
     this.extendedMode = extendedMode;
@@ -34,6 +34,8 @@ class MetricsForm {
    * Render the form
    */
   render() {
+    this.container = document.getElementById(this.containerId);
+    
     if (!this.container) {
       console.error('Container not found');
       return;
@@ -538,3 +540,4 @@ class MetricsForm {
     this.errorCallback = callback;
   }
 }
+export { MetricsForm };
