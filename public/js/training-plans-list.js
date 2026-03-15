@@ -6,10 +6,8 @@
 
 class TrainingPlansList {
   constructor(containerId, options = {}) {
-    this.container = document.getElementById(containerId);
-    if (!this.container) {
-      throw new Error(`Container with id "${containerId}" not found`);
-    }
+    this.containerId = containerId;
+    this.container = null;
     
     this.plans = [];
     this.onPlanClick = options.onPlanClick || null;
@@ -19,6 +17,21 @@ class TrainingPlansList {
    * Initialize the component and load data
    */
   async init() {
+    // Wait a bit for DOM to be ready, then get the container element
+    await new Promise(resolve => setTimeout(resolve, 50));
+    
+    this.container = document.getElementById(this.containerId);
+    if (!this.container) {
+      // Try one more time after another delay
+      await new Promise(resolve => setTimeout(resolve, 100));
+      this.container = document.getElementById(this.containerId);
+      
+      if (!this.container) {
+        console.error('DOM state:', document.getElementById('main-content')?.innerHTML.substring(0, 200));
+        throw new Error(`Container with id "${this.containerId}" not found`);
+      }
+    }
+    
     await this.loadPlans();
     this.render();
   }
@@ -213,3 +226,4 @@ class TrainingPlansList {
     this.render();
   }
 }
+export { TrainingPlansList };

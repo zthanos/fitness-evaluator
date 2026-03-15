@@ -214,3 +214,5 @@ class APIClient {
 
 // Create global API instance
 const api = new APIClient();
+
+export { api, APIClient };

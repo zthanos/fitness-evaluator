@@ -1,0 +1,107 @@
+<div class="container mx-auto p-4 max-w-6xl">
+    <!-- Back Button -->
+    <div class="mb-4">
+        <a href="evaluations-list.html" class="btn btn-ghost btn-sm">
+            ← Back to History
+        </a>
+    </div>
+
+    <!-- Evaluation Header -->
+    <div id="eval-header" class="mb-6">
+        <div class="card bg-base-100 shadow-xl">
+            <div class="card-body">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <h1 class="text-3xl font-bold mb-2" id="eval-title">Loading...</h1>
+                        <p class="text-base-content/70" id="eval-period">--</p>
+                        <p class="text-base-content/60 text-sm mt-1" id="eval-generated">--</p>
+                    </div>
+                    <div class="text-right">
+                        <div class="text-6xl font-bold" id="overall-score">--</div>
+                        <p class="text-lg mt-2" id="score-label">Overall Score</p>
+                        <div class="mt-2">
+                            <span class="badge badge-outline" id="confidence-badge">--</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Grid -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Left Column - Main Content -->
+        <div class="lg:col-span-2 space-y-6">
+            <!-- Strengths -->
+            <div class="card bg-base-100 shadow-xl">
+                <div class="card-body">
+                    <h2 class="card-title text-success">✓ Strengths</h2>
+                    <ul id="strengths-list" class="space-y-2 mt-2">
+                        <li class="skeleton h-4 w-full"></li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Areas for Improvement -->
+            <div class="card bg-base-100 shadow-xl">
+                <div class="card-body">
+                    <h2 class="card-title text-warning">⚠ Areas for Improvement</h2>
+                    <ul id="improvements-list" class="space-y-2 mt-2">
+                        <li class="skeleton h-4 w-full"></li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Goal Alignment -->
+            <div class="card bg-base-100 shadow-xl">
+                <div class="card-body">
+                    <h2 class="card-title">🎯 Goal Alignment</h2>
+                    <p id="goal-alignment" class="mt-2 text-base-content/80">
+                        Loading...
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Column - Sidebar -->
+        <div class="lg:col-span-1 space-y-6">
+            <!-- Actionable Tips -->
+            <div class="card bg-base-100 shadow-xl">
+                <div class="card-body">
+                    <h2 class="card-title text-info">💡 Actionable Tips</h2>
+                    <ul id="tips-list" class="space-y-2 mt-2 text-sm">
+                        <li class="skeleton h-4 w-full"></li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Recommended Exercises -->
+            <div class="card bg-base-100 shadow-xl">
+                <div class="card-body">
+                    <h2 class="card-title text-primary">🏋️ Recommended Exercises</h2>
+                    <ul id="exercises-list" class="space-y-2 mt-2 text-sm">
+                        <li class="skeleton h-4 w-full"></li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Actions -->
+            <div class="card bg-base-100 shadow-xl">
+                <div class="card-body">
+                    <h2 class="card-title text-sm">Actions</h2>
+                    <div class="space-y-2">
+                        <button onclick="reEvaluate()" id="re-evaluate-btn" class="btn btn-sm btn-primary w-full">
+                            🔄 Re-evaluate
+                        </button>
+                        <button onclick="downloadReport()" class="btn btn-sm btn-secondary w-full">
+                            📥 Download Report
+                        </button>
+                        <button onclick="shareReport()" class="btn btn-sm btn-ghost w-full">
+                            🔗 Share
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

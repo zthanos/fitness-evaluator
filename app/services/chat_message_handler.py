@@ -1,469 +1,332 @@
-"""Chat Message Handler with Multi-Step Tool Orchestration
+"""Chat Message Handler - Thin Coordinator with Dual Runtime Support
 
-Implements the complete chat flow with:
-- Two-layer RAG context retrieval (Active Session Buffer + Vector Store)
-- Multi-step tool orchestration with sequential execution
-- Tool result passing between calls
-- Performance monitoring (p95 latency < 3 seconds)
+Coordinates between API layer, ChatSessionService, and ChatAgent.
+Supports feature-flag-based runtime selection between CE and legacy paths,
+including per-user pilot rollout routing (Phase 6.6).
 
-Requirements: 3.1, 3.2, 3.3, 3.4, 17.1
+Requirements: 3.1, 3.2 (Phase 3), 6.1, 6.6 (Phase 6)
 """
 import time
 import logging
-from typing import List, Dict, Any, Optional
-from sqlalchemy.orm import Session
+from typing import Dict, Any, Optional
 
-from app.models.chat_message import ChatMessage
-from app.services.rag_engine import RAGEngine
-from app.services.llm_client import LLMClient
-from app.services.chat_tools import execute_tool, get_tool_definitions
+from app.config import Settings, get_settings
+from app.services.chat_session_service import ChatSessionService
+from app.services.chat_agent import ChatAgent
+from app.services.runtime_comparison import run_comparison
+from app.services.pilot_rollout import PilotUserRegistry
 
 logger = logging.getLogger(__name__)
 
 
 class ChatMessageHandler:
+    """Thin coordinator with dual runtime support.
+
+    Selects between CE and legacy chat runtimes based on the
+    ``USE_CE_CHAT_RUNTIME`` feature flag or per-user pilot routing.
+    When the flag is *True* or the user is in the pilot group,
+    the handler delegates to ``ChatAgent`` (CE path).  Otherwise
+    it falls back to the legacy ``ChatService`` path.
+
+    Attributes:
+        runtime: ``"ce"`` or ``"legacy"`` — which path is active.
     """
-    Handles chat messages with RAG context retrieval and tool orchestration.
-    
-    Flow:
-    1. Retrieve context from active buffer and vector store
-    2. Generate initial LLM response with tool definitions
-    3. Execute tools sequentially when requested
-    4. Pass tool results to subsequent tool calls
-    5. Generate final response incorporating all tool results
-    
-    Performance target: p95 latency < 3 seconds (Requirement 17.1)
-    """
-    
+
     def __init__(
         self,
-        db: Session,
-        rag_engine: RAGEngine,
-        llm_client: LLMClient,
-        user_id: int,
-        session_id: int
+        db,
+        session_service: ChatSessionService,
+        agent: Optional[ChatAgent] = None,
+        user_id: int = 0,
+        session_id: int = 0,
+        settings: Optional[Settings] = None,
+        invocation_logger=None,
+        pilot_registry: Optional[PilotUserRegistry] = None,
     ):
-        """
-        Initialize chat message handler.
-        
-        Args:
-            db: SQLAlchemy database session
-            rag_engine: RAG engine for context retrieval
-            llm_client: LLM client for response generation
-            user_id: User ID for scoping
-            session_id: Current chat session ID
-        """
         self.db = db
-        self.rag_engine = rag_engine
-        self.llm_client = llm_client
+        self.session_service = session_service
         self.user_id = user_id
         self.session_id = session_id
-        
-        # Active session buffer (in-memory)
-        self.active_session_messages: List[ChatMessage] = []
-    
+        self._settings = settings or get_settings()
+        self._invocation_logger = invocation_logger
+        self._pilot_registry = pilot_registry or PilotUserRegistry(self._settings)
+
+        # Determine active runtime from feature flags + pilot routing
+        use_ce = self._pilot_registry.should_use_ce_runtime(self.user_id)
+
+        if use_ce:
+            if agent is None:
+                raise ValueError(
+                    "ChatAgent is required when CE runtime is enabled "
+                    "(global flag or pilot user)"
+                )
+            self.agent = agent
+            self.runtime = "ce"
+        else:
+            self.agent = agent  # may be None in legacy mode
+            self.runtime = "legacy"
+
+        logger.info(
+            "ChatMessageHandler initialised with runtime=%s",
+            self.runtime,
+            extra={
+                "runtime": self.runtime,
+                "user_id": self.user_id,
+                "session_id": self.session_id,
+                "use_ce_chat_runtime": self._settings.USE_CE_CHAT_RUNTIME,
+                "legacy_chat_enabled": self._settings.LEGACY_CHAT_ENABLED,
+                "is_pilot_user": self._pilot_registry.is_pilot_user(self.user_id),
+            },
+        )
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
     async def handle_message(
         self,
         user_message: str,
-        max_tool_iterations: int = 5
+        max_tool_iterations: int = 5,
     ) -> Dict[str, Any]:
-        """
-        Handle a chat message with full RAG and tool orchestration.
-        
+        """Handle a chat message, routing to the active runtime.
+
         Args:
-            user_message: User's message text
-            max_tool_iterations: Maximum tool calling iterations
-        
+            user_message: The athlete's message text.
+            max_tool_iterations: Forwarded to agent (CE path only).
+
         Returns:
-            Response dict with:
-                - content: Final response text
-                - tool_calls_made: Number of tool calls executed
-                - latency_ms: Total processing time
-                - context_retrieved: Whether context was retrieved
-        
-        Requirements: 3.1, 3.2, 3.3, 3.4, 17.1
+            Dict with at least ``content``, ``latency_ms``, and a
+            ``runtime`` key indicating which path was used.
         """
-        start_time = time.time()
-        
-        try:
-            # Step 1: Retrieve context from both layers (Requirement 3.1)
-            context = await self._retrieve_context(user_message)
-            
-            # Step 2: Build conversation with context
-            conversation = self._build_conversation(user_message, context)
-            
-            # Step 3: Execute multi-step tool orchestration (Requirements 3.2, 3.3, 3.4)
-            response = await self._orchestrate_tools(conversation, max_tool_iterations)
-            
-            # Step 4: Store messages in active session buffer
-            self._update_active_buffer(user_message, response['content'])
-            
-            # Calculate latency
-            latency_ms = (time.time() - start_time) * 1000
-            
-            # Log performance (Requirement 17.1)
-            logger.info(
-                f"Chat message handled in {latency_ms:.0f}ms",
-                extra={
-                    "user_id": self.user_id,
-                    "session_id": self.session_id,
-                    "latency_ms": latency_ms,
-                    "tool_calls": response.get('tool_calls_made', 0),
-                    "iterations": response.get('iterations', 0)
-                }
-            )
-            
-            # Warn if latency exceeds target
-            if latency_ms > 3000:
-                logger.warning(
-                    f"Chat latency exceeded 3s target: {latency_ms:.0f}ms",
-                    extra={
-                        "user_id": self.user_id,
-                        "session_id": self.session_id,
-                        "latency_ms": latency_ms
-                    }
-                )
-            
-            return {
-                'content': response['content'],
-                'tool_calls_made': response.get('tool_calls_made', 0),
-                'iterations': response.get('iterations', 0),
-                'latency_ms': latency_ms,
-                'context_retrieved': bool(context)
-            }
-            
-        except Exception as e:
-            logger.error(
-                f"Error handling chat message: {str(e)}",
-                extra={
-                    "user_id": self.user_id,
-                    "session_id": self.session_id
-                },
-                exc_info=True
-            )
-            raise
-    
-    async def _retrieve_context(self, query: str) -> str:
-        """
-        Retrieve context from active buffer and vector store.
-        
-        Args:
-            query: User's message
-        
-        Returns:
-            Formatted context string
-        
-        Requirements: 1.1, 1.2, 1.3, 17.2
-        """
-        try:
-            context = self.rag_engine.retrieve_context(
-                query=query,
-                user_id=self.user_id,
-                active_session_messages=self.active_session_messages,
-                top_k=5
-            )
-            return context
-        except Exception as e:
-            logger.error(
-                f"Error retrieving context: {str(e)}",
-                extra={"user_id": self.user_id, "session_id": self.session_id},
-                exc_info=True
-            )
-            # Return empty context on error
-            return ""
-    
-    def _build_conversation(self, user_message: str, context: str) -> List[Dict[str, str]]:
-        """
-        Build conversation messages with context.
-        
-        Args:
-            user_message: User's message
-            context: Retrieved context from RAG
-        
-        Returns:
-            List of conversation messages
-        """
-        messages = []
-        
-        # System prompt with context
-        system_prompt = self._get_system_prompt()
-        if context:
-            system_prompt += f"\n\n## Retrieved Context\n{context}"
-        
-        messages.append({
-            'role': 'system',
-            'content': system_prompt
-        })
-        
-        # Add active session messages (last 10 for token efficiency)
-        for msg in self.active_session_messages[-10:]:
-            messages.append({
-                'role': msg.role,
-                'content': msg.content
-            })
-        
-        # Add current user message
-        messages.append({
-            'role': 'user',
-            'content': user_message
-        })
-        
-        return messages
-    
-    async def _orchestrate_tools(
+        # Comparison mode: invoke both runtimes and return the primary result
+        if self._settings.ENABLE_RUNTIME_COMPARISON and self.agent is not None:
+            return await self._handle_comparison(user_message, max_tool_iterations)
+
+        if self.runtime == "ce":
+            return await self._handle_ce(user_message, max_tool_iterations)
+        return await self._handle_legacy(user_message)
+
+    # ------------------------------------------------------------------
+    # Comparison mode
+    # ------------------------------------------------------------------
+
+    async def _handle_comparison(
         self,
-        conversation: List[Dict[str, str]],
-        max_iterations: int
+        user_message: str,
+        max_tool_iterations: int = 5,
     ) -> Dict[str, Any]:
+        """Run both runtimes, log the comparison, return the primary result.
+
+        The primary result is determined by the ``USE_CE_CHAT_RUNTIME``
+        flag — the comparison is purely observational and does not change
+        which response the caller receives.
         """
-        Execute multi-step tool orchestration.
-        
-        Handles:
-        - Sequential tool execution
-        - Passing tool results to subsequent calls
-        - Final response generation with all tool results
-        
-        Args:
-            conversation: Initial conversation messages
-            max_iterations: Maximum tool calling iterations
-        
-        Returns:
-            Response dict with content and metadata
-        
-        Requirements: 3.1, 3.2, 3.3, 3.4
-        """
-        tool_definitions = get_tool_definitions()
-        tool_calls_made = 0
-        
-        for iteration in range(max_iterations):
-            # Generate LLM response with tool definitions
-            response = await self.llm_client.chat_completion(
-                messages=conversation,
-                tools=tool_definitions if tool_definitions else None
-            )
-            
-            # Add assistant response to conversation
-            assistant_message = {
-                'role': 'assistant',
-                'content': response.get('content', '')
-            }
-            
-            if 'tool_calls' in response:
-                assistant_message['tool_calls'] = response['tool_calls']
-            
-            conversation.append(assistant_message)
-            
-            # Check if LLM wants to call tools
-            if 'tool_calls' not in response or not response['tool_calls']:
-                # No tool calls, return final response (Requirement 3.4)
-                return {
-                    'content': response['content'],
-                    'iterations': iteration + 1,
-                    'tool_calls_made': tool_calls_made
-                }
-            
-            # Execute tools sequentially (Requirement 3.1)
-            for tool_call in response['tool_calls']:
-                tool_name = tool_call['function']['name']
-                
-                # Parse arguments
-                import json
-                try:
-                    arguments = json.loads(tool_call['function']['arguments'])
-                except json.JSONDecodeError:
-                    arguments = {}
-                
-                logger.info(
-                    f"Executing tool: {tool_name}",
-                    extra={
-                        "user_id": self.user_id,
-                        "session_id": self.session_id,
-                        "tool_name": tool_name,
-                        "iteration": iteration + 1
-                    }
-                )
-                
-                # Execute tool with user_id scoping (Requirement 3.2)
-                try:
-                    tool_result = await execute_tool(
-                        tool_name=tool_name,
-                        parameters=arguments,
-                        user_id=self.user_id,
-                        db=self.db
-                    )
-                    tool_calls_made += 1
-                except Exception as e:
-                    logger.error(
-                        f"Tool execution failed: {tool_name}",
-                        extra={
-                            "user_id": self.user_id,
-                            "session_id": self.session_id,
-                            "tool_name": tool_name,
-                            "error": str(e)
-                        },
-                        exc_info=True
-                    )
-                    tool_result = {
-                        'success': False,
-                        'error': str(e)
-                    }
-                
-                # Add tool result to conversation (Requirement 3.3)
-                # This allows subsequent tool calls to use previous results
-                conversation.append({
-                    'role': 'tool',
-                    'tool_call_id': tool_call['id'],
-                    'name': tool_name,
-                    'content': json.dumps(tool_result)
-                })
-        
-        # Max iterations reached
-        logger.warning(
-            f"Max tool iterations reached: {max_iterations}",
+        report = await run_comparison(
+            user_message=user_message,
+            session_id=self.session_id,
+            user_id=self.user_id,
+            ce_handler_fn=lambda msg: self._handle_ce(msg, max_tool_iterations),
+            legacy_handler_fn=lambda msg: self._handle_legacy(msg),
+            invocation_logger=self._invocation_logger,
+        )
+
+        logger.info(
+            "Comparison report: %s",
+            report.summary(),
             extra={
                 "user_id": self.user_id,
                 "session_id": self.session_id,
-                "tool_calls_made": tool_calls_made
+                "comparison": report.to_dict(),
+            },
+        )
+
+        # Return whichever runtime is the active primary
+        if self.runtime == "ce" and report.ce_result and report.ce_result.error is None:
+            return {
+                "content": report.ce_result.content,
+                "tool_calls_made": report.ce_result.tool_calls_made,
+                "iterations": report.ce_result.iterations,
+                "latency_ms": report.ce_result.latency_ms,
+                "context_token_count": report.ce_result.context_token_count,
+                "ce_context_used": True,
+                "runtime": "ce",
+                "comparison": report.to_dict(),
             }
+
+        if report.legacy_result and report.legacy_result.error is None:
+            return {
+                "content": report.legacy_result.content,
+                "tool_calls_made": report.legacy_result.tool_calls_made,
+                "iterations": report.legacy_result.iterations,
+                "latency_ms": report.legacy_result.latency_ms,
+                "context_token_count": report.legacy_result.context_token_count,
+                "ce_context_used": False,
+                "runtime": "legacy",
+                "comparison": report.to_dict(),
+            }
+
+        # Both failed — raise the CE error if available
+        error_msg = (
+            report.ce_result.error
+            if report.ce_result and report.ce_result.error
+            else (report.legacy_result.error if report.legacy_result else "unknown")
         )
-        
-        return {
-            'content': 'I apologize, but I need to simplify my approach. Could you rephrase your request?',
-            'iterations': max_iterations,
-            'tool_calls_made': tool_calls_made,
-            'max_iterations_reached': True
-        }
-    
-    def _update_active_buffer(self, user_message: str, assistant_response: str) -> None:
-        """
-        Update active session buffer with new messages.
-        
-        Args:
-            user_message: User's message
-            assistant_response: Assistant's response
-        """
-        # Create message objects (not persisted yet)
-        user_msg = ChatMessage(
-            session_id=self.session_id,
-            role='user',
-            content=user_message
-        )
-        
-        assistant_msg = ChatMessage(
-            session_id=self.session_id,
-            role='assistant',
-            content=assistant_response
-        )
-        
-        # Add to active buffer
-        self.active_session_messages.append(user_msg)
-        self.active_session_messages.append(assistant_msg)
-    
-    def _get_system_prompt(self) -> str:
-        """
-        Get system prompt for AI coach.
-        
-        Returns:
-            System prompt string
-        """
-        return """You are an expert fitness coach and training advisor. Your role is to help athletes achieve their fitness goals through personalized guidance, motivation, and evidence-based advice.
+        raise RuntimeError(f"Both runtimes failed during comparison: {error_msg}")
 
-## Your Expertise:
-- **Training**: Workout programming, periodization, recovery strategies, training plan generation
-- **Nutrition**: Macro/micro nutrients, meal timing, supplementation
-- **Performance**: Race strategy, pacing, mental preparation
-- **Recovery**: Sleep optimization, injury prevention, active recovery
-- **Goal Setting**: SMART goals, progress tracking, motivation
-- **Data Analysis**: Activity analysis, trend identification, performance insights
+    # ------------------------------------------------------------------
+    # CE runtime path
+    # ------------------------------------------------------------------
 
-## Available Tools:
-You have access to tools that allow you to:
-- Save and retrieve athlete goals
-- Access recent training activities from Strava
-- Get weekly training metrics and trends
-- Generate and save personalized training plans
-- Search the web for current fitness information
+    async def _handle_ce(
+        self,
+        user_message: str,
+        max_tool_iterations: int = 5,
+    ) -> Dict[str, Any]:
+        """Execute via ChatAgent (Context Engineering path)."""
+        start_time = time.time()
 
-## Your Approach:
-- Use tools to gather athlete data before making recommendations
-- Ask clarifying questions when intent is unclear
-- Provide specific, actionable advice based on actual data
-- Present training plans for review before saving
-- Adapt recommendations to individual needs and current fitness level
-- Celebrate progress and milestones
-
-## Communication Style:
-- Friendly and conversational
-- Use emojis occasionally for warmth (🏃, 💪, 🎯, etc.)
-- Break down complex topics into digestible points
-- Use bullet points and formatting for clarity
-- Be concise but thorough
-
-## Important Guidelines:
-- Always retrieve athlete data (activities, metrics, goals) before generating training plans
-- Present generated training plans to the athlete for review and confirmation
-- Wait for explicit confirmation before saving plans
-- If the athlete requests modifications, regenerate the plan with the requested changes
-- Base training volume on recent activity history to ensure progressive overload"""
-    
-    def get_active_session_messages(self) -> List[ChatMessage]:
-        """
-        Get current active session messages.
-        
-        Returns:
-            List of ChatMessage objects in active buffer
-        """
-        return self.active_session_messages.copy()
-    
-    def load_session_messages(self, messages: List[ChatMessage]) -> None:
-        """
-        Load existing session messages into active buffer.
-        
-        Args:
-            messages: List of ChatMessage objects to load
-        """
-        self.active_session_messages = messages.copy()
-    
-    def clear_active_buffer(self) -> None:
-        """Clear the active session buffer."""
-        self.active_session_messages.clear()
-    
-    async def persist_session(self, eval_score: Optional[float] = None) -> None:
-        """
-        Persist active session to vector store.
-        
-        Args:
-            eval_score: Optional evaluation score for the session
-        
-        Requirements: 1.4, 1.5
-        """
-        if not self.active_session_messages:
-            logger.info(
-                "No messages to persist",
-                extra={"user_id": self.user_id, "session_id": self.session_id}
-            )
-            return
-        
         try:
-            self.rag_engine.persist_session(
-                user_id=self.user_id,
-                session_id=self.session_id,
-                messages=self.active_session_messages,
-                eval_score=eval_score
+            conversation_history = self.session_service.get_active_buffer(
+                self.session_id
             )
-            
+
+            result = await self.agent.execute(
+                user_message=user_message,
+                session_id=self.session_id,
+                user_id=self.user_id,
+                conversation_history=conversation_history,
+            )
+
+            self.session_service.append_messages(
+                self.session_id,
+                user_message,
+                result["content"],
+            )
+
+            latency_ms = (time.time() - start_time) * 1000
+
             logger.info(
-                f"Persisted {len(self.active_session_messages)} messages to vector store",
+                "CE runtime handled message in %.0f ms",
+                latency_ms,
                 extra={
+                    "runtime": "ce",
                     "user_id": self.user_id,
                     "session_id": self.session_id,
-                    "message_count": len(self.active_session_messages)
-                }
+                    "latency_ms": latency_ms,
+                    "tool_calls": result.get("tool_calls_made", 0),
+                },
             )
+
+            if latency_ms > 3000:
+                logger.warning(
+                    "CE chat latency exceeded 3 s target: %.0f ms",
+                    latency_ms,
+                    extra={
+                        "runtime": "ce",
+                        "user_id": self.user_id,
+                        "session_id": self.session_id,
+                    },
+                )
+
+            return {
+                "content": result["content"],
+                "tool_calls_made": result.get("tool_calls_made", 0),
+                "iterations": result.get("iterations", 0),
+                "latency_ms": latency_ms,
+                "context_token_count": result.get("context_token_count", 0),
+                "ce_context_used": True,
+                "runtime": "ce",
+            }
+
         except Exception as e:
             logger.error(
-                f"Error persisting session: {str(e)}",
-                extra={"user_id": self.user_id, "session_id": self.session_id},
-                exc_info=True
+                "CE runtime error: %s",
+                e,
+                extra={
+                    "runtime": "ce",
+                    "user_id": self.user_id,
+                    "session_id": self.session_id,
+                },
+                exc_info=True,
+            )
+            raise
+
+    # ------------------------------------------------------------------
+    # Legacy runtime path
+    # ------------------------------------------------------------------
+
+    async def _handle_legacy(self, user_message: str) -> Dict[str, Any]:
+        """Execute via legacy ChatService path."""
+        start_time = time.time()
+
+        try:
+            from app.services.chat_service import ChatService
+
+            chat_service = ChatService(self.db)
+
+            # Build conversation from session buffer
+            conversation_history = self.session_service.get_active_buffer(
+                self.session_id
+            )
+            messages = [
+                {"role": msg.role, "content": msg.content}
+                for msg in conversation_history
+            ]
+            messages.append({"role": "user", "content": user_message})
+
+            response = await chat_service.get_chat_response(messages)
+
+            assistant_content = response.get("content", "")
+
+            self.session_service.append_messages(
+                self.session_id,
+                user_message,
+                assistant_content,
+            )
+
+            latency_ms = (time.time() - start_time) * 1000
+
+            logger.info(
+                "Legacy runtime handled message in %.0f ms",
+                latency_ms,
+                extra={
+                    "runtime": "legacy",
+                    "user_id": self.user_id,
+                    "session_id": self.session_id,
+                    "latency_ms": latency_ms,
+                },
+            )
+
+            if latency_ms > 3000:
+                logger.warning(
+                    "Legacy chat latency exceeded 3 s target: %.0f ms",
+                    latency_ms,
+                    extra={
+                        "runtime": "legacy",
+                        "user_id": self.user_id,
+                        "session_id": self.session_id,
+                    },
+                )
+
+            return {
+                "content": assistant_content,
+                "tool_calls_made": response.get("iterations", 0),
+                "iterations": response.get("iterations", 0),
+                "latency_ms": latency_ms,
+                "context_token_count": 0,
+                "ce_context_used": False,
+                "runtime": "legacy",
+            }
+
+        except Exception as e:
+            logger.error(
+                "Legacy runtime error: %s",
+                e,
+                extra={
+                    "runtime": "legacy",
+                    "user_id": self.user_id,
+                    "session_id": self.session_id,
+                },
+                exc_info=True,
             )
             raise

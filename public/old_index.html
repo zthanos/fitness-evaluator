@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light" class="h-full">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fitness Evaluation Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@4.4.20/dist/full.min.css" rel="stylesheet" type="text/css" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+    <!-- Design Tokens -->
+    <link rel="stylesheet" href="css/design-tokens.css">
+
+    <!-- Navigation Sidebar Styles -->
+    <link rel="stylesheet" href="css/navigation-sidebar.css">
+
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+    </style>
+</head>
+
+<body class="bg-base-200 h-full">
+    <!-- Skip to main content link for accessibility -->
+    <a href="#main-content" class="skip-to-main">Skip to main content</a>
+
+    <!-- Sidebar Container -->
+    <div id="sidebar-container"></div>
+
+    <!-- Main Content Area -->
+    <main id="main-content" class="main-content min-h-screen">
+        <div class="p-6">
+            <!-- Compact Statistics Bar -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                <div class="stat bg-base-100 rounded-lg shadow">
+                    <div class="stat-figure text-primary">
+                        <svg class="inline-block w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                        </svg>
+                    </div>
+                    <div class="stat-title">Total Activities</div>
+                    <div class="stat-value text-primary" id="stat-activities">--</div>
+                    <div class="stat-desc">Synced from Strava</div>
+                </div>
+
+                <div class="stat bg-base-100 rounded-lg shadow">
+                    <div class="stat-figure text-secondary">
+                        <svg class="inline-block w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3"></path>
+                        </svg>
+                    </div>
+                    <div class="stat-title">Current Weight</div>
+                    <div class="stat-value text-secondary" id="stat-weight">--</div>
+                    <div class="stat-desc">Most recent</div>
+                </div>
+
+                <div class="stat bg-base-100 rounded-lg shadow">
+                    <div class="stat-figure text-accent">
+                        <svg class="inline-block w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                    </div>
+                    <div class="stat-title">Weekly Adherence</div>
+                    <div class="stat-value text-accent" id="stat-adherence">--</div>
+                    <div class="stat-desc">Last 7 days average</div>
+                </div>
+
+                <div class="stat bg-base-100 rounded-lg shadow">
+                    <div class="stat-figure text-info">
+                        <svg class="inline-block w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z">
+                            </path>
+                        </svg>
+                    </div>
+                    <div class="stat-title">Latest Evaluation</div>
+                    <div class="stat-value text-info" id="stat-eval-score">--</div>
+                    <div class="stat-desc" id="stat-eval-date">No evaluations yet</div>
+                </div>
+            </div>
+
+            <!-- Progress Charts -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                <div class="card bg-base-100 shadow-xl">
+                    <div class="card-body">
+                        <h2 class="card-title">📊 Activity Volume (Last 30 Days)</h2>
+                        <canvas id="activity-volume-chart"></canvas>
+                    </div>
+                </div>
+
+                <div class="card bg-base-100 shadow-xl">
+                    <div class="card-body">
+                        <h2 class="card-title">⚖️ Weight Trend (Last 30 Days)</h2>
+                        <canvas id="weight-trend-chart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent Activities and Logs -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                <div class="card bg-base-100 shadow-xl">
+                    <div class="card-body">
+                        <h2 class="card-title">🏃 Recent Activities</h2>
+                        <div id="recent-activities-list" class="space-y-2">
+                            <div class="flex justify-center py-4">
+                                <span class="loading loading-spinner loading-md"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card bg-base-100 shadow-xl">
+                    <div class="card-body">
+                        <h2 class="card-title">📝 Recent Daily Logs</h2>
+                        <div id="recent-logs-list" class="space-y-2">
+                            <div class="flex justify-center py-4">
+                                <span class="loading loading-spinner loading-md"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Latest Evaluation Summary -->
+            <div class="card bg-base-100 shadow-xl mb-6">
+                <div class="card-body">
+                    <h2 class="card-title">🎯 Latest Evaluation Summary</h2>
+                    <div id="latest-eval-summary">
+                        <div class="flex justify-center py-4">
+                            <span class="loading loading-spinner loading-md"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Action Buttons -->
+            <div class="flex gap-4 justify-center">
+                <a href="logs.html" class="btn btn-primary btn-lg gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                    </svg>
+                    Log Today
+                </a>
+                <a href="chat.html" class="btn btn-secondary btn-lg gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                    </svg>
+                    Chat with Coach
+                </a>
+            </div>
+        </div>
+    </main>
+
+    </body>
+
+</html>
+    <script src="js/utils.js"></script>
+
+    <!-- Navigation Sidebar Script -->
+    <script src="js/navigation-sidebar.js"></script>
+    <script>
+        let activityVolumeChart = null;
+        let weightTrendChart = null;
+
+        // Initialize when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            // Initialize sidebar
+            const sidebar = new NavigationSidebar('sidebar-container');
+            
+            // Load all dashboard data
+            loadDashboard();
+        });
+
+        async function loadDashboard() {
+            try {
+                await Promise.all([
+                    loadStats(),
+                    loadActivityVolumeChart(),
+                    loadWeightTrendChart(),
+                    loadRecentActivities(),
+                    loadRecentLogs(),
+                    loadLatestEvaluation()
+                ]);
+            } catch (error) {
+                console.error('Error loading dashboard:', error);
+            }
+        }
+
+        async function loadStats() {
+            try {
+                const response = await fetch('/api/dashboard/stats');
+                if (!response.ok) throw new Error('Failed to load stats');
+                
+                const stats = await response.json();
+                
+                // Update statistics
+                document.getElementById('stat-activities').textContent = stats.total_activities || '0';
+                document.getElementById('stat-weight').textContent = stats.current_weight ? `${stats.current_weight} kg` : '--';
+                document.getElementById('stat-adherence').textContent = stats.weekly_adherence_avg ? `${stats.weekly_adherence_avg}/10` : '--';
+                
+                // Latest evaluation score (now 0-10 scale from API)
+                if (stats.latest_evaluation_score) {
+                    document.getElementById('stat-eval-score').textContent = `${stats.latest_evaluation_score}/10`;
+                } else {
+                    document.getElementById('stat-eval-score').textContent = '--';
+                }
+                
+                if (stats.latest_evaluation_date) {
+                    document.getElementById('stat-eval-date').textContent = formatDateDisplay(stats.latest_evaluation_date);
+                }
+            } catch (error) {
+                console.error('Error loading stats:', error);
+            }
+        }
+
+        async function loadActivityVolumeChart() {
+            try {
+                const response = await fetch('/api/dashboard/charts/activity-volume');
+                if (!response.ok) throw new Error('Failed to load activity volume data');
+                
+                const data = await response.json();
+                
+                const ctx = document.getElementById('activity-volume-chart').getContext('2d');
+                
+                // Destroy existing chart if it exists
+                if (activityVolumeChart) {
+                    activityVolumeChart.destroy();
+                }
+                
+                activityVolumeChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: data.data_points.map(d => formatDateDisplay(d.week_start)),
+                        datasets: [{
+                            label: 'Distance (km)',
+                            data: data.data_points.map(d => d.total_distance_km),
+                            backgroundColor: 'rgba(59, 130, 246, 0.5)',
+                            borderColor: 'rgba(59, 130, 246, 1)',
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                title: {
+                                    display: true,
+                                    text: 'Distance (km)'
+                                }
+                            }
+                        }
+                    }
+                });
+            } catch (error) {
+                console.error('Error loading activity volume chart:', error);
+            }
+        }
+
+        async function loadWeightTrendChart() {
+            try {
+                const response = await fetch('/api/dashboard/charts/weight-trend');
+                if (!response.ok) throw new Error('Failed to load weight trend data');
+                
+                const data = await response.json();
+                
+                const ctx = document.getElementById('weight-trend-chart').getContext('2d');
+                
+                // Destroy existing chart if it exists
+                if (weightTrendChart) {
+                    weightTrendChart.destroy();
+                }
+                
+                weightTrendChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: data.data_points.map(d => formatDateDisplay(d.measurement_date)),
+                        datasets: [{
+                            label: 'Weight (kg)',
+                            data: data.data_points.map(d => d.weight_kg),
+                            backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                            borderColor: 'rgba(16, 185, 129, 1)',
+                            borderWidth: 2,
+                            tension: 0.4,
+                            fill: true
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        scales: {
+                            y: {
+                                beginAtZero: false,
+                                title: {
+                                    display: true,
+                                    text: 'Weight (kg)'
+                                }
+                            }
+                        }
+                    }
+                });
+            } catch (error) {
+                console.error('Error loading weight trend chart:', error);
+            }
+        }
+
+        async function loadRecentActivities() {
+            try {
+                const response = await fetch('/api/dashboard/recent/activities');
+                if (!response.ok) throw new Error('Failed to load recent activities');
+                
+                const data = await response.json();
+                const container = document.getElementById('recent-activities-list');
+                
+                if (data.activities.length === 0) {
+                    container.innerHTML = '<p class="text-base-content/60">No activities yet. Connect Strava to sync your workouts!</p>';
+                    return;
+                }
+                
+                container.innerHTML = data.activities.map(activity => `
+                    <div class="flex justify-between items-center p-3 bg-base-200 rounded-lg hover:bg-base-300 transition-colors">
+                        <div class="flex-1">
+                            <p class="font-semibold">${activity.activity_type}</p>
+                            <p class="text-sm text-base-content/60">${formatDateDisplay(activity.start_date)}</p>
+                        </div>
+                        <div class="text-right">
+                            <p class="font-semibold">${activity.distance_km} km</p>
+                            <p class="text-sm text-base-content/60">${activity.duration_min} min</p>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('Error loading recent activities:', error);
+                document.getElementById('recent-activities-list').innerHTML = '<p class="text-error">Failed to load activities</p>';
+            }
+        }
+
+        async function loadRecentLogs() {
+            try {
+                const response = await fetch('/api/dashboard/recent/logs');
+                if (!response.ok) throw new Error('Failed to load recent logs');
+                
+                const data = await response.json();
+                const container = document.getElementById('recent-logs-list');
+                
+                if (data.logs.length === 0) {
+                    container.innerHTML = '<p class="text-base-content/60">No logs yet. Start tracking your daily nutrition!</p>';
+                    return;
+                }
+                
+                container.innerHTML = data.logs.map(log => `
+                    <div class="flex justify-between items-center p-3 bg-base-200 rounded-lg hover:bg-base-300 transition-colors">
+                        <div class="flex-1">
+                            <p class="font-semibold">${formatDateDisplay(log.log_date)}</p>
+                            <p class="text-sm text-base-content/60">Adherence: ${log.adherence_score || '--'}/10</p>
+                        </div>
+                        <div class="text-right">
+                            <p class="font-semibold">${log.calories_in || '--'} kcal</p>
+                            <p class="text-sm text-base-content/60">${log.protein_g || '--'}g protein</p>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('Error loading recent logs:', error);
+                document.getElementById('recent-logs-list').innerHTML = '<p class="text-error">Failed to load logs</p>';
+            }
+        }
+
+        async function loadLatestEvaluation() {
+            try {
+                const response = await fetch('/api/dashboard/latest-evaluation');
+                if (!response.ok) throw new Error('Failed to load latest evaluation');
+                
+                const data = await response.json();
+                const container = document.getElementById('latest-eval-summary');
+                
+                if (!data.score) {
+                    container.innerHTML = `
+                        <div class="text-center py-8">
+                            <p class="text-base-content/60 mb-4">No evaluations yet. Generate your first evaluation!</p>
+                            <a href="evaluations-list.html" class="btn btn-primary">
+                                Generate Evaluation
+                            </a>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                const strengthsList = data.top_strengths.length > 0 
+                    ? data.top_strengths.map(s => `<li class="flex items-start gap-2"><span class="text-success text-xl">✓</span><span>${s}</span></li>`).join('')
+                    : '<li class="text-base-content/60">No strengths recorded</li>';
+                
+                const improvementsList = data.top_improvements.length > 0
+                    ? data.top_improvements.map(i => `<li class="flex items-start gap-2"><span class="text-warning text-xl">⚠</span><span>${i}</span></li>`).join('')
+                    : '<li class="text-base-content/60">No improvements recorded</li>';
+                
+                const scoreColor = getScoreColor(data.score);
+                const scorePercentage = data.score; // Already 0-100
+                
+                container.innerHTML = `
+                    <div class="flex flex-col md:flex-row gap-6">
+                        <div class="flex-shrink-0 text-center">
+                            <div class="radial-progress ${scoreColor}" style="--value:${scorePercentage}; --size:10rem; --thickness:0.6rem;" role="progressbar">
+                                <div class="flex flex-col">
+                                    <span class="text-3xl font-bold">${data.score}</span>
+                                    <span class="text-sm text-base-content/60">out of 100</span>
+                                </div>
+                            </div>
+                            <p class="text-sm text-base-content/60 mt-3">
+                                ${formatPeriodType(data.period_type)} Evaluation
+                            </p>
+                            <p class="text-xs text-base-content/50">
+                                ${formatDateDisplay(data.period_start)} - ${formatDateDisplay(data.period_end)}
+                            </p>
+                            <a href="evaluation-detail.html?id=${data.evaluation_id}" class="btn btn-sm btn-primary mt-3">
+                                View Full Report
+                            </a>
+                        </div>
+                        <div class="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <h3 class="font-semibold mb-2 text-success">✓ Top Strengths:</h3>
+                                <ul class="space-y-2">
+                                    ${strengthsList}
+                                </ul>
+                            </div>
+                            <div>
+                                <h3 class="font-semibold mb-2 text-warning">⚠ Areas for Improvement:</h3>
+                                <ul class="space-y-2">
+                                    ${improvementsList}
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            } catch (error) {
+                console.error('Error loading latest evaluation:', error);
+                document.getElementById('latest-eval-summary').innerHTML = '<p class="text-error">Failed to load evaluation</p>';
+            }
+        }
+        
+        function getScoreColor(score) {
+            if (score >= 80) return 'text-success';
+            if (score >= 60) return 'text-warning';
+            if (score >= 40) return 'text-info';
+            return 'text-error';
+        }
+        
+        function formatPeriodType(type) {
+            if (!type) return '';
+            return type.split('-').map(word => 
+                word.charAt(0).toUpperCase() + word.slice(1)
+            ).join('-');
+        }
+    </script>
+</body>
+
+</html>

@@ -14,14 +14,14 @@ from app.ai.contracts.evidence_card import EvidenceCard
 class ChatResponseContract(BaseModel):
     """
     Output contract for coach chat responses.
-    
+
     This contract defines the expected structure for AI coach responses
     to athlete queries, including the response text, evidence traceability,
     confidence scoring, and optional follow-up suggestions.
-    
+
     Requirements: 3.2.3, 3.2.7
     """
-    
+
     response_text: str = Field(
         ...,
         description="The coach's response to the athlete's query"
@@ -40,7 +40,7 @@ class ChatResponseContract(BaseModel):
         default=None,
         description="Optional follow-up questions or topics (max 3 items)"
     )
-    
+
     @field_validator('confidence_score')
     @classmethod
     def validate_confidence_range(cls, v: float) -> float:
@@ -50,7 +50,7 @@ class ChatResponseContract(BaseModel):
                 f"Confidence score must be between 0.0 and 1.0, got {v}"
             )
         return v
-    
+
     @field_validator('follow_up_suggestions')
     @classmethod
     def validate_follow_up_count(cls, v: Optional[List[str]]) -> Optional[List[str]]:

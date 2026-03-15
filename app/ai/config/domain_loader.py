@@ -20,6 +20,20 @@ class TrainingZone:
     rpe: Tuple[int, int]
     description: str
 
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to JSON-serializable dictionary.
+
+        Returns:
+            Dictionary with all fields, tuples converted to lists
+        """
+        return {
+            'name': self.name,
+            'hr_pct_max': list(self.hr_pct_max),
+            'rpe': list(self.rpe),
+            'description': self.description
+        }
+
+
 
 @dataclass
 class DomainKnowledge:
@@ -28,6 +42,21 @@ class DomainKnowledge:
     effort_levels: Dict[str, Any]
     recovery_guidelines: Dict[str, int]
     nutrition_targets: Dict[str, Any]
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to JSON-serializable dictionary.
+        
+        Recursively converts nested TrainingZone dataclasses to dicts.
+        
+        Returns:
+            Fully serializable dictionary representation
+        """
+        return {
+            'training_zones': {k: v.to_dict() for k, v in self.training_zones.items()},
+            'effort_levels': self.effort_levels,
+            'recovery_guidelines': self.recovery_guidelines,
+            'nutrition_targets': self.nutrition_targets
+        }
 
 
 class DomainKnowledgeLoader:
@@ -82,6 +111,16 @@ class DomainKnowledgeLoader:
             recovery_guidelines=data['recovery_guidelines'],
             nutrition_targets=data['nutrition_targets']
         )
+    
+    def load_as_dict(self) -> Dict[str, Any]:
+        """Load domain knowledge and return as a JSON-serializable dictionary.
+        
+        Convenience method that loads and converts to dict in one step.
+        
+        Returns:
+            Fully serializable dictionary representation of domain knowledge
+        """
+        return self.load().to_dict()
     
     def validate_schema(self, data: Dict[str, Any] = None) -> bool:
         """Validate YAML structure on application startup

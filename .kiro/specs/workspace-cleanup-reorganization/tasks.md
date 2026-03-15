@@ -206,7 +206,7 @@ This implementation plan breaks down the workspace cleanup system into discrete 
     - Test report generation formatting
     - _Requirements: 1.6, 1.7, 2.7, 3.5, 3.6, 8.1-8.7_
 
-- [~] 7. Checkpoint - Ensure all tests pass
+- [ ] 7. Checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
 - [x] 8. Implement error handling and recovery

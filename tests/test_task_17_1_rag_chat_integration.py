@@ -20,6 +20,7 @@ from app.models.athlete import Athlete
 from app.services.rag_engine import RAGEngine
 from app.services.chat_message_handler import ChatMessageHandler
 from app.services.llm_client import LLMClient
+from app.config import Settings
 
 
 @pytest.fixture
@@ -254,16 +255,29 @@ async def test_chat_message_handler_integration(
     test_session: ChatSession
 ):
     """Test full chat message handler with RAG integration."""
-    # Create handler
+    # Create handler with ChatAgent (Phase 3 architecture)
+    from app.services.chat_session_service import ChatSessionService
+    from app.services.chat_agent import ChatAgent
+    from app.ai.context.chat_context import ChatContextBuilder
+
+    session_service = ChatSessionService(db_session, rag_engine)
+    context_builder = ChatContextBuilder(db=db_session, token_budget=2400)
+    agent = ChatAgent(
+        context_builder=context_builder,
+        llm_adapter=None,
+        db=db_session,
+        llm_client=llm_client,
+    )
     handler = ChatMessageHandler(
         db=db_session,
-        rag_engine=rag_engine,
-        llm_client=llm_client,
+        session_service=session_service,
+        agent=agent,
         user_id=test_athlete.id,
-        session_id=test_session.id
+        session_id=test_session.id,
+        settings=Settings(USE_CE_CHAT_RUNTIME=True, LEGACY_CHAT_ENABLED=True),
     )
     
-    # Load some existing messages
+    # Load some existing messages into session buffer
     existing_messages = [
         ChatMessage(
             session_id=test_session.id,
@@ -279,7 +293,8 @@ async def test_chat_message_handler_integration(
         )
     ]
     
-    handler.load_session_messages(existing_messages)
+    # Load messages via session service instead of deprecated handler method
+    session_service.load_session(test_session.id)
     
     # Handle a new message
     try:
@@ -290,7 +305,7 @@ async def test_chat_message_handler_integration(
         # Verify response structure
         assert 'content' in response
         assert 'latency_ms' in response
-        assert 'context_retrieved' in response
+        assert 'ce_context_used' in response
         
         # Response should be a string
         assert isinstance(response['content'], str)
