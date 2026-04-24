@@ -44,7 +44,14 @@ class Settings(BaseSettings):
     API_WORKERS: int = 1
 
     # Chat Runtime Feature Flags (Phase 6)
-    USE_CE_CHAT_RUNTIME: bool = False  # Toggle CE chat runtime (default: legacy)
+    #
+    # Routing precedence (evaluated in ChatMessageHandler):
+    #   1. USE_CE_CHAT_RUNTIME=True  → all users use CE runtime (global override)
+    #   2. PILOT_ROLLOUT_ENABLED=True → users in PILOT_USER_IDS use CE, rest use legacy
+    #   3. Both False                → all users use legacy runtime
+    #
+    # ENABLE_RUNTIME_COMPARISON runs both paths in parallel for non-production QA only.
+    USE_CE_CHAT_RUNTIME: bool = False  # Toggle CE chat runtime globally (default: legacy)
     LEGACY_CHAT_ENABLED: bool = True   # Keep legacy path available for rollback
     CE_CHAT_TOKEN_BUDGET: int = 2400   # Token budget for CE context builder
     CE_CHAT_MAX_TOOL_ITERATIONS: int = 5  # Max tool orchestration iterations
