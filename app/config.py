@@ -7,7 +7,16 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
     # Database
+    # Set to a postgresql:// URL to use PostgreSQL instead of SQLite.
     DATABASE_URL: str = "sqlite:///./fitness_eval.db"
+
+    # Keycloak / OIDC
+    KEYCLOAK_URL: str = "http://localhost:8081"
+    KEYCLOAK_REALM: str = "fitness"
+    KEYCLOAK_CLIENT_ID: str = "fitness-app"
+    # Set to True to require a valid Bearer token on every API call.
+    # Set to False for local development without Keycloak running.
+    AUTH_ENABLED: bool = False
 
     # Strava OAuth
     STRAVA_CLIENT_ID: str = ""
@@ -67,6 +76,18 @@ class Settings(BaseSettings):
 
     # Derived settings (read-only after init)
     SECRET_KEY: str = "dev-secret-key-change-in-production"
+
+    @property
+    def keycloak_issuer(self) -> str:
+        return f"{self.KEYCLOAK_URL}/realms/{self.KEYCLOAK_REALM}"
+
+    @property
+    def keycloak_jwks_uri(self) -> str:
+        return f"{self.keycloak_issuer}/protocol/openid-connect/certs"
+
+    @property
+    def is_postgres(self) -> bool:
+        return self.DATABASE_URL.startswith("postgresql")
 
     @property
     def llm_base_url(self) -> str:
