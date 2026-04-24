@@ -1,12 +1,14 @@
 """Chat API endpoints for AI coach conversations."""
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import List, Optional
 from datetime import datetime
 import json
+
+from app.limiter import limiter
 
 from app.database import get_db
 from app.schemas.chat_schemas import (
@@ -221,7 +223,9 @@ async def get_session_messages(
 
 
 @router.post("/sessions/{session_id}/messages", response_model=MessageResponse, summary="Send a message")
+@limiter.limit("100/minute")
 async def create_message(
+    request: Request,
     session_id: int,
     message: MessageCreate,
     db: Session = Depends(get_db)
@@ -461,7 +465,9 @@ async def persist_session(
 
 
 @router.post("/stream", summary="Stream chat response")
+@limiter.limit("100/minute")
 async def stream_chat(
+    request: Request,
     message: MessageCreate,
     db: Session = Depends(get_db)
 ):

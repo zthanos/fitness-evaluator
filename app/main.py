@@ -16,6 +16,9 @@ from fastapi.openapi.utils import get_openapi
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pathlib import Path
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from app.limiter import limiter
 
 from app.database import engine
 from app.models.base import Base
@@ -78,6 +81,10 @@ def create_app() -> FastAPI:
             {"name": "training-plans", "description": "Training plan management"},
         ],
     )
+
+    # ── Rate limiter ────────────────────────────────────────────────────────
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
     # ── CORS ────────────────────────────────────────────────────────────────
     app.add_middleware(
