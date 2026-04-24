@@ -59,6 +59,7 @@ class RAGEngine:
         self.embedding_type = settings.embedding_type
         self.embedding_endpoint = embedding_endpoint or settings.embedding_endpoint
         self.embedding_model = embedding_model or settings.EMBEDDING_MODEL
+        self.embedding_timeout = settings.EMBEDDING_TIMEOUT
         
         # Log initialization
         print(f"[RAGEngine] Initializing with embedding type: {self.embedding_type}")
@@ -109,7 +110,7 @@ class RAGEngine:
             response = httpx.post(
                 url,
                 json=payload,
-                timeout=30.0
+                timeout=self.embedding_timeout
             )
             response.raise_for_status()
             
@@ -328,13 +329,11 @@ class RAGEngine:
                     context_parts.append(
                         f"[{date_str}, score: {eval_score:.1f}] {msg['text']}"
                     )
+        except httpx.TimeoutException:
+            print(f"[RAGEngine] Embedding service timed out after {self.embedding_timeout}s - continuing without vector store")
         except Exception as e:
-            error_msg = str(e)
-            if "10061" in error_msg or "Connection refused" in error_msg:
-                print(f"[RAGEngine] Embedding service not running at {self.embedding_endpoint} - continuing without vector store")
-            else:
-                print(f"[RAGEngine] Error retrieving from vector store: {e}")
-            # Continue without vector store results - chat will still work with active session buffer
+            print(f"[RAGEngine] Vector store unavailable ({type(e).__name__}) - continuing without vector store")
+            # Chat still works with active session buffer (Layer 1)
         
         # Log total context retrieval time
         total_latency_ms = (time.time() - start_time) * 1000

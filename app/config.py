@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     EMBEDDING_TYPE: str = ""  # If empty, uses LLM_TYPE
     EMBEDDING_ENDPOINT: str = ""  # If empty, uses OLLAMA_ENDPOINT or LM_STUDIO_ENDPOINT
     EMBEDDING_MODEL: str = "nomic-embed-text"  # Default embedding model
+    EMBEDDING_TIMEOUT: int = 10  # Seconds before giving up on embedding service
 
     # Web Search Configuration
     TAVILY_API_KEY: str = ""  # Get free API key at https://tavily.com
