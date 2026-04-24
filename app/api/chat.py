@@ -203,10 +203,7 @@ async def get_session_messages(
 
     messages = db.query(ChatMessage).filter(
         ChatMessage.session_id == session_id
-    ).order_by(ChatMessage.created_at.desc()).limit(limit).all()
-
-    # Reverse to get chronological order
-    messages.reverse()
+    ).order_by(ChatMessage.created_at.asc()).limit(limit).all()
 
     # Convert to response format
     message_responses = []
