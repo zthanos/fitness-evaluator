@@ -13,6 +13,7 @@ from app.services.strava_service import (
 )
 from app.services.llm_client import LLMClient
 from app.services.session_matcher import SessionMatcher
+from app.services.strava_client import StravaClient
 import logging
 
 logger = logging.getLogger(__name__)
@@ -511,19 +512,27 @@ async def _handle_activity_create(
                 "activity_id": activity_id
             }
         
-        # TODO: Fetch activity details from Strava API
-        # For now, we'll create a placeholder activity
-        # In production, this should call strava_client.get_activity(activity_id)
-        
-        # Create activity record
+        # Fetch real activity details from Strava API.
+        # The app is single-user; token is stored under athlete_id=1.
+        try:
+            client = StravaClient(db)
+            data = await client.get_activity(1, activity_id)
+        except Exception as e:
+            logger.warning("Could not fetch activity %d from Strava (%s); storing minimal record", activity_id, e)
+            data = {}
+
         activity = StravaActivity(
             strava_id=activity_id,
             athlete_id=athlete_id,
-            activity_type="Run",  # Placeholder - should come from API
-            start_date=datetime.fromtimestamp(event_time),
-            moving_time_s=0,  # Placeholder
-            distance_m=0.0,  # Placeholder
-            raw_json="{}"  # Placeholder
+            activity_type=data.get("type", "Unknown"),
+            start_date=datetime.fromisoformat(data["start_date"].replace("Z", "+00:00")) if data.get("start_date") else datetime.fromtimestamp(event_time),
+            moving_time_s=data.get("moving_time", 0),
+            distance_m=data.get("distance", 0.0),
+            elevation_m=data.get("total_elevation_gain"),
+            avg_hr=data.get("average_heartrate"),
+            max_hr=data.get("max_heartrate"),
+            calories=data.get("calories"),
+            raw_json=str(data) if data else "{}",
         )
         
         db.add(activity)

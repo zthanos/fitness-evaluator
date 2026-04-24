@@ -247,7 +247,31 @@ class StravaClient:
             page += 1
         
         return all_activities
-    
+
+    async def get_activity(self, athlete_id: int, strava_activity_id: int) -> dict:
+        """
+        Fetch a single activity from Strava API by ID.
+
+        Args:
+            athlete_id: Internal DB athlete ID (used to look up token)
+            strava_activity_id: Strava activity ID
+
+        Returns:
+            Activity dictionary from Strava API
+
+        Raises:
+            ValueError: If no token found for athlete
+            httpx.HTTPStatusError: If API request fails
+        """
+        access_token = await self.refresh_token(athlete_id)
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(
+                f"https://www.strava.com/api/v3/activities/{strava_activity_id}",
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+            response.raise_for_status()
+            return response.json()
+
     async def sync_activities(self, athlete_id: int) -> int:
         """
         Sync activities from Strava to database.
