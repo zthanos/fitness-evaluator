@@ -102,7 +102,7 @@ async def list_training_plans(
                 "id": plan.id,
                 "title": plan.title,
                 "sport": plan.sport,
-                "goal": None,  # TODO: Load goal description if goal_id is set
+                "goal": plan.goal.description if plan.goal else None,
                 "start_date": plan.start_date.isoformat(),
                 "end_date": plan.end_date.isoformat(),
                 "status": plan.status,
