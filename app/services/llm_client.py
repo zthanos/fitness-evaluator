@@ -2,10 +2,13 @@
 import httpx
 import asyncio
 import json
+import logging
 from typing import Dict, Any, List, Optional, Callable, AsyncGenerator
 from app.config import get_settings
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
+
+logger = logging.getLogger(__name__)
 
 def normalize_base_url(base_url: str) -> str:
     """
@@ -78,11 +81,7 @@ class LLMClient:
             else self.settings.LM_STUDIO_MODEL
         )
         
-        # Log initialization parameters (Requirement 21.10)
-        print(f"[LLMClient] Initializing with backend: {self.settings.LLM_TYPE}")
-        print(f"[LLMClient] Endpoint: {self.endpoint_url}")
-        print(f"[LLMClient] Model: {self.model_name}")
-        print(f"[LLMClient] Base URL: {self.settings.llm_base_url}")
+        logger.debug("Initializing: backend=%s endpoint=%s model=%s", self.settings.LLM_TYPE, self.endpoint_url, self.model_name)
     
     async def generate_response(
         self,
@@ -114,8 +113,7 @@ class LLMClient:
         from langchain_openai import ChatOpenAI
         from langchain_core.prompts import ChatPromptTemplate
         
-        # Log invocation attempt (Requirement 21.10)
-        print(f"[LLMClient] generate_response called with temperature={temperature}, max_tokens={max_tokens}")
+        logger.debug("generate_response: temperature=%s max_tokens=%d", temperature, max_tokens)
         
         messages = []
         if system_prompt:
@@ -138,23 +136,20 @@ class LLMClient:
         # Retry logic with exponential backoff (Requirement 21.8)
         for attempt in range(3):
             try:
-                print(f"[LLMClient] Attempt {attempt + 1}/3")
+                logger.debug("Attempt %d/3", attempt + 1)
                 result = await chain.ainvoke({"prompt": prompt})
-                
-                # Extract content from response
                 if hasattr(result, 'content'):
                     return result.content
                 return str(result)
-                
+
             except (httpx.ConnectError, httpx.TimeoutException) as e:
-                print(f"[LLMClient] Connection error on attempt {attempt + 1}: {e}")
+                logger.warning("Connection error on attempt %d: %s", attempt + 1, e)
                 if attempt == 2:
-                    print(f"[LLMClient] All retry attempts failed")
+                    logger.error("All retry attempts failed")
                     raise
-                # Exponential backoff: 1s, 2s, 4s
                 await asyncio.sleep(2 ** attempt)
             except Exception as e:
-                print(f"[LLMClient] Validation error: {e}")
+                logger.error("LLM error: %s", e)
                 raise
     
     async def stream_response(
@@ -188,8 +183,7 @@ class LLMClient:
         from langchain_core.prompts import ChatPromptTemplate
         from typing import AsyncGenerator
         
-        # Log invocation attempt (Requirement 21.10)
-        print(f"[LLMClient] stream_response called with temperature={temperature}, max_tokens={max_tokens}")
+        logger.debug("stream_response: temperature=%s max_tokens=%d", temperature, max_tokens)
         
         messages = []
         if system_prompt:
@@ -212,26 +206,22 @@ class LLMClient:
         # Retry logic with exponential backoff (Requirement 21.8)
         for attempt in range(3):
             try:
-                print(f"[LLMClient] Stream attempt {attempt + 1}/3")
-                
+                logger.debug("Stream attempt %d/3", attempt + 1)
                 async for chunk in chain.astream({"prompt": prompt}):
                     if hasattr(chunk, 'content'):
                         yield chunk.content
                     else:
                         yield str(chunk)
-                
-                # If we successfully streamed, break out of retry loop
                 break
-                
+
             except (httpx.ConnectError, httpx.TimeoutException) as e:
-                print(f"[LLMClient] Connection error on attempt {attempt + 1}: {e}")
+                logger.warning("Connection error on stream attempt %d: %s", attempt + 1, e)
                 if attempt == 2:
-                    print(f"[LLMClient] All retry attempts failed")
+                    logger.error("All stream retry attempts failed")
                     raise
-                # Exponential backoff: 1s, 2s, 4s
                 await asyncio.sleep(2 ** attempt)
             except Exception as e:
-                print(f"[LLMClient] Validation error: {e}")
+                logger.error("Stream error: %s", e)
                 raise
     
     def _build_prompt(
@@ -404,9 +394,8 @@ The following information from the athlete's history may be relevant to this con
                     # Log the error response for debugging
                     if response.status_code == 400:
                         error_detail = response.text
-                        print(f"[LLMClient] 400 Bad Request from {self.backend}")
-                        print(f"[LLMClient] Request payload: {json.dumps(payload, indent=2)}")
-                        print(f"[LLMClient] Error response: {error_detail}")
+                        logger.error("400 Bad Request from %s: %s", self.backend, error_detail)
+                        logger.debug("Request payload: %s", json.dumps(payload, indent=2))
                     
                     response.raise_for_status()
                     

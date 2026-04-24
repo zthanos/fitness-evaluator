@@ -3,10 +3,13 @@
 Handles generation, storage, and retrieval of training plans.
 Integrates with LLM for activity-aware plan generation.
 """
+import logging
 from typing import Optional, List, Dict, Any
 from datetime import datetime, date, timedelta
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
+
+logger = logging.getLogger(__name__)
 
 from app.schemas.training_plan import TrainingPlan, TrainingWeek, TrainingSession
 from app.models.training_plan import TrainingPlan as TrainingPlanModel
@@ -325,7 +328,7 @@ Description: [details]
         """
         # Validate user_id is present (Requirement 20.2)
         if user_id is None:
-            print(f"[TrainingPlanEngine] SECURITY VIOLATION: user_id is None in get_plan for plan_id={plan_id}")
+            logger.error("SECURITY VIOLATION: user_id is None in get_plan for plan_id=%s", plan_id)
             raise ValueError("user_id is required for plan retrieval")
         
         # Query with user_id scoping for security
@@ -356,7 +359,7 @@ Description: [details]
         """
         # Validate user_id is present (Requirement 20.2)
         if user_id is None:
-            print("[TrainingPlanEngine] SECURITY VIOLATION: user_id is None in list_plans")
+            logger.error("SECURITY VIOLATION: user_id is None in list_plans")
             raise ValueError("user_id is required for plan listing")
         
         # Query with user_id scoping
@@ -446,7 +449,7 @@ Description: [details]
         """
         # Validate user_id is present (Requirement 20.2)
         if user_id is None:
-            print(f"[TrainingPlanEngine] SECURITY VIOLATION: user_id is None in iterate_plan for plan_id={plan_id}")
+            logger.error("SECURITY VIOLATION: user_id is None in iterate_plan for plan_id=%s", plan_id)
             raise ValueError("user_id is required for plan iteration")
         
         if not self.llm_client:
@@ -617,7 +620,7 @@ Description: [details]
         
         # Validate user_id is present (Requirement 20.2)
         if updated_plan.user_id is None:
-            print(f"[TrainingPlanEngine] SECURITY VIOLATION: user_id is None in update_plan for plan_id={updated_plan.id}")
+            logger.error("SECURITY VIOLATION: user_id is None in update_plan for plan_id=%s", updated_plan.id)
             raise ValueError("user_id is required for plan update")
         
         # Validate plan before updating

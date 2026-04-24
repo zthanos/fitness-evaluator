@@ -5,8 +5,11 @@ Provides fast access to recent conversation context.
 
 Requirements: 1.1, 1.3
 """
+import logging
 from typing import Dict, List
 from app.models.chat_message import ChatMessage
+
+logger = logging.getLogger(__name__)
 
 
 class SessionBuffer:
@@ -23,7 +26,7 @@ class SessionBuffer:
         """Initialize empty session buffer."""
         # Dictionary mapping session_id to list of messages
         self._buffers: Dict[int, List[ChatMessage]] = {}
-        print("[SessionBuffer] Initialized")
+        logger.debug("Initialized")
     
     def add_message(self, session_id: int, message: ChatMessage) -> None:
         """
@@ -39,7 +42,7 @@ class SessionBuffer:
             self._buffers[session_id] = []
         
         self._buffers[session_id].append(message)
-        print(f"[SessionBuffer] Added message to session {session_id} (total: {len(self._buffers[session_id])})")
+        logger.debug("Added message to session %d (total: %d)", session_id, len(self._buffers[session_id]))
     
     def get_messages(self, session_id: int) -> List[ChatMessage]:
         """
@@ -54,7 +57,7 @@ class SessionBuffer:
         Requirements: 1.1, 1.3
         """
         messages = self._buffers.get(session_id, [])
-        print(f"[SessionBuffer] Retrieved {len(messages)} messages for session {session_id}")
+        logger.debug("Retrieved %d messages for session %d", len(messages), session_id)
         return messages
     
     def clear_session(self, session_id: int) -> None:
@@ -69,9 +72,9 @@ class SessionBuffer:
         if session_id in self._buffers:
             message_count = len(self._buffers[session_id])
             del self._buffers[session_id]
-            print(f"[SessionBuffer] Cleared {message_count} messages for session {session_id}")
+            logger.debug("Cleared %d messages for session %d", message_count, session_id)
         else:
-            print(f"[SessionBuffer] No buffer found for session {session_id}")
+            logger.debug("No buffer found for session %d", session_id)
     
     def clear_all(self) -> None:
         """
@@ -81,7 +84,7 @@ class SessionBuffer:
         """
         session_count = len(self._buffers)
         self._buffers.clear()
-        print(f"[SessionBuffer] Cleared all buffers ({session_count} sessions)")
+        logger.debug("Cleared all buffers (%d sessions)", session_count)
     
     def get_session_count(self) -> int:
         """

@@ -6,6 +6,7 @@ Implements the Context-Engineered Chat architecture with:
 
 Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 20.1
 """
+import logging
 import os
 import numpy as np
 import httpx
@@ -13,12 +14,14 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime
 from sqlalchemy.orm import Session
 
+logger = logging.getLogger(__name__)
+
 try:
     import faiss
     FAISS_AVAILABLE = True
 except ImportError:
     FAISS_AVAILABLE = False
-    print("[RAGEngine] FAISS not available")
+    logger.warning("FAISS not available")
 
 from app.models.chat_message import ChatMessage
 from app.models.faiss_metadata import FaissMetadata
@@ -61,11 +64,9 @@ class RAGEngine:
         self.embedding_model = embedding_model or settings.EMBEDDING_MODEL
         self.embedding_timeout = settings.EMBEDDING_TIMEOUT
         
-        # Log initialization
-        print(f"[RAGEngine] Initializing with embedding type: {self.embedding_type}")
-        print(f"[RAGEngine] Embedding endpoint: {self.embedding_endpoint}")
-        print(f"[RAGEngine] Using embedding model: {self.embedding_model}")
-        print(f"[RAGEngine] Embedding dimension: {self.EMBEDDING_DIM}")
+        logger.debug("Initializing: type=%s endpoint=%s model=%s dim=%d",
+                     self.embedding_type, self.embedding_endpoint,
+                     self.embedding_model, self.EMBEDDING_DIM)
         
         # Initialize or load FAISS index
         self.index = None
@@ -87,7 +88,7 @@ class RAGEngine:
         # Truncate text if too long
         if len(text) > max_length:
             text = text[:max_length]
-            print(f"[RAGEngine] Truncated text to {max_length} characters")
+            logger.debug("Truncated embedding text to %d characters", max_length)
         
         try:
             # Determine API style and endpoint based on embedding type
@@ -131,15 +132,15 @@ class RAGEngine:
             return embedding
             
         except httpx.HTTPError as e:
-            print(f"[RAGEngine] Error generating embedding: {e}")
+            logger.error("HTTP error generating embedding: %s", e)
             raise
         except Exception as e:
-            print(f"[RAGEngine] Unexpected error generating embedding: {e}")
+            logger.error("Unexpected error generating embedding: %s", e)
             raise
     
     def initialize_index(self) -> None:
         """Create a new FAISS index."""
-        print(f"[RAGEngine] Creating new FAISS index (dim={self.EMBEDDING_DIM})")
+        logger.info("Creating new FAISS index (dim=%d)", self.EMBEDDING_DIM)
         
         # Use IndexFlatIP for inner product (cosine similarity with normalized vectors)
         self.index = faiss.IndexFlatIP(self.EMBEDDING_DIM)
@@ -154,20 +155,17 @@ class RAGEngine:
         """Load FAISS index from disk."""
         if os.path.exists(self.index_path):
             try:
-                print(f"[RAGEngine] Loading FAISS index from {self.index_path}")
+                logger.info("Loading FAISS index from %s", self.index_path)
                 self.index = faiss.read_index(self.index_path)
-                
-                # Count chat message metadata
                 metadata_count = self.db.query(FaissMetadata).filter(
                     FaissMetadata.record_type == 'chat_message'
                 ).count()
-                
-                print(f"[RAGEngine] Loaded index with {self.index.ntotal} vectors and {metadata_count} chat metadata records")
+                logger.info("Loaded index: %d vectors, %d chat records", self.index.ntotal, metadata_count)
             except Exception as e:
-                print(f"[RAGEngine] Error loading index: {e}")
+                logger.error("Error loading index, reinitializing: %s", e)
                 self.initialize_index()
         else:
-            print("[RAGEngine] No existing index found, creating new one")
+            logger.info("No existing index found, creating new one")
             self.initialize_index()
     
     def save_index(self) -> None:
@@ -182,9 +180,9 @@ class RAGEngine:
             # Commit metadata to database
             self.db.commit()
             
-            print(f"[RAGEngine] Saved index with {self.index.ntotal} vectors to {self.index_path}")
+            logger.info("Saved index: %d vectors -> %s", self.index.ntotal, self.index_path)
         except Exception as e:
-            print(f"[RAGEngine] Error saving index: {e}")
+            logger.error("Error saving index: %s", e)
             self.db.rollback()
     
     def search_similar(
@@ -206,11 +204,11 @@ class RAGEngine:
         """
         # Validate user_id is present (Requirement 20.1)
         if user_id is None:
-            print("[RAGEngine] SECURITY VIOLATION: user_id is None in search_similar")
+            logger.error("SECURITY VIOLATION: user_id is None in search_similar")
             raise ValueError("user_id is required for vector search")
-        
+
         if self.index.ntotal == 0:
-            print("[RAGEngine] Index is empty, returning no results")
+            logger.debug("Index is empty, returning no results")
             return []
         
         # Search index (get more results than needed for filtering)
@@ -234,10 +232,11 @@ class RAGEngine:
                 if metadata:
                     # Verify user_id matches (additional security check)
                     if metadata.user_id != user_id:
-                        print(f"[RAGEngine] SECURITY VIOLATION: Attempted cross-user access - "
-                              f"requested user_id={user_id}, found user_id={metadata.user_id}, "
-                              f"vector_id={idx}")
-                        continue  # Skip this result
+                        logger.error(
+                            "SECURITY VIOLATION: cross-user access attempt - "
+                            "requested=%d found=%d vector=%d", user_id, metadata.user_id, idx
+                        )
+                        continue
                     
                     # Parse key format: chat:{user_id}:{session_id}:{date}:eval_{score}
                     key_parts = metadata.record_id.split(':')
@@ -258,7 +257,7 @@ class RAGEngine:
                     if len(results) >= top_k:
                         break
         
-        print(f"[RAGEngine] Search returned {len(results)} results for user_id={user_id}")
+        logger.debug("Search returned %d results for user_id=%d", len(results), user_id)
         return results
 
     
@@ -291,7 +290,7 @@ class RAGEngine:
         
         # Validate user_id is present (Requirement 20.1)
         if user_id is None:
-            print("[RAGEngine] SECURITY VIOLATION: user_id is None in retrieve_context")
+            logger.error("SECURITY VIOLATION: user_id is None in retrieve_context")
             raise ValueError("user_id is required for context retrieval")
         
         context_parts = []
@@ -313,13 +312,10 @@ class RAGEngine:
                 top_k=top_k
             )
             
-            # Log vector retrieval latency (Requirement 17.2)
             vector_latency_ms = (time.time() - vector_start_time) * 1000
-            print(f"[RAGEngine] Vector retrieval completed in {vector_latency_ms:.0f}ms for user_id={user_id}")
-            
-            # Warn if latency exceeds target (Requirement 18.3)
+            logger.debug("Vector retrieval: %dms for user_id=%d", vector_latency_ms, user_id)
             if vector_latency_ms > 500:
-                print(f"[RAGEngine] PERFORMANCE WARNING: Vector retrieval exceeded 500ms target: {vector_latency_ms:.0f}ms")
+                logger.warning("Vector retrieval exceeded 500ms target: %dms", vector_latency_ms)
             
             if similar_messages:
                 context_parts.append("\n=== Relevant Past Conversations ===")
@@ -330,14 +326,12 @@ class RAGEngine:
                         f"[{date_str}, score: {eval_score:.1f}] {msg['text']}"
                     )
         except httpx.TimeoutException:
-            print(f"[RAGEngine] Embedding service timed out after {self.embedding_timeout}s - continuing without vector store")
+            logger.warning("Embedding service timed out after %ds - continuing with session buffer only", self.embedding_timeout)
         except Exception as e:
-            print(f"[RAGEngine] Vector store unavailable ({type(e).__name__}) - continuing without vector store")
-            # Chat still works with active session buffer (Layer 1)
-        
-        # Log total context retrieval time
+            logger.warning("Vector store unavailable (%s) - continuing with session buffer only", type(e).__name__)
+
         total_latency_ms = (time.time() - start_time) * 1000
-        print(f"[RAGEngine] Total context retrieval completed in {total_latency_ms:.0f}ms")
+        logger.debug("Context retrieval completed in %dms", total_latency_ms)
         
         return "\n".join(context_parts)
     
@@ -363,11 +357,11 @@ class RAGEngine:
         """
         # Validate user_id is present (Requirement 20.1)
         if user_id is None:
-            print("[RAGEngine] SECURITY VIOLATION: user_id is None in persist_session")
+            logger.error("SECURITY VIOLATION: user_id is None in persist_session")
             raise ValueError("user_id is required for session persistence")
-        
+
         if not messages:
-            print("[RAGEngine] No messages to persist")
+            logger.debug("No messages to persist for session %d", session_id)
             return
         
         date_str = datetime.now().strftime("%Y-%m-%d")
@@ -401,15 +395,14 @@ class RAGEngine:
                 persisted_count += 1
                 
             except Exception as e:
-                print(f"[RAGEngine] Error persisting message {msg.id}: {e}")
+                logger.warning("Skipping message %s (embedding failed): %s", msg.id, e)
                 continue
-        
-        # Save index and commit metadata
+
         try:
             self.save_index()
-            print(f"[RAGEngine] Persisted {persisted_count}/{len(messages)} messages for session {session_id}")
+            logger.info("Persisted %d/%d messages for session %d", persisted_count, len(messages), session_id)
         except Exception as e:
-            print(f"[RAGEngine] Error saving index: {e}")
+            logger.error("Error saving index after persist_session: %s", e)
             self.db.rollback()
     
     def delete_session(self, user_id: int, session_id: int) -> None:
@@ -426,7 +419,7 @@ class RAGEngine:
         """
         # Validate user_id is present (Requirement 20.1)
         if user_id is None:
-            print("[RAGEngine] SECURITY VIOLATION: user_id is None in delete_session")
+            logger.error("SECURITY VIOLATION: user_id is None in delete_session")
             raise ValueError("user_id is required for session deletion")
         
         try:
@@ -440,7 +433,7 @@ class RAGEngine:
             ).all()
             
             if not metadata_records:
-                print(f"[RAGEngine] No metadata found for session {session_id}")
+                logger.debug("No metadata found for session %d", session_id)
                 return
             
             # Get vector IDs to remove
@@ -456,9 +449,9 @@ class RAGEngine:
             
             self.db.commit()
             
-            print(f"[RAGEngine] Deleted {len(metadata_records)} messages for session {session_id}")
-            
+            logger.info("Deleted %d messages for session %d", len(metadata_records), session_id)
+
         except Exception as e:
-            print(f"[RAGEngine] Error deleting session: {e}")
+            logger.error("Error deleting session %d: %s", session_id, e)
             self.db.rollback()
-            raise  # Re-raise for error handling (Requirement 2.4)
+            raise

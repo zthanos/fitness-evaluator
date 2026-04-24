@@ -4,8 +4,11 @@ Handles AI coach chat functionality with LLM integration and tool calling.
 Supports streaming responses and goal setting through conversation.
 """
 import asyncio
+import logging
 from typing import List, Dict, Any, AsyncGenerator
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
 from app.services.llm_client import LLMClient
 from app.services.goal_service import GoalService
 
@@ -68,17 +71,12 @@ class ChatService:
         
         try:
             # Use chat_with_tools for automatic tool execution
-            print(f"[ChatService] Sending {len(full_messages)} messages to LLM")
-            print(f"[ChatService] Tools registered: {list(self.llm_client.tools.keys())}")
-            
+            logger.debug("Sending %d messages to LLM (tools: %s)", len(full_messages), list(self.llm_client.tools.keys()))
             response = await self.llm_client.chat_with_tools(full_messages)
-            
-            print(f"[ChatService] Response iterations: {response.get('iterations', 0)}")
-            print(f"[ChatService] Response content length: {len(response.get('content', ''))}")
-            
+            logger.debug("Response: %d iterations, %d chars", response.get('iterations', 0), len(response.get('content', '')))
             return response
         except Exception as e:
-            print(f"LLM Error: {e}")
+            logger.error("LLM error: %s", e)
             import traceback
             traceback.print_exc()
             # Fall back to mock response
@@ -144,7 +142,7 @@ class ChatService:
                 with open('app/prompts/goal_setting_prompt.txt', 'r') as f:
                     return f.read()
             except FileNotFoundError:
-                print("Warning: goal_setting_prompt.txt not found, using fallback")
+                logger.warning("goal_setting_prompt.txt not found, using fallback")
         
         # Fallback to base prompt
         base_prompt = """You are an expert fitness coach and nutrition advisor. Your role is to help athletes achieve their fitness goals through personalized guidance, motivation, and evidence-based advice.

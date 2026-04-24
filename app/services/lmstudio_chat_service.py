@@ -4,12 +4,15 @@ Uses LM Studio's native API format (/api/v1/chat) instead of OpenAI-compatible f
 """
 import asyncio
 import json
+import logging
 import httpx
 from typing import List, Dict, Any, AsyncGenerator
 from sqlalchemy.orm import Session
 
 from app.services.goal_service import GoalService
 from app.config import get_settings
+
+logger = logging.getLogger(__name__)
 
 
 class LMStudioChatService:
@@ -35,9 +38,7 @@ class LMStudioChatService:
         self.endpoint = f"{self.base_url}/api/v1/chat"
         self.model = self.settings.OLLAMA_MODEL
         
-        print(f"[LMStudio] Initialized")
-        print(f"[LMStudio] Endpoint: {self.endpoint}")
-        print(f"[LMStudio] Model: {self.model}")
+        logger.debug("Initialized: endpoint=%s model=%s", self.endpoint, self.model)
     
     async def get_chat_response(
         self,
@@ -72,8 +73,7 @@ class LMStudioChatService:
             if context:
                 full_system_prompt += f"\n\nConversation history:\n{context}"
             
-            print(f"[LMStudio] Sending request to {self.endpoint}")
-            print(f"[LMStudio] User message: {user_message[:100]}...")
+            logger.debug("Sending request to %s: %.100s...", self.endpoint, user_message)
             
             # Call LM Studio API
             async with httpx.AsyncClient(timeout=30.0) as client:
@@ -103,27 +103,23 @@ class LMStudioChatService:
                         content = item.get('content', '')
                         break
                 
-                print(f"[LMStudio] Response received: {content[:200]}...")
-                
-                # Check if the response mentions saving a goal
-                # Since LM Studio doesn't support native tool calling, we need to parse the response
+                logger.debug("Response received: %.200s...", content)
+
                 if self._should_save_goal(content, user_message):
-                    print("[LMStudio] Detected goal-setting intent, attempting to extract goal details")
+                    logger.debug("Detected goal-setting intent, extracting goal details")
                     goal_data = self._extract_goal_from_response(content, user_message)
-                    
+
                     if goal_data:
-                        print(f"[LMStudio] Extracted goal data: {goal_data}")
-                        # Save the goal
+                        logger.debug("Extracted goal data: %s", goal_data)
                         try:
                             result = self.goal_service.save_goal(**goal_data)
                             if result['success']:
-                                # Add confirmation to the response
                                 content += f"\n\n✅ Goal saved! ID: {result['goal_id']}"
-                                print(f"[LMStudio] Goal saved successfully: {result['goal_id']}")
+                                logger.info("Goal saved: %s", result['goal_id'])
                             else:
                                 content += f"\n\n❌ Failed to save goal: {result.get('message', 'Unknown error')}"
                         except Exception as e:
-                            print(f"[LMStudio] Error saving goal: {e}")
+                            logger.error("Error saving goal: %s", e)
                             content += f"\n\n❌ Error saving goal: {str(e)}"
                 
                 return {
@@ -132,9 +128,7 @@ class LMStudioChatService:
                 }
             
         except Exception as e:
-            print(f"[LMStudio] Error: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error("LMStudio error: %s", e, exc_info=True)
             
             return {
                 'content': f"I encountered an error: {str(e)}. Please make sure LM Studio is running.",
