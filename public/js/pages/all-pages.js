@@ -301,7 +301,11 @@ class ActivitiesPage {
     btn.disabled = true;
     btn.innerHTML = `<span class="loading loading-spinner loading-sm"></span> Syncing...`;
     try {
-      const res = await fetch(`${api.baseUrl}/auth/strava/sync?athlete_id=1`, { method: 'POST' });
+      const token = window.getAuthToken?.();
+      const res = await fetch(`${api.baseUrl}/auth/strava/sync`, {
+        method: 'POST',
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+      });
       if (!res.ok) throw new Error((await res.json()).detail || 'Sync failed');
       const result = await res.json();
       window.showToast(`✅ ${result.message}`, 'success');

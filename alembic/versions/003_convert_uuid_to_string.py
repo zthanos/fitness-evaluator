@@ -24,13 +24,14 @@ def upgrade():
     3. Drop old tables
     4. Rename new tables
     """
-    
-    # For SQLite, we need to recreate tables
-    # This migration handles the conversion of UUID columns to String(36)
-    
-    # Note: Since we're using SQLite and the tables were just created,
-    # we can simply drop and recreate them with the correct types
-    
+
+    # activity_analyses has a FK to strava_activities; drop it first so
+    # PostgreSQL doesn't refuse the strava_activities drop below.
+    # (SQLite ignores FK constraints so this was never needed there.)
+    op.drop_index('ix_activity_analyses_generated_at', table_name='activity_analyses', if_exists=True)
+    op.drop_index('ix_activity_analyses_activity_id', table_name='activity_analyses', if_exists=True)
+    op.drop_table('activity_analyses')
+
     # Drop existing tables in reverse dependency order
     op.drop_table('weekly_evals')
     op.drop_table('strava_activities')
@@ -123,6 +124,20 @@ def upgrade():
         sa.Column('created_at', sa.DateTime(), nullable=False),
         sa.Column('updated_at', sa.DateTime(), nullable=False)
     )
+
+    # Restore activity_analyses now that strava_activities exists again
+    op.create_table(
+        'activity_analyses',
+        sa.Column('id', sa.Integer(), nullable=False, autoincrement=True),
+        sa.Column('activity_id', sa.String(length=36), nullable=False),
+        sa.Column('analysis_text', sa.Text(), nullable=False),
+        sa.Column('generated_at', sa.DateTime(), nullable=False, server_default=sa.text('CURRENT_TIMESTAMP')),
+        sa.PrimaryKeyConstraint('id'),
+        sa.ForeignKeyConstraint(['activity_id'], ['strava_activities.id'], ondelete='CASCADE'),
+        sa.UniqueConstraint('activity_id', name='uq_activity_analyses_activity_id'),
+    )
+    op.create_index('ix_activity_analyses_activity_id', 'activity_analyses', ['activity_id'])
+    op.create_index('ix_activity_analyses_generated_at', 'activity_analyses', ['generated_at'])
 
 
 def downgrade():

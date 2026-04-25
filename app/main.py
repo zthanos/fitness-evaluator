@@ -20,17 +20,10 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from app.limiter import limiter
 
-from app.database import engine
-from app.models.base import Base
 from app.api import (
     auth, logs, strava, metrics, goals,
     chat, dashboard, settings, evaluations, training_plans,
 )
-from app.models import (
-    daily_log, weekly_measurement, strava_activity,
-    plan_targets, weekly_eval, athlete_goal,
-)
-
 
 # ─── OpenAPI schema ──────────────────────────────────────────────────────────
 
@@ -59,8 +52,6 @@ def custom_openapi(app: FastAPI):
 # ─── App factory ─────────────────────────────────────────────────────────────
 
 def create_app() -> FastAPI:
-    Base.metadata.create_all(bind=engine)
-
     app = FastAPI(
         title="Fitness Evaluation API",
         version="1.0.0",

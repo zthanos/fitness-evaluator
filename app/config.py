@@ -6,17 +6,13 @@ from typing import Literal
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
-    # Database
-    # Set to a postgresql:// URL to use PostgreSQL instead of SQLite.
-    DATABASE_URL: str = "sqlite:///./fitness_eval.db"
+    # Database (PostgreSQL via docker-compose)
+    DATABASE_URL: str = "postgresql://fitness_user:fitness_password@localhost:5460/fitness"
 
     # Keycloak / OIDC
     KEYCLOAK_URL: str = "http://localhost:8081"
     KEYCLOAK_REALM: str = "fitness"
     KEYCLOAK_CLIENT_ID: str = "fitness-app"
-    # Set to True to require a valid Bearer token on every API call.
-    # Set to False for local development without Keycloak running.
-    AUTH_ENABLED: bool = False
 
     # Strava OAuth
     STRAVA_CLIENT_ID: str = ""
@@ -86,28 +82,14 @@ class Settings(BaseSettings):
         return f"{self.keycloak_issuer}/protocol/openid-connect/certs"
 
     @property
-    def is_postgres(self) -> bool:
-        return self.DATABASE_URL.startswith("postgresql")
-
-    @property
     def llm_base_url(self) -> str:
-        """Get the LLM endpoint URL, handling backward compatibility."""
-        # Prefer explicit Ollama endpoint when using Ollama
-        if self.is_ollama and self.OLLAMA_ENDPOINT:
-            return self.OLLAMA_ENDPOINT
-        if self.LM_STUDIO_BASE_URL:
-            return self.LM_STUDIO_BASE_URL
-        return self.LM_STUDIO_ENDPOINT
+        if self.LLM_TYPE.lower() == "lm-studio":
+            return self.LM_STUDIO_ENDPOINT or self.LM_STUDIO_BASE_URL or "http://localhost:1234"
+        return self.OLLAMA_ENDPOINT if self.OLLAMA_ENDPOINT else "http://localhost:11434"
 
     @property
     def is_ollama(self) -> bool:
-        """Check if using Ollama as LLM backend."""
         return self.LLM_TYPE.lower() == "ollama"
-
-    @property
-    def is_lm_studio(self) -> bool:
-        """Check if using LM Studio as LLM backend."""
-        return self.LLM_TYPE.lower() == "lm-studio"
 
     @property
     def pilot_user_ids_set(self) -> set:
@@ -130,10 +112,7 @@ class Settings(BaseSettings):
         if self.EMBEDDING_ENDPOINT:
             return self.EMBEDDING_ENDPOINT
         # Default to appropriate endpoint based on embedding type
-        if self.embedding_type == "lm-studio":
-            return self.LM_STUDIO_ENDPOINT
-        else:
-            return self.OLLAMA_ENDPOINT if self.OLLAMA_ENDPOINT else "http://localhost:11434"
+        return self.OLLAMA_ENDPOINT if self.OLLAMA_ENDPOINT else "http://localhost:11434"
 
 
 @lru_cache

@@ -426,72 +426,102 @@ The following information from the athlete's history may be relevant to this con
     ) -> Dict[str, Any]:
         """
         Chat with automatic tool execution.
-        
+
         Handles the full tool calling loop:
         1. Send messages to LLM
         2. If LLM calls tools, execute them
         3. Send tool results back to LLM
         4. Repeat until LLM responds without tool calls or max iterations reached
-        
+
         Args:
             messages: Initial conversation messages
             max_iterations: Maximum tool calling iterations
-        
+
         Returns:
             Final response dict with 'content' and 'messages' (full conversation)
         """
         conversation = messages.copy()
         tool_definitions = [tool['definition'] for tool in self.tools.values()]
-        
+        called_tools: set = set()  # track (tool_name, args_json) to detect loops
+        last_content: str = ''
+
         for iteration in range(max_iterations):
             response = await self.chat_completion(
                 messages=conversation,
                 tools=tool_definitions if tool_definitions else None
             )
-            
+
+            content = response.get('content') or ''
+            if content:
+                last_content = content
+
             # Add assistant response to conversation
             assistant_message = {
                 'role': 'assistant',
-                'content': response.get('content', '')
+                'content': content
             }
-            
+
             if 'tool_calls' in response:
                 assistant_message['tool_calls'] = response['tool_calls']
-            
+
             conversation.append(assistant_message)
-            
-            # Check if LLM wants to call tools
+
+            # No tool calls → clean final response
             if 'tool_calls' not in response:
-                # No tool calls, return final response
                 return {
-                    'content': response['content'],
+                    'content': content,
                     'messages': conversation,
                     'iterations': iteration + 1
                 }
-            
-            # Execute tool calls
+
+            # Execute tool calls, detect loops
+            loop_detected = False
             for tool_call in response['tool_calls']:
                 tool_name = tool_call['function']['name']
-                arguments = json.loads(tool_call['function']['arguments'])
-                
-                # Execute tool
+                args_raw = tool_call['function']['arguments']
+                call_key = (tool_name, args_raw)
+
+                if call_key in called_tools:
+                    logger.warning("Tool loop detected: %s called with same args twice, breaking", tool_name)
+                    loop_detected = True
+                    break
+
+                called_tools.add(call_key)
+                arguments = json.loads(args_raw)
                 tool_result = await self._execute_tool(tool_name, arguments)
-                
-                # Add tool result to conversation
+
                 conversation.append({
                     'role': 'tool',
                     'tool_call_id': tool_call['id'],
                     'name': tool_name,
                     'content': json.dumps(tool_result)
                 })
-        
-        # Max iterations reached
-        return {
-            'content': 'Maximum tool calling iterations reached. Please try again.',
-            'messages': conversation,
-            'iterations': max_iterations,
-            'max_iterations_reached': True
-        }
+
+            if loop_detected:
+                break
+
+        # Loop exited — ask the model for a plain final answer without tools
+        if last_content:
+            return {
+                'content': last_content,
+                'messages': conversation,
+                'iterations': max_iterations
+            }
+
+        # Last resort: one more call without tools to get a plain response
+        try:
+            final = await self.chat_completion(messages=conversation, tools=None)
+            return {
+                'content': final.get('content') or 'I was unable to complete that request. Please try again.',
+                'messages': conversation,
+                'iterations': max_iterations
+            }
+        except Exception:
+            return {
+                'content': 'I was unable to complete that request. Please try again.',
+                'messages': conversation,
+                'iterations': max_iterations
+            }
 
 
     async def generate_trend_analysis(

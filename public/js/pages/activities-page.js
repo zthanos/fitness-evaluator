@@ -73,13 +73,17 @@ class ActivitiesPage {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 300_000);
   
-        const response = await fetch(`${api.baseUrl}/auth/strava/sync?athlete_id=1`, {
+        const token = window.getAuthToken?.();
+        const response = await fetch(`${api.baseUrl}/auth/strava/sync`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+          },
           signal: controller.signal,
         });
         clearTimeout(timeoutId);
-  
+
         if (!response.ok) {
           const err = await response.json();
           throw new Error(err.detail || 'Sync failed');

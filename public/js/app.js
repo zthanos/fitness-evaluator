@@ -9,6 +9,7 @@ import { router }            from '/js/router.js';
 import { api }               from '/js/api.js';
 import { PageLoader }        from '/js/page-loader.js';
 import { NavigationSidebar } from '/js/navigation-sidebar.js';
+import { initAuth, getToken, getUser, logout } from '/js/auth.js';
 
 // ─── Globals ──────────────────────────────────────────────────────────────────
 window.api = api;
@@ -202,4 +203,10 @@ router
   });
 
 // ─── Boot ─────────────────────────────────────────────────────────────────────
-router.start();
+(async () => {
+  await initAuth();
+  sidebar.setUser(getUser());
+  window.appLogout = logout;
+  window.getAuthToken = getToken;
+  router.start();
+})();

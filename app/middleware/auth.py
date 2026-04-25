@@ -5,10 +5,6 @@ Usage in any endpoint:
     ...
     async def my_endpoint(athlete: Athlete = Depends(get_current_athlete)):
         ...
-
-When AUTH_ENABLED=False (default for local dev) the dependency returns
-a synthetic default athlete so existing flows keep working without a
-running Keycloak instance.
 """
 import logging
 from functools import lru_cache
@@ -119,24 +115,7 @@ async def get_current_athlete(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer),
     db: Session = Depends(get_db),
 ) -> Athlete:
-    """
-    FastAPI dependency that resolves the current authenticated Athlete.
-
-    - AUTH_ENABLED=True  : validates Bearer JWT, 401 if missing/invalid
-    - AUTH_ENABLED=False : returns/creates the athlete with id=1 (dev mode)
-    """
-    settings = get_settings()
-
-    if not settings.AUTH_ENABLED:
-        # Dev mode: use/create default athlete
-        athlete = db.query(Athlete).filter(Athlete.id == 1).first()
-        if not athlete:
-            athlete = Athlete(id=1, name="Default Athlete", email=None)
-            db.add(athlete)
-            db.commit()
-            db.refresh(athlete)
-        return athlete
-
+    """Validate Bearer JWT and return (or auto-provision) the Athlete."""
     if not credentials:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

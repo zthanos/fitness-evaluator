@@ -32,16 +32,7 @@ class ActivityDetail {
         const loadingContainer = document.getElementById('loading-container');
         
         try {
-            const response = await fetch(`/api/strava/activities/detail/${this.activityId}`);
-            
-            if (!response.ok) {
-                if (response.status === 404) {
-                    throw new Error('Activity not found');
-                }
-                throw new Error(`Failed to fetch activity: ${response.statusText}`);
-            }
-            
-            this.activity = await response.json();
+            this.activity = await api.get(`/strava/activities/detail/${this.activityId}`);
             
             // Hide loading indicator
             loadingContainer.classList.add('hidden');
@@ -495,9 +486,13 @@ class ActivityDetail {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 3000);
 
+            const token = window.getAuthToken?.();
             const response = await fetch(
                 `/api/strava/activities/detail/${this.activityId}/analysis`,
-                { signal: controller.signal }
+                {
+                    signal: controller.signal,
+                    headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+                }
             );
 
             clearTimeout(timeoutId);
