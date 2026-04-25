@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FitCoach AI — Your AI-Powered Fitness Coach</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@4.4.20/dist/full.min.css" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    .gradient-hero {
+      background: linear-gradient(135deg, #1e3a5f 0%, #0f766e 50%, #065f46 100%);
+    }
+    .gradient-text {
+      background: linear-gradient(135deg, #34d399, #60a5fa);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .feature-card:hover { transform: translateY(-4px); transition: transform 0.2s ease; }
+    .nav-link { transition: color 0.15s; }
+    .nav-link:hover { color: #34d399; }
+    html { scroll-behavior: smooth; }
+  </style>
+</head>
+<body class="bg-base-100">
+
+<!-- ─── Navigation ──────────────────────────────────────────────────────── -->
+<nav class="navbar bg-base-100/95 backdrop-blur sticky top-0 z-50 border-b border-base-200 px-6">
+  <div class="navbar-start">
+    <a href="/" class="flex items-center gap-2">
+      <span class="text-2xl">🏃</span>
+      <span class="text-xl font-bold">FitCoach <span class="text-primary">AI</span></span>
+    </a>
+  </div>
+  <div class="navbar-center hidden lg:flex">
+    <ul class="menu menu-horizontal gap-1 text-sm font-medium">
+      <li><a href="#features" class="nav-link">Features</a></li>
+      <li><a href="#how-it-works" class="nav-link">How It Works</a></li>
+      <li><a href="#pricing" class="nav-link">Pricing</a></li>
+    </ul>
+  </div>
+  <div class="navbar-end gap-3">
+    <button id="login-btn" class="btn btn-ghost btn-sm">Log In</button>
+    <button id="register-btn" class="btn btn-primary btn-sm">Get Started Free</button>
+    <!-- Mobile menu -->
+    <div class="dropdown dropdown-end lg:hidden">
+      <label tabindex="0" class="btn btn-ghost btn-sm btn-square">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+        </svg>
+      </label>
+      <ul tabindex="0" class="dropdown-content menu bg-base-100 rounded-box shadow-xl w-48 mt-2 p-2">
+        <li><a href="#features">Features</a></li>
+        <li><a href="#how-it-works">How It Works</a></li>
+        <li><a href="#pricing">Pricing</a></li>
+        <li><hr class="my-1"/></li>
+        <li><a id="login-mobile">Log In</a></li>
+        <li><a id="register-mobile">Get Started Free</a></li>
+      </ul>
+    </div>
+  </div>
+</nav>
+
+<!-- ─── Hero ────────────────────────────────────────────────────────────── -->
+<section class="gradient-hero text-white py-24 px-6">
+  <div class="max-w-6xl mx-auto grid lg:grid-cols-2 gap-12 items-center">
+    <div>
+      <div class="badge badge-outline text-emerald-300 border-emerald-300 mb-6 text-xs font-semibold tracking-wide">
+        🔒 Privacy-First · Runs Locally · No Cloud Required
+      </div>
+      <h1 class="text-5xl lg:text-6xl font-black leading-tight mb-6">
+        Your personal<br/>
+        <span class="gradient-text">AI fitness coach</span><br/>
+        that knows your data
+      </h1>
+      <p class="text-lg text-slate-300 mb-8 max-w-lg leading-relaxed">
+        Connect Strava, set goals, and get coaching powered by local AI.
+        Every recommendation is based on <em>your</em> actual performance — not generic advice.
+      </p>
+
+      <!-- Key benefits above the fold -->
+      <ul class="space-y-3 mb-10 text-slate-200">
+        <li class="flex items-center gap-3">
+          <span class="text-emerald-400 text-xl">✓</span>
+          <span>Automatically syncs your Strava activities</span>
+        </li>
+        <li class="flex items-center gap-3">
+          <span class="text-emerald-400 text-xl">✓</span>
+          <span>AI coach trained on your personal history</span>
+        </li>
+        <li class="flex items-center gap-3">
+          <span class="text-emerald-400 text-xl">✓</span>
+          <span>Your data never leaves your machine</span>
+        </li>
+        <li class="flex items-center gap-3">
+          <span class="text-emerald-400 text-xl">✓</span>
+          <span>Tracks body metrics, nutrition, and training load</span>
+        </li>
+      </ul>
+
+      <div class="flex flex-wrap gap-4">
+        <button id="cta-primary" class="btn btn-lg bg-emerald-400 hover:bg-emerald-300 text-slate-900 border-none font-bold px-8 shadow-lg">
+          Start for Free →
+        </button>
+        <a href="#how-it-works" class="btn btn-lg btn-ghost text-white border-white/30 hover:bg-white/10">
+          See How It Works
+        </a>
+      </div>
+    </div>
+
+    <!-- Hero visual -->
+    <div class="hidden lg:flex justify-center">
+      <div class="bg-white/10 backdrop-blur rounded-2xl p-6 w-full max-w-md border border-white/20 shadow-2xl">
+        <!-- Mock chat preview -->
+        <div class="flex items-center gap-3 mb-5 pb-4 border-b border-white/20">
+          <div class="w-10 h-10 rounded-full bg-emerald-400 flex items-center justify-center text-slate-900 font-bold">AI</div>
+          <div>
+            <div class="font-semibold text-sm">FitCoach AI</div>
+            <div class="text-xs text-emerald-300">● Online</div>
+          </div>
+        </div>
+        <div class="space-y-4 text-sm">
+          <div class="bg-white/10 rounded-xl rounded-tl-none p-3 max-w-xs">
+            Based on your last 4 runs, your aerobic base is improving. Your avg pace dropped by <strong>12 sec/km</strong> 💪
+          </div>
+          <div class="bg-emerald-400 text-slate-900 rounded-xl rounded-tr-none p-3 max-w-xs ml-auto font-medium">
+            Should I do a long run this weekend?
+          </div>
+          <div class="bg-white/10 rounded-xl rounded-tl-none p-3 max-w-xs">
+            Yes! Your HRV trend looks good. Aim for <strong>18–22 km</strong> at Zone 2 — you're ready for it. 🏃
+          </div>
+        </div>
+        <div class="mt-4 pt-4 border-t border-white/20 grid grid-cols-3 gap-3 text-center text-xs">
+          <div><div class="text-emerald-300 font-bold text-lg">142</div><div class="text-slate-300">Activities</div></div>
+          <div><div class="text-emerald-300 font-bold text-lg">8</div><div class="text-slate-300">Goals Met</div></div>
+          <div><div class="text-emerald-300 font-bold text-lg">↓4%</div><div class="text-slate-300">Body Fat</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─── Social Proof ─────────────────────────────────────────────────────── -->
+<section class="bg-base-200 py-10 px-6">
+  <div class="max-w-4xl mx-auto text-center">
+    <p class="text-base-content/50 text-sm font-medium mb-6 uppercase tracking-widest">Built for athletes who value their privacy</p>
+    <div class="flex flex-wrap justify-center gap-8 text-base-content/60">
+      <div class="flex items-center gap-2 font-semibold"><span class="text-2xl">🏃</span> Runners</div>
+      <div class="flex items-center gap-2 font-semibold"><span class="text-2xl">🚴</span> Cyclists</div>
+      <div class="flex items-center gap-2 font-semibold"><span class="text-2xl">🏊</span> Triathletes</div>
+      <div class="flex items-center gap-2 font-semibold"><span class="text-2xl">🏋️</span> Strength Athletes</div>
+      <div class="flex items-center gap-2 font-semibold"><span class="text-2xl">⛰️</span> Trail Runners</div>
+    </div>
+    <div class="mt-8 p-6 bg-base-100 rounded-2xl max-w-2xl mx-auto border border-base-300 shadow-sm">
+      <p class="text-base-content/80 italic mb-3 leading-relaxed">
+        "Finally a fitness app that actually uses <em>my</em> data to give advice instead of generic tips.
+        The AI coach remembered my injury history and adjusted my plan automatically."
+      </p>
+      <div class="flex items-center justify-center gap-3 text-sm">
+        <div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-primary-content font-bold text-xs">M</div>
+        <span class="font-semibold">Marathon Runner</span>
+        <span class="text-base-content/40">· Strava athlete since 2019</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─── Features ─────────────────────────────────────────────────────────── -->
+<section id="features" class="py-24 px-6">
+  <div class="max-w-6xl mx-auto">
+    <div class="text-center mb-16">
+      <h2 class="text-4xl font-black mb-4">Everything you need to train smarter</h2>
+      <p class="text-base-content/60 text-lg max-w-xl mx-auto">
+        Not just tracking — actual coaching powered by your complete fitness history.
+      </p>
+    </div>
+
+    <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div class="card bg-base-100 border border-base-200 shadow-sm feature-card">
+        <div class="card-body">
+          <div class="text-4xl mb-3">🔗</div>
+          <h3 class="card-title text-lg">Strava Integration</h3>
+          <p class="text-base-content/60 text-sm">
+            Automatically syncs all your activities. Runs, rides, swims — everything is imported and analyzed in real time.
+          </p>
+        </div>
+      </div>
+
+      <div class="card bg-base-100 border border-base-200 shadow-sm feature-card">
+        <div class="card-body">
+          <div class="text-4xl mb-3">🤖</div>
+          <h3 class="card-title text-lg">AI Coach Chat</h3>
+          <p class="text-base-content/60 text-sm">
+            Ask anything. Your coach knows your history, goals, and current fitness level. Powered by local LLMs — no API keys needed.
+          </p>
+        </div>
+      </div>
+
+      <div class="card bg-base-100 border border-base-200 shadow-sm feature-card">
+        <div class="card-body">
+          <div class="text-4xl mb-3">📊</div>
+          <h3 class="card-title text-lg">Performance Analytics</h3>
+          <p class="text-base-content/60 text-sm">
+            Training load, pace trends, elevation, heart rate zones — all visualized so you can see exactly where you're improving.
+          </p>
+        </div>
+      </div>
+
+      <div class="card bg-base-100 border border-base-200 shadow-sm feature-card">
+        <div class="card-body">
+          <div class="text-4xl mb-3">🎯</div>
+          <h3 class="card-title text-lg">Goal Setting & Tracking</h3>
+          <p class="text-base-content/60 text-sm">
+            Set SMART goals with your AI coach. Track progress automatically and get nudges when you're drifting off course.
+          </p>
+        </div>
+      </div>
+
+      <div class="card bg-base-100 border border-base-200 shadow-sm feature-card">
+        <div class="card-body">
+          <div class="text-4xl mb-3">⚖️</div>
+          <h3 class="card-title text-lg">Body Metrics & Nutrition</h3>
+          <p class="text-base-content/60 text-sm">
+            Log weight, body fat, and nutrition data. Get trend analysis and AI-powered diet guidance tailored to your training load.
+          </p>
+        </div>
+      </div>
+
+      <div class="card bg-primary text-primary-content shadow-sm feature-card">
+        <div class="card-body">
+          <div class="text-4xl mb-3">🔒</div>
+          <h3 class="card-title text-lg">100% Private</h3>
+          <p class="text-primary-content/80 text-sm">
+            All AI runs locally on your hardware with Ollama or LM Studio. Your health data never touches a third-party server.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─── How It Works ─────────────────────────────────────────────────────── -->
+<section id="how-it-works" class="bg-base-200 py-24 px-6">
+  <div class="max-w-4xl mx-auto">
+    <div class="text-center mb-16">
+      <h2 class="text-4xl font-black mb-4">Up and running in minutes</h2>
+      <p class="text-base-content/60 text-lg">No complex setup. No credit card. No cloud accounts.</p>
+    </div>
+
+    <div class="space-y-8">
+      <div class="flex gap-6 items-start">
+        <div class="flex-shrink-0 w-12 h-12 rounded-full bg-primary text-primary-content flex items-center justify-center font-black text-xl">1</div>
+        <div>
+          <h3 class="text-xl font-bold mb-2">Create your account</h3>
+          <p class="text-base-content/60">Sign up with your email. Your account is stored locally — we don't collect personal data.</p>
+        </div>
+      </div>
+      <div class="divider ml-6 my-0"></div>
+      <div class="flex gap-6 items-start">
+        <div class="flex-shrink-0 w-12 h-12 rounded-full bg-primary text-primary-content flex items-center justify-center font-black text-xl">2</div>
+        <div>
+          <h3 class="text-xl font-bold mb-2">Connect Strava</h3>
+          <p class="text-base-content/60">OAuth2 in one click. We import your entire activity history — every run, ride, and swim.</p>
+        </div>
+      </div>
+      <div class="divider ml-6 my-0"></div>
+      <div class="flex gap-6 items-start">
+        <div class="flex-shrink-0 w-12 h-12 rounded-full bg-primary text-primary-content flex items-center justify-center font-black text-xl">3</div>
+        <div>
+          <h3 class="text-xl font-bold mb-2">Start chatting with your coach</h3>
+          <p class="text-base-content/60">Ask about training plans, goal setting, nutrition, or recovery. The AI uses vector search over your real data to answer with context.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─── Pricing ──────────────────────────────────────────────────────────── -->
+<section id="pricing" class="py-24 px-6">
+  <div class="max-w-4xl mx-auto text-center">
+    <h2 class="text-4xl font-black mb-4">Pricing</h2>
+    <p class="text-base-content/60 text-lg mb-12">Simple and transparent. No hidden fees.</p>
+
+    <div class="card bg-base-200 border-2 border-dashed border-base-300 max-w-md mx-auto">
+      <div class="card-body items-center py-16">
+        <div class="text-6xl mb-4">🚧</div>
+        <h3 class="card-title text-2xl mb-3">Coming Soon</h3>
+        <p class="text-base-content/60 text-center mb-6">
+          We're still working out the details. Self-hosting will always be free.
+          A managed cloud option is on the roadmap.
+        </p>
+        <div class="badge badge-outline badge-lg">Pricing TBD</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─── Final CTA ────────────────────────────────────────────────────────── -->
+<section class="gradient-hero text-white py-20 px-6 text-center">
+  <div class="max-w-2xl mx-auto">
+    <h2 class="text-4xl font-black mb-4">Ready to train smarter?</h2>
+    <p class="text-slate-300 text-lg mb-8">Join athletes who train with data, not guesswork.</p>
+    <button id="cta-bottom" class="btn btn-lg bg-emerald-400 hover:bg-emerald-300 text-slate-900 border-none font-bold px-10 shadow-lg">
+      Get Started Free →
+    </button>
+  </div>
+</section>
+
+<!-- ─── Footer ───────────────────────────────────────────────────────────── -->
+<footer class="bg-slate-900 text-slate-400 py-10 px-6">
+  <div class="max-w-6xl mx-auto">
+    <div class="flex flex-wrap justify-between items-center gap-6">
+      <div class="flex items-center gap-2">
+        <span class="text-xl">🏃</span>
+        <span class="text-white font-bold">FitCoach AI</span>
+      </div>
+      <div class="flex flex-wrap gap-6 text-sm">
+        <a href="#features" class="hover:text-white transition-colors">Features</a>
+        <a href="#pricing" class="hover:text-white transition-colors">Pricing</a>
+        <a href="/docs" class="hover:text-white transition-colors">API Docs</a>
+        <a href="#" class="hover:text-white transition-colors">Privacy Policy</a>
+        <a href="#" class="hover:text-white transition-colors">Terms of Service</a>
+        <a href="#" class="hover:text-white transition-colors">Contact</a>
+      </div>
+    </div>
+    <div class="border-t border-slate-800 mt-8 pt-8 text-sm text-center">
+      © 2026 FitCoach AI. All rights reserved. Built for athletes who value their privacy.
+    </div>
+  </div>
+</footer>
+
+<script type="module" src="/js/landing.js"></script>
+</body>
+</html>

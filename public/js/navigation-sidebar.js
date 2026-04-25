@@ -26,6 +26,7 @@ class NavigationSidebar {
       { id: 'evaluations',     label: 'Evaluations',      icon: '🏅', path: '/evaluations' },
       { id: 'chat',            label: 'Chat',             icon: '💬', path: '/chat' },
       { id: 'settings',        label: 'Settings',         icon: '⚙️', path: '/settings' },
+      { id: 'telemetry',       label: 'Telemetry',        icon: '📡', path: '/telemetry' },
     ];
 
     this._init();

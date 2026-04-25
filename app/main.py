@@ -10,7 +10,8 @@ Key changes from the MPA version:
   3. Static files are still served (CSS, JS, assets).
 """
 
-from fastapi import FastAPI
+import time
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 from fastapi.staticfiles import StaticFiles
@@ -18,12 +19,29 @@ from fastapi.responses import FileResponse
 from pathlib import Path
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from starlette.middleware.base import BaseHTTPMiddleware
 from app.limiter import limiter
 
 from app.api import (
     auth, logs, strava, metrics, goals,
     chat, dashboard, settings, evaluations, training_plans,
 )
+from app.api import telemetry
+from app.services.metrics_collector import metrics as req_metrics
+
+
+class _MetricsMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        t0 = time.perf_counter()
+        response = await call_next(request)
+        if request.url.path.startswith('/api/'):
+            req_metrics.record(
+                method=request.method,
+                path=request.url.path,
+                status_code=response.status_code,
+                duration_ms=(time.perf_counter() - t0) * 1000,
+            )
+        return response
 
 # ─── OpenAPI schema ──────────────────────────────────────────────────────────
 
@@ -77,6 +95,9 @@ def create_app() -> FastAPI:
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+    # ── Metrics middleware (must be added before CORS) ───────────────────────
+    app.add_middleware(_MetricsMiddleware)
+
     # ── CORS ────────────────────────────────────────────────────────────────
     app.add_middleware(
         CORSMiddleware,
@@ -97,12 +118,24 @@ def create_app() -> FastAPI:
     app.include_router(dashboard.router,      prefix="/api/dashboard",      tags=["dashboard"])
     app.include_router(settings.router,       prefix="/api/settings",       tags=["settings"])
     app.include_router(training_plans.router, prefix="/api/training-plans", tags=["training-plans"])
+    app.include_router(telemetry.router,      prefix="/api/telemetry",      tags=["telemetry"])
 
     # ── Health check ────────────────────────────────────────────────────────
     @app.get("/health", tags=["health"])
     async def health_check():
-        """Health check endpoint."""
         return {"status": "healthy"}
+
+    # ── Landing page (public, no auth) ───────────────────────────────────────
+    @app.get("/", include_in_schema=False)
+    async def landing():
+        page = static_dir / "landing.html"
+        return FileResponse(page)
+
+    # ── Telemetry page ───────────────────────────────────────────────────────
+    @app.get("/telemetry", include_in_schema=False)
+    async def telemetry_page():
+        page = static_dir / "telemetry.html"
+        return FileResponse(page)
 
     # ── Static assets (CSS, JS, images) ─────────────────────────────────────
     # Mount ONLY the asset sub-directories, not the whole public/ root.

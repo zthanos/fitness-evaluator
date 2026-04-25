@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light" class="h-full">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Telemetry — Fitness Platform</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@4.4.20/dist/full.min.css" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/design-tokens.css" />
+  <link rel="stylesheet" href="/css/navigation-sidebar.css" />
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    .stat-ring { stroke-dasharray: 100; stroke-dashoffset: 0; transition: stroke-dashoffset 0.6s ease; }
+    .badge-operational  { background: #dcfce7; color: #166534; }
+    .badge-degraded     { background: #fef9c3; color: #854d0e; }
+    .badge-outage       { background: #fee2e2; color: #991b1b; }
+    .badge-unknown      { background: #f1f5f9; color: #475569; }
+    .latency-bar { transition: width 0.5s ease; }
+  </style>
+</head>
+<body class="bg-base-200 h-full">
+  <a href="#main-content" class="skip-to-main">Skip to main content</a>
+  <div id="sidebar-container"></div>
+
+  <main id="main-content" class="main-content overflow-y-auto">
+    <!-- ── Sticky header ──────────────────────────────────────────────── -->
+    <div class="sticky top-0 z-30 bg-base-100 border-b border-base-300 px-6 py-3 flex flex-wrap items-center gap-4 shadow-sm">
+      <div class="flex-1 min-w-0">
+        <h1 class="text-xl font-bold truncate">📡 Telemetry</h1>
+      </div>
+
+      <!-- Time range -->
+      <div class="flex items-center gap-2 text-sm">
+        <span class="text-base-content/50 hidden sm:inline">Window:</span>
+        <select id="time-window" class="select select-bordered select-sm w-28">
+          <option value="3600">Last 1h</option>
+          <option value="21600">Last 6h</option>
+          <option value="86400">Last 24h</option>
+        </select>
+      </div>
+
+      <!-- Auto-refresh -->
+      <div class="flex items-center gap-2 text-sm">
+        <span class="text-base-content/50 hidden sm:inline">Refresh:</span>
+        <select id="refresh-interval" class="select select-bordered select-sm w-20">
+          <option value="0">Off</option>
+          <option value="30" selected>30s</option>
+          <option value="60">60s</option>
+        </select>
+      </div>
+
+      <!-- Last updated -->
+      <div class="text-xs text-base-content/40 hidden md:block">
+        Updated: <span id="last-updated">—</span>
+      </div>
+
+      <!-- Manual refresh -->
+      <button id="refresh-btn" class="btn btn-sm btn-outline gap-2" title="Refresh (R)">
+        <svg id="refresh-icon" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+        </svg>
+        Refresh
+      </button>
+    </div>
+
+    <div class="p-6 space-y-6 max-w-7xl mx-auto">
+
+      <!-- ── Section 1: Global Health ────────────────────────────────── -->
+      <section>
+        <div class="flex items-center gap-3 mb-4">
+          <h2 class="text-lg font-bold">System Health</h2>
+          <span id="overall-badge" class="badge badge-unknown font-semibold px-3">Checking…</span>
+        </div>
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <!-- Overall status -->
+          <div class="card bg-base-100 shadow-sm border border-base-200">
+            <div class="card-body p-4">
+              <div class="text-xs text-base-content/50 font-medium uppercase tracking-wide mb-1">Status</div>
+              <div id="status-icon" class="text-4xl mb-1">⏳</div>
+              <div id="status-label" class="font-bold text-lg">Loading…</div>
+            </div>
+          </div>
+          <!-- Uptime -->
+          <div class="card bg-base-100 shadow-sm border border-base-200">
+            <div class="card-body p-4">
+              <div class="text-xs text-base-content/50 font-medium uppercase tracking-wide mb-1">App Uptime</div>
+              <div id="uptime-value" class="text-3xl font-black text-primary">—</div>
+              <div class="text-xs text-base-content/40 mt-1">since last restart</div>
+            </div>
+          </div>
+          <!-- RPS -->
+          <div class="card bg-base-100 shadow-sm border border-base-200">
+            <div class="card-body p-4">
+              <div class="text-xs text-base-content/50 font-medium uppercase tracking-wide mb-1">Requests/sec</div>
+              <div id="rps-value" class="text-3xl font-black text-secondary">—</div>
+              <div class="text-xs text-base-content/40 mt-1">last 60 seconds</div>
+            </div>
+          </div>
+          <!-- Error rate -->
+          <div class="card bg-base-100 shadow-sm border border-base-200">
+            <div class="card-body p-4">
+              <div class="text-xs text-base-content/50 font-medium uppercase tracking-wide mb-1">Error Rate</div>
+              <div id="error-rate-value" class="text-3xl font-black">—</div>
+              <div class="text-xs text-base-content/40 mt-1" id="total-req-label">— requests in window</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── Section 2: Dependency Health ───────────────────────────── -->
+      <section>
+        <h2 class="text-lg font-bold mb-4">Dependency Health</h2>
+        <div class="grid md:grid-cols-2 gap-4">
+          <!-- PostgreSQL -->
+          <div class="card bg-base-100 shadow-sm border border-base-200">
+            <div class="card-body p-4">
+              <div class="flex justify-between items-start">
+                <div>
+                  <div class="flex items-center gap-2 mb-1">
+                    <span class="text-xl">🐘</span>
+                    <span class="font-bold">PostgreSQL</span>
+                  </div>
+                  <div id="db-latency" class="text-xs text-base-content/50">Latency: —</div>
+                </div>
+                <span id="db-badge" class="badge badge-unknown font-semibold">—</span>
+              </div>
+              <div id="db-error" class="text-xs text-error mt-2 hidden"></div>
+            </div>
+          </div>
+          <!-- LLM -->
+          <div class="card bg-base-100 shadow-sm border border-base-200">
+            <div class="card-body p-4">
+              <div class="flex justify-between items-start">
+                <div>
+                  <div class="flex items-center gap-2 mb-1">
+                    <span class="text-xl">🤖</span>
+                    <span class="font-bold" id="llm-label">LLM</span>
+                  </div>
+                  <div id="llm-model" class="text-xs text-base-content/50">—</div>
+                  <div id="llm-latency" class="text-xs text-base-content/50">Latency: —</div>
+                </div>
+                <span id="llm-badge" class="badge badge-unknown font-semibold">—</span>
+              </div>
+              <div id="llm-error" class="text-xs text-error mt-2 hidden"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── Section 3: Latency ──────────────────────────────────────── -->
+      <section>
+        <h2 class="text-lg font-bold mb-4">Latency Percentiles</h2>
+        <div class="card bg-base-100 shadow-sm border border-base-200">
+          <div class="card-body p-5 space-y-4">
+            <div id="latency-p50" class="space-y-1">
+              <div class="flex justify-between text-sm"><span class="font-medium">p50 (median)</span><span id="p50-val" class="font-mono">—</span></div>
+              <div class="w-full bg-base-200 rounded-full h-3"><div id="p50-bar" class="bg-success latency-bar h-3 rounded-full" style="width:0%"></div></div>
+            </div>
+            <div id="latency-p95" class="space-y-1">
+              <div class="flex justify-between text-sm"><span class="font-medium">p95</span><span id="p95-val" class="font-mono">—</span></div>
+              <div class="w-full bg-base-200 rounded-full h-3"><div id="p95-bar" class="bg-warning latency-bar h-3 rounded-full" style="width:0%"></div></div>
+            </div>
+            <div id="latency-p99" class="space-y-1">
+              <div class="flex justify-between text-sm"><span class="font-medium">p99</span><span id="p99-val" class="font-mono">—</span></div>
+              <div class="w-full bg-base-200 rounded-full h-3"><div id="p99-bar" class="bg-error latency-bar h-3 rounded-full" style="width:0%"></div></div>
+            </div>
+            <div class="divider my-1"></div>
+            <div class="flex justify-between text-sm text-base-content/50">
+              <span>Average</span><span id="avg-val" class="font-mono">—</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── Section 4: Status Code Breakdown ───────────────────────── -->
+      <section>
+        <h2 class="text-lg font-bold mb-4">HTTP Status Codes</h2>
+        <div id="status-codes-grid" class="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-3">
+          <div class="text-base-content/40 text-sm col-span-full">No data yet…</div>
+        </div>
+      </section>
+
+      <!-- ── Section 5: Top Endpoints ───────────────────────────────── -->
+      <section>
+        <h2 class="text-lg font-bold mb-4">Top Endpoints</h2>
+        <div class="card bg-base-100 shadow-sm border border-base-200 overflow-x-auto">
+          <table class="table table-sm">
+            <thead>
+              <tr class="text-xs text-base-content/50 uppercase tracking-wide">
+                <th>Endpoint</th>
+                <th class="text-right">Requests</th>
+                <th class="text-right">Error %</th>
+                <th class="text-right">p95 (ms)</th>
+                <th class="text-right">Avg (ms)</th>
+              </tr>
+            </thead>
+            <tbody id="endpoints-tbody">
+              <tr><td colspan="5" class="text-center text-base-content/40 py-6">No data yet…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ── Section 6: Recent Errors ───────────────────────────────── -->
+      <section>
+        <h2 class="text-lg font-bold mb-4">Recent Errors</h2>
+        <div class="card bg-base-100 shadow-sm border border-base-200 overflow-x-auto">
+          <table class="table table-sm">
+            <thead>
+              <tr class="text-xs text-base-content/50 uppercase tracking-wide">
+                <th>Time</th>
+                <th>Method</th>
+                <th>Path</th>
+                <th class="text-right">Status</th>
+                <th class="text-right">ms</th>
+              </tr>
+            </thead>
+            <tbody id="errors-tbody">
+              <tr><td colspan="5" class="text-center text-base-content/40 py-6">No errors recorded 🎉</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ── Section 7: Application Logs ───────────────────────────── -->
+      <section>
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <h2 class="text-lg font-bold">Application Logs</h2>
+          <div class="flex gap-2">
+            <select id="log-level-filter" class="select select-bordered select-sm">
+              <option value="">All levels</option>
+              <option value="ERROR">ERROR</option>
+              <option value="WARNING">WARNING</option>
+              <option value="INFO">INFO</option>
+            </select>
+          </div>
+        </div>
+        <div class="card bg-base-100 shadow-sm border border-base-200">
+          <div class="card-body p-0">
+            <div id="logs-container" class="font-mono text-xs divide-y divide-base-200 max-h-96 overflow-y-auto">
+              <div class="text-base-content/40 text-center py-6 text-sm font-sans">No log entries captured yet…</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </div><!-- /max-w -->
+  </main>
+
+  <script type="module" src="/js/telemetry.js"></script>
+</body>
+</html>
