@@ -246,12 +246,19 @@ async def get_llm_settings():
     from app.config import get_settings
     
     settings = get_settings()
-    
+
+    if settings.LLM_TYPE.lower() == "lm-studio":
+        endpoint = settings.LM_STUDIO_ENDPOINT or settings.LM_STUDIO_BASE_URL or "http://localhost:1234"
+        model = settings.LM_STUDIO_MODEL
+    else:
+        endpoint = settings.OLLAMA_ENDPOINT or "http://localhost:11434"
+        model = settings.OLLAMA_MODEL
+
     return {
         "llm_type": settings.LLM_TYPE,
-        "endpoint": settings.OLLAMA_ENDPOINT,
-        "model": settings.OLLAMA_MODEL,
-        "temperature": 0.7,  # Default for chat, 0.1 for analysis
+        "endpoint": endpoint,
+        "model": model,
+        "temperature": 0.7,
         "message": "LLM settings are configured via environment variables. Changes require server restart."
     }
 

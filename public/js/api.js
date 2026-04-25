@@ -3,6 +3,8 @@
  * Communicates with the FastAPI backend
  */
 
+import { getToken, logout } from '/js/auth.js';
+
 class APIClient {
   constructor(baseUrl = null) {
     // If no baseUrl provided, use current origin + /api
@@ -20,19 +22,23 @@ class APIClient {
 
   async request(method, endpoint, data = null) {
     const url = `${this.baseUrl}${endpoint}`;
-    const options = {
-      method,
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    };
+    const headers = { 'Content-Type': 'application/json' };
 
-    if (data) {
-      options.body = JSON.stringify(data);
-    }
+    const token = getToken();
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const options = { method, headers };
+    if (data) options.body = JSON.stringify(data);
 
     try {
       const response = await fetch(url, options);
+
+      if (response.status === 401) {
+        // Token expired or invalid — force re-login
+        logout();
+        return;
+      }
+
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.detail || `HTTP ${response.status}`);

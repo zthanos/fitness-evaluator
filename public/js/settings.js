@@ -277,7 +277,7 @@ class SettingsManager {
     async connectStrava() {
         try {
             // Get authorization URL from API
-            const response = await api.get('/auth/strava?athlete_id=1');
+            const response = await api.get('/auth/strava');
             
             // Redirect to Strava authorization page
             window.location.href = response.authorization_url;
@@ -293,7 +293,7 @@ class SettingsManager {
         }
         
         try {
-            await api.post('/auth/strava/disconnect?athlete_id=1');
+            await api.post('/auth/strava/disconnect');
             this.showToast('Strava disconnected successfully', 'success');
             
             // Reload status
@@ -474,8 +474,9 @@ class SettingsManager {
             // Load from API
             const settings = await api.get('/settings/llm');
             
-            document.getElementById('llm-type').value = settings.llm_type || 'ollama';
-            document.getElementById('llm-endpoint').value = settings.endpoint || 'http://localhost:11434';
+            const llmType = settings.llm_type || 'ollama';
+            document.getElementById('llm-type').value = llmType;
+            document.getElementById('llm-endpoint').value = settings.endpoint || (llmType === 'lm-studio' ? 'http://localhost:1234' : 'http://localhost:11434');
             document.getElementById('llm-model').value = settings.model || 'mistral';
             document.getElementById('llm-temperature').value = settings.temperature || 0.7;
             document.getElementById('temperature-value').textContent = settings.temperature || 0.7;
@@ -600,10 +601,12 @@ OLLAMA_MODEL=${settings.model}</pre>
             `;
             
             // Try to send a test message
+            const token = window.getAuthToken?.();
             const response = await fetch(`${api.baseUrl}/chat/stream`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
                 },
                 body: JSON.stringify({
                     content: 'Hello',

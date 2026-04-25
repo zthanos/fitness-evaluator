@@ -82,12 +82,7 @@ class CoachChat {
     
     async loadSessions() {
         try {
-            // Load sessions from API
-            const response = await fetch(`${api.baseUrl}/chat/sessions`);
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}`);
-            }
-            this.sessions = await response.json();
+            this.sessions = await api.get('/chat/sessions');
         } catch (error) {
             console.error('Error loading sessions:', error);
             this.sessions = [];
@@ -101,17 +96,11 @@ class CoachChat {
     
     async loadSession(sessionId) {
         try {
-            // Load session from API with message limit of 50
-            const response = await fetch(`${api.baseUrl}/chat/sessions/${sessionId}/messages?limit=50`);
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}`);
-            }
-            
-            const messages = await response.json();
+            const messages = await api.get(`/chat/sessions/${sessionId}/messages?limit=50`);
             this.currentSessionId = sessionId;
             this.messages = messages || [];
             this.renderMessages();
-            this.renderSessions(); // Update active session highlight
+            this.renderSessions();
         } catch (error) {
             console.error('Error loading session:', error);
         }
@@ -119,22 +108,7 @@ class CoachChat {
     
     async createNewSession() {
         try {
-            // Create session via API
-            const response = await fetch(`${api.baseUrl}/chat/sessions`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    title: 'New Chat'
-                })
-            });
-            
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}`);
-            }
-            
-            const newSession = await response.json();
+            const newSession = await api.post('/chat/sessions', { title: 'New Chat' });
             
             // Reload sessions list
             await this.loadSessions();
@@ -372,10 +346,12 @@ class CoachChat {
         
         try {
             // Call streaming endpoint
+            const token = window.getAuthToken?.();
             const response = await fetch(`${api.baseUrl}/chat/stream`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
                 },
                 body: JSON.stringify({
                     content: userMessage,

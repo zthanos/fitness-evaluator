@@ -15,6 +15,7 @@ class NavigationSidebar {
     this.container = document.getElementById(containerId);
     this.currentRoute = this._getCurrentRoute();
     this.isMobileMenuOpen = false;
+    this._user = null;
 
     this.navItems = [
       { id: 'dashboard',       label: 'Dashboard',       icon: '📊', path: '/' },
@@ -31,6 +32,13 @@ class NavigationSidebar {
   }
 
   // ─── Public API ─────────────────────────────────────────────────────────────
+
+  setUser(user) {
+    this._user = user;
+    const footer = document.querySelector('#navigation-sidebar .sidebar-footer');
+    if (footer) footer.innerHTML = this._renderFooter();
+    this._attachFooterListeners();
+  }
 
   /**
    * Update the highlighted nav item after a route change.
@@ -125,17 +133,46 @@ class NavigationSidebar {
         </nav>
 
         <!-- Footer -->
-        <div class="absolute bottom-0 left-0 right-0 p-4 border-t border-base-300">
-          <button id="theme-toggle-btn"
-            class="btn btn-ghost btn-sm w-full justify-start gap-2"
-            aria-label="Toggle theme">
-            <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-              <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"/>
-            </svg>
-            <span class="hidden lg:inline">Toggle Theme</span>
-          </button>
+        <div class="sidebar-footer absolute bottom-0 left-0 right-0 p-4 border-t border-base-300">
+          ${this._renderFooter()}
         </div>
       </aside>`;
+  }
+
+  _renderFooter() {
+    const name = this._user?.name ?? '';
+    const email = this._user?.email ?? '';
+    return `
+      ${name ? `
+      <div class="flex items-center gap-2 mb-2 px-1 overflow-hidden">
+        <div class="avatar placeholder">
+          <div class="bg-primary text-primary-content rounded-full w-8 h-8 text-sm font-bold flex items-center justify-center">
+            ${name.charAt(0).toUpperCase()}
+          </div>
+        </div>
+        <div class="hidden lg:block overflow-hidden">
+          <div class="text-sm font-semibold truncate">${name}</div>
+          ${email ? `<div class="text-xs text-base-content/50 truncate">${email}</div>` : ''}
+        </div>
+      </div>` : ''}
+      <button id="theme-toggle-btn"
+        class="btn btn-ghost btn-sm w-full justify-start gap-2"
+        aria-label="Toggle theme">
+        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+          <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"/>
+        </svg>
+        <span class="hidden lg:inline">Toggle Theme</span>
+      </button>
+      ${name ? `
+      <button id="logout-btn"
+        class="btn btn-ghost btn-sm w-full justify-start gap-2 text-error mt-1"
+        aria-label="Log out">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h6a2 2 0 012 2v1"/>
+        </svg>
+        <span class="hidden lg:inline">Log out</span>
+      </button>` : ''}`;
   }
 
   _renderNavItems() {
@@ -162,6 +199,22 @@ class NavigationSidebar {
     return cur === p || cur.startsWith(p + '/');
   }
 
+  _attachFooterListeners() {
+    const themeBtn = document.getElementById('theme-toggle-btn');
+    if (themeBtn) {
+      themeBtn.addEventListener('click', () => {
+        const current = document.documentElement.getAttribute('data-theme');
+        const next = current === 'dark' ? 'light' : 'dark';
+        document.documentElement.setAttribute('data-theme', next);
+        document.dispatchEvent(new CustomEvent('themechange', { detail: next }));
+      });
+    }
+    const logoutBtn = document.getElementById('logout-btn');
+    if (logoutBtn) {
+      logoutBtn.addEventListener('click', () => window.appLogout?.());
+    }
+  }
+
   _attachEventListeners() {
     const toggleBtn = document.getElementById('mobile-menu-toggle');
     if (toggleBtn) toggleBtn.addEventListener('click', () => this.toggleMobile());
@@ -172,17 +225,7 @@ class NavigationSidebar {
     const overlay = document.getElementById('sidebar-overlay');
     if (overlay) overlay.addEventListener('click', () => this.toggleMobile());
 
-    // Theme toggle
-    const themeBtn = document.getElementById('theme-toggle-btn');
-    if (themeBtn) {
-      themeBtn.addEventListener('click', () => {
-        const current = document.documentElement.getAttribute('data-theme');
-        const next = current === 'dark' ? 'light' : 'dark';
-        document.documentElement.setAttribute('data-theme', next);
-        document.dispatchEvent(new CustomEvent('themechange', { detail: next }));
-      });
-    }
-
+    this._attachFooterListeners();
     this._attachNavLinkListeners();
   }
 

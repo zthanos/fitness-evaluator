@@ -19,6 +19,7 @@ from app.schemas.chat_schemas import (
 from app.models.chat_session import ChatSession
 from app.models.chat_message import ChatMessage
 from app.models.athlete import Athlete
+from app.middleware.auth import get_current_athlete
 from app.services.chat_session_service import ChatSessionService
 from app.services.rag_engine import RAGEngine
 
@@ -37,15 +38,14 @@ def get_session_service(db: Session = Depends(get_db)) -> ChatSessionService:
 
 @router.get("/sessions", response_model=List[SessionResponse], summary="List chat sessions")
 async def list_sessions(
-    athlete_id: Optional[int] = None,
     limit: int = 50,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    athlete: Athlete = Depends(get_current_athlete),
 ):
     """
-    Retrieve all chat sessions with optional filtering.
+    Retrieve all chat sessions for the authenticated athlete.
 
     **Query Parameters:**
-    - `athlete_id`: Filter by athlete identifier
     - `limit`: Maximum number of sessions to return (default: 50)
 
     **Returns:**
@@ -57,8 +57,7 @@ async def list_sessions(
         func.count(ChatMessage.id).label('message_count')
     ).outerjoin(ChatMessage, ChatSession.id == ChatMessage.session_id)
 
-    if athlete_id:
-        query = query.filter(ChatSession.athlete_id == athlete_id)
+    query = query.filter(ChatSession.athlete_id == athlete.id)
 
     query = query.group_by(ChatSession.id).order_by(ChatSession.updated_at.desc()).limit(limit)
 
@@ -82,40 +81,21 @@ async def list_sessions(
 @router.post("/sessions", response_model=SessionResponse, summary="Create a new chat session")
 async def create_session(
     session: SessionCreate,
-    athlete_id: Optional[int] = None,
     db: Session = Depends(get_db),
-    session_service: ChatSessionService = Depends(get_session_service)
+    session_service: ChatSessionService = Depends(get_session_service),
+    athlete: Athlete = Depends(get_current_athlete),
 ):
     """
-    Create a new chat session.
+    Create a new chat session for the authenticated athlete.
 
     **Fields:**
     - `title`: Optional session title (default: "New Chat")
-    - `athlete_id`: Optional athlete identifier
 
     **Returns:**
     - Created session with ID and timestamps
     """
-    # Create default athlete if none exists and no athlete_id provided
-    if athlete_id is None:
-        # Check if default athlete exists
-        default_athlete = db.query(Athlete).filter(Athlete.id == 1).first()
-        if not default_athlete:
-            # Create default athlete
-            default_athlete = Athlete(
-                id=1,
-                name="Default Athlete",
-                email=None,
-                created_at=datetime.utcnow(),
-                updated_at=datetime.utcnow()
-            )
-            db.add(default_athlete)
-            db.commit()
-        athlete_id = 1
-
-    # Use ChatSessionService to create session
     session_id = session_service.create_session(
-        athlete_id=athlete_id,
+        athlete_id=athlete.id,
         title=session.title or "New Chat"
     )
 
@@ -135,7 +115,8 @@ async def create_session(
 @router.get("/sessions/{session_id}", response_model=SessionWithMessages, summary="Get session with messages")
 async def get_session(
     session_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    athlete: Athlete = Depends(get_current_athlete),
 ):
     """
     Retrieve a specific session with all its messages.
@@ -146,7 +127,10 @@ async def get_session(
     **Returns:**
     - Session details with all messages ordered chronologically
     """
-    session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
+    session = db.query(ChatSession).filter(
+        ChatSession.id == session_id,
+        ChatSession.athlete_id == athlete.id,
+    ).first()
     if not session:
         raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
 
@@ -180,7 +164,8 @@ async def get_session(
 async def get_session_messages(
     session_id: int,
     limit: int = 50,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    athlete: Athlete = Depends(get_current_athlete),
 ):
     """
     Retrieve messages for a specific session.
@@ -193,8 +178,10 @@ async def get_session_messages(
     - List of messages ordered chronologically (oldest first)
     - Limited to most recent messages if limit exceeded
     """
-    # Verify session exists
-    session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
+    session = db.query(ChatSession).filter(
+        ChatSession.id == session_id,
+        ChatSession.athlete_id == athlete.id,
+    ).first()
     if not session:
         raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
 
@@ -225,7 +212,8 @@ async def create_message(
     request: Request,
     session_id: int,
     message: MessageCreate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    athlete: Athlete = Depends(get_current_athlete),
 ):
     """
     Send a message in a chat session with RAG-based context retrieval.
@@ -254,8 +242,7 @@ async def create_message(
     if not session:
         raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
 
-    # Get athlete_id for user scoping
-    athlete_id = session.athlete_id or 1  # Default to 1 if not set
+    athlete_id = athlete.id
 
     # Initialize Chat Message Handler with ChatAgent (Phase 3 + Phase 5 LLMAdapter)
     from app.services.llm_client import LLMClient
@@ -374,7 +361,8 @@ async def create_message(
 async def delete_session(
     session_id: int,
     db: Session = Depends(get_db),
-    session_service: ChatSessionService = Depends(get_session_service)
+    session_service: ChatSessionService = Depends(get_session_service),
+    athlete: Athlete = Depends(get_current_athlete),
 ):
     """
     Delete a chat session and all its messages.
@@ -389,7 +377,10 @@ async def delete_session(
 
     Requirements: 2.1, 2.2, 2.3, 2.4
     """
-    session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
+    session = db.query(ChatSession).filter(
+        ChatSession.id == session_id,
+        ChatSession.athlete_id == athlete.id,
+    ).first()
     if not session:
         raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
 
@@ -466,7 +457,8 @@ async def persist_session(
 async def stream_chat(
     request: Request,
     message: MessageCreate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    athlete: Athlete = Depends(get_current_athlete),
 ):
     """
     Stream a chat response using Server-Sent Events with RAG-based context retrieval.
@@ -501,7 +493,7 @@ async def stream_chat(
     # If no session_id provided, create a new session
     if not session_id:
         new_session = ChatSession(
-            athlete_id=1,  # Default athlete
+            athlete_id=athlete.id,
             title=message.content[:50] if message.content else "New Chat",
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow()
@@ -511,13 +503,15 @@ async def stream_chat(
         db.refresh(new_session)
         session_id = new_session.id
 
-    # Verify session exists
-    session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
+    # Verify session exists and belongs to this athlete
+    session = db.query(ChatSession).filter(
+        ChatSession.id == session_id,
+        ChatSession.athlete_id == athlete.id,
+    ).first()
     if not session:
         raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
 
-    # Get athlete_id for user scoping
-    athlete_id = session.athlete_id or 1
+    athlete_id = athlete.id
 
     async def event_generator():
         """Generate Server-Sent Events with RAG integration."""

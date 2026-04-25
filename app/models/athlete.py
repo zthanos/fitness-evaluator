@@ -10,12 +10,15 @@ from app.models.base import Base
 class Athlete(Base):
     """
     Represents an athlete profile with personal information and goals.
-    
+
     Requirements: 19.1, 19.3, 22
     """
     __tablename__ = 'athletes'
-    
+
     id = Column(Integer, primary_key=True, autoincrement=True)
+    # Keycloak subject claim — unique per user, set on first login.
+    # NULL for legacy single-user records created before auth was introduced.
+    keycloak_sub = Column(String(255), nullable=True, unique=True, index=True)
     name = Column(String(255), nullable=False)
     email = Column(String(255), nullable=True, index=True)
     date_of_birth = Column(Date, nullable=True)

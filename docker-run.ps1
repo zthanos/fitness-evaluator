@@ -1,14 +1,14 @@
 # Docker helper script for Fitness Evaluator (Windows PowerShell)
+# Manages the PostgreSQL + Keycloak + Ollama stack
 
 param(
     [string]$Command = "help",
-    [string]$Args = ""
+    [string]$Arg = ""
 )
 
 $SCRIPT_DIR = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $SCRIPT_DIR
 
-# Colors
 function Write-Header {
     param([string]$Text)
     Write-Host "========================================" -ForegroundColor Blue
@@ -16,83 +16,88 @@ function Write-Header {
     Write-Host "========================================" -ForegroundColor Blue
 }
 
-function Write-Success {
-    param([string]$Text)
-    Write-Host "[OK] $Text" -ForegroundColor Green
-}
+function Write-Ok   { param([string]$T); Write-Host "[OK]   $T" -ForegroundColor Green }
+function Write-Warn { param([string]$T); Write-Host "[WARN] $T" -ForegroundColor Yellow }
+function Write-Err  { param([string]$T); Write-Host "[ERR]  $T" -ForegroundColor Red }
 
-function Write-Warning {
-    param([string]$Text)
-    Write-Host "[WARN] $Text" -ForegroundColor Yellow
-}
-
-# Check if .env exists
 function Test-Env {
     if (-not (Test-Path ".env")) {
-        Write-Warning ".env file not found"
-        Write-Host "Creating .env from .env.example..."
+        Write-Warn ".env not found - creating from .env.example"
         Copy-Item .env.example .env
-        Write-Warning "Please edit .env with your Strava credentials"
+        Write-Warn "Edit .env with your Strava credentials before continuing"
         exit 1
     }
 }
 
-# Main script
+function Stop-AppProcess {
+    $conn = Get-NetTCPConnection -LocalPort 8000 -State Listen -ErrorAction SilentlyContinue
+    if ($conn) {
+        $procId = $conn.OwningProcess
+        Write-Warn "Killing process on port 8000 (PID $procId)..."
+        Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 1
+        Write-Ok "Process stopped"
+    }
+}
+
+function Wait-Postgres {
+    Write-Host "Waiting for PostgreSQL..." -NoNewline
+    for ($i = 0; $i -lt 30; $i++) {
+        docker exec fitness-postgres pg_isready -U postgres 2>$null | Out-Null
+        if ($LASTEXITCODE -eq 0) { Write-Host " ready" -ForegroundColor Green; return }
+        Write-Host "." -NoNewline
+        Start-Sleep -Seconds 2
+    }
+    Write-Host ""
+    Write-Err "PostgreSQL did not become ready in time"
+    exit 1
+}
+
 switch ($Command.ToLower()) {
+
     "up" {
-        Write-Header "Starting Fitness Evaluator with Docker Compose"
+        Write-Header "Starting Fitness Evaluator Stack"
         Test-Env
-        Write-Host "Pulling latest images..."
-        docker-compose pull
-        Write-Host "Starting services..."
-        docker-compose up -d
+        Write-Host "Starting postgres, keycloak, ollama..."
+        docker-compose up -d postgres keycloak ollama
+        Wait-Postgres
+        Write-Host "Running database migrations..."
+        uv run alembic upgrade head
+        if ($LASTEXITCODE -ne 0) { Write-Err "Migrations failed"; exit 1 }
+        Write-Ok "Migrations applied"
         Write-Host ""
-        Write-Success "Services started!"
-        Write-Host "Waiting for services to be healthy..."
-        Start-Sleep -Seconds 10
-        
-        # Check health
-        $appHealthy = $false
-        try {
-            $response = Invoke-WebRequest -Uri "http://localhost:8000/health" -ErrorAction SilentlyContinue
-            if ($response.StatusCode -eq 200) {
-                Write-Success "FastAPI is healthy"
-                $appHealthy = $true
-            }
-        }
-        catch {
-            Write-Warning "FastAPI is starting, may take a moment..."
-        }
-        
+        Write-Ok "Stack is ready"
         Write-Host ""
-        Write-Host "Fitness Evaluator is ready!" -ForegroundColor Green
-        Write-Host ""
-        Write-Host "Access points:"
-        Write-Host "  Dashboard:    http://localhost:8000"
-        Write-Host "  API Docs:     http://localhost:8000/docs"
-        Write-Host "  Ollama API:   http://localhost:11434"
+        Write-Host "  API / UI:    http://localhost:8000  (run: uv run uvicorn app.main:app --reload)"
+        Write-Host "  API Docs:    http://localhost:8000/docs"
+        Write-Host "  Keycloak:    http://localhost:8081"
+        Write-Host "  Ollama:      http://localhost:11434"
+        Write-Host "  PostgreSQL:  localhost:5460  (fitness_user / fitness_password)"
     }
 
     "down" {
         Write-Header "Stopping Fitness Evaluator"
         docker-compose down
-        Write-Success "Services stopped"
+        Write-Ok "Stack stopped"
     }
 
     "restart" {
-        Write-Header "Restarting Fitness Evaluator"
+        Write-Header "Restarting Stack"
         docker-compose restart
-        Write-Success "Services restarted"
+        Write-Ok "Restarted"
+    }
+
+    "migrate" {
+        Write-Header "Running Migrations"
+        uv run alembic upgrade head
+        if ($LASTEXITCODE -eq 0) { Write-Ok "Migrations applied" }
+        else { Write-Err "Migrations failed" }
     }
 
     "logs" {
-        Write-Header "Showing logs (Ctrl+C to exit)"
-        if ($Args) {
-            docker-compose logs -f $Args
-        }
-        else {
-            docker-compose logs -f
-        }
+        Write-Header "Logs (Ctrl+C to exit)"
+        if ($Arg) { docker-compose logs -f $Arg }
+        else      { docker-compose logs -f }
     }
 
     "ps" {
@@ -101,103 +106,141 @@ switch ($Command.ToLower()) {
     }
 
     "shell-app" {
-        Write-Header "Opening shell in FastAPI container"
-        docker-compose exec app cmd
+        Write-Header "App shell (run locally with uv)"
+        Write-Host "Tip: uv run python -c 'from app.database import engine; print(engine.url)'"
+    }
+
+    "shell-db" {
+        Write-Header "PostgreSQL shell"
+        docker exec -it fitness-postgres psql -U fitness_user -d fitness
     }
 
     "shell-ollama" {
-        Write-Header "Opening shell in Ollama container"
-        docker-compose exec ollama cmd
+        Write-Header "Ollama shell"
+        docker exec -it fitness-ollama /bin/bash
     }
 
     "db-reset" {
-        Write-Warning "This will DELETE all application data!"
-        $confirm = Read-Host "Are you sure? (type 'yes' to confirm)"
+        Write-Warn "This will DELETE all application data in PostgreSQL!"
+        $confirm = Read-Host "Type 'yes' to confirm"
         if ($confirm -eq "yes") {
-            docker-compose exec app rm -Path /app/data/fitness_eval.db
-            docker-compose exec app uv run alembic upgrade head
-            Write-Success "Database reset"
-        }
-        else {
+            Write-Host "Dropping and recreating fitness database..."
+            docker exec fitness-postgres psql -U postgres -c 'DROP DATABASE IF EXISTS fitness;'
+            docker exec fitness-postgres psql -U postgres -c 'CREATE DATABASE fitness;'
+            docker exec fitness-postgres psql -U postgres -d fitness -c 'CREATE EXTENSION IF NOT EXISTS vector;'
+            docker exec fitness-postgres psql -U postgres -d fitness -c 'GRANT ALL ON SCHEMA public TO fitness_user;'
+            Write-Host "Running migrations..."
+            uv run alembic upgrade head
+            Write-Ok "Database reset complete"
+        } else {
             Write-Host "Cancelled"
         }
     }
 
     "backup" {
-        Write-Header "Creating database backup"
+        Write-Header "Creating PostgreSQL backup"
         $backupDir = "backups"
-        if (-not (Test-Path $backupDir)) {
-            New-Item -ItemType Directory -Path $backupDir | Out-Null
-        }
+        if (-not (Test-Path $backupDir)) { New-Item -ItemType Directory -Path $backupDir | Out-Null }
         $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
-        docker-compose exec app cp /app/data/fitness_eval.db /app/data/fitness_eval.$timestamp.db.backup
-        Write-Success "Backup created: $backupDir/fitness_eval.$timestamp.db.backup"
+        $file = "$backupDir/fitness_$timestamp.sql"
+        docker exec fitness-postgres pg_dump -U fitness_user fitness | Out-File -FilePath $file -Encoding utf8
+        Write-Ok "Backup saved to $file"
     }
 
-    "clean" {
-        Write-Header "Removing containers and volumes"
-        docker-compose down -v
-        Write-Success "Cleaned up"
+    "restore" {
+        if (-not $Arg) { Write-Err "Usage: .\docker-run.ps1 -Command restore -Arg backup.sql"; exit 1 }
+        if (-not (Test-Path $Arg)) { Write-Err "File not found: $Arg"; exit 1 }
+        Write-Warn "This will overwrite the current database!"
+        $confirm = Read-Host "Type 'yes' to confirm"
+        if ($confirm -eq "yes") {
+            Get-Content $Arg | docker exec -i fitness-postgres psql -U fitness_user -d fitness
+            Write-Ok "Restore complete"
+        } else {
+            Write-Host "Cancelled"
+        }
     }
 
     "health" {
         Write-Header "Health Check"
-        Write-Host "FastAPI:" -ForegroundColor Cyan
+        Write-Host "PostgreSQL:" -ForegroundColor Cyan
+        $pg = docker exec fitness-postgres pg_isready -U postgres 2>&1
+        if ($LASTEXITCODE -eq 0) { Write-Ok $pg } else { Write-Err $pg }
+
+        Write-Host ""
+        Write-Host "Keycloak:" -ForegroundColor Cyan
         try {
-            $response = Invoke-WebRequest -Uri "http://localhost:8000/health" -ErrorAction SilentlyContinue
-            $response.Content | ConvertFrom-Json | ConvertTo-Json
-        }
-        catch {
-            Write-Host "Not responding"
-        }
-        
+            $r = Invoke-WebRequest -Uri "http://localhost:8081/health" -ErrorAction Stop -TimeoutSec 5
+            Write-Ok "HTTP $($r.StatusCode)"
+        } catch { Write-Warn "Not responding (may still be starting)" }
+
         Write-Host ""
         Write-Host "Ollama:" -ForegroundColor Cyan
         try {
-            $response = Invoke-WebRequest -Uri "http://localhost:11434/api/tags" -ErrorAction SilentlyContinue
-            $response.Content | ConvertFrom-Json | ConvertTo-Json
-        }
-        catch {
-            Write-Host "Not responding"
-        }
+            $r = Invoke-WebRequest -Uri "http://localhost:11434/api/tags" -ErrorAction Stop -TimeoutSec 5
+            Write-Ok "HTTP $($r.StatusCode)"
+        } catch { Write-Warn "Not responding" }
+
+        Write-Host ""
+        Write-Host "App:" -ForegroundColor Cyan
+        try {
+            $r = Invoke-WebRequest -Uri "http://localhost:8000/health" -ErrorAction Stop -TimeoutSec 5
+            Write-Ok "HTTP $($r.StatusCode)"
+        } catch { Write-Warn "Not running - start with: uv run uvicorn app.main:app --reload" }
+    }
+
+    "clean" {
+        Write-Header "Removing containers (data volumes preserved)"
+        docker-compose down
+        Write-Ok "Containers removed. Data volumes are intact."
+        Write-Host "To also wipe all data, run: .\docker-run.ps1 -Command db-reset"
+    }
+
+    "start-app" {
+        Write-Header "Starting App (uvicorn)"
+        Stop-AppProcess
+        Write-Host "Starting: uv run uvicorn app.main:app --reload"
+        uv run uvicorn app.main:app --reload
     }
 
     "model-list" {
         Write-Header "Available Ollama Models"
-        docker-compose exec ollama ollama list
+        docker exec fitness-ollama ollama list
     }
 
     "model-pull" {
-        Write-Header "Pulling Ollama Model"
-        $model = if ($Args) { $Args } else { "mistral" }
-        Write-Host "Pulling $model model..."
-        docker-compose exec ollama ollama pull $model
-        Write-Success "Model pulled"
+        $model = if ($Arg) { $Arg } else { "mistral" }
+        Write-Header "Pulling Ollama model: $model"
+        docker exec fitness-ollama ollama pull $model
+        Write-Ok "Model pulled"
     }
 
     default {
-        Write-Host 'Fitness Evaluator Docker Helper'
-        Write-Host ''
-        Write-Host 'Usage: .\docker-run.ps1 -Command <command> [-Args <args>]'
-        Write-Host ''
-        Write-Host 'Commands:'
-        Write-Host '  up                Start all services'
-        Write-Host '  down              Stop all services'
-        Write-Host '  restart           Restart services'
-        Write-Host '  logs [service]    Show logs - app or ollama'
-        Write-Host '  ps                Show container status'
-        Write-Host '  shell-app         Open shell in FastAPI container'
-        Write-Host '  shell-ollama      Open shell in Ollama container'
-        Write-Host '  db-reset          Reset database (DELETE DATA)'
-        Write-Host '  backup            Create database backup'
-        Write-Host '  clean             Remove containers and volumes'
-        Write-Host '  health            Check service health'
-        Write-Host '  model-list        List available Ollama models'
-        Write-Host '  model-pull NAME   Download Ollama model'
-        Write-Host ''
-        Write-Host 'Examples:'
-        Write-Host '  .\docker-run.ps1 -Command up'
-        Write-Host '  .\docker-run.ps1 -Command logs -Args app'
-        Write-Host '  .\docker-run.ps1 -Command model-pull -Args neural-chat'
+        Write-Host "Fitness Evaluator Docker Helper"
+        Write-Host ""
+        Write-Host "Usage: .\docker-run.ps1 -Command COMMAND [-Arg VALUE]"
+        Write-Host ""
+        Write-Host "Stack management:"
+        Write-Host "  up              Start postgres + keycloak + ollama, run migrations"
+        Write-Host "  down            Stop all containers"
+        Write-Host "  restart         Restart all containers"
+        Write-Host "  clean           Remove containers (volumes/data kept)"
+        Write-Host "  ps              Show container status"
+        Write-Host "  logs [service]  Tail logs (postgres / keycloak / ollama)"
+        Write-Host "  health          Check all services"
+        Write-Host ""
+        Write-Host "Database:"
+        Write-Host "  migrate         Run pending Alembic migrations"
+        Write-Host "  db-reset        Drop and recreate database (DESTROYS DATA)"
+        Write-Host "  backup          pg_dump to backups/ directory"
+        Write-Host "  restore         Restore from backup: -Arg path\to\backup.sql"
+        Write-Host "  shell-db        Open psql session"
+        Write-Host ""
+        Write-Host "Ollama:"
+        Write-Host "  model-list      List downloaded models"
+        Write-Host "  model-pull      Download a model: -Arg mistral"
+        Write-Host "  shell-ollama    Open Ollama container shell"
+        Write-Host ""
+        Write-Host "App (runs locally, not in Docker):"
+        Write-Host "  uv run uvicorn app.main:app --reload"
     }
 }
