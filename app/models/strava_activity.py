@@ -22,6 +22,16 @@ class StravaActivity(Base, TimestampMixin):
     calories: float = Column(Float, nullable=True)
     raw_json: dict = Column(Text, nullable=False)
     week_id: str = Column(String(36), nullable=True)
+    # v1 enrichment fields (extracted from raw_json on sync)
+    avg_cadence: float = Column(Float, nullable=True)
+    max_cadence: float = Column(Float, nullable=True)
+    avg_watts: float = Column(Float, nullable=True)
+    max_watts: float = Column(Float, nullable=True)
+    weighted_avg_watts: float = Column(Float, nullable=True)
+    kilojoules: float = Column(Float, nullable=True)
+    suffer_score: int = Column(Integer, nullable=True)
+    trainer: bool = Column(Integer, nullable=True)   # stored as 0/1 for SQLite compat
+    sport_type: str = Column(String(50), nullable=True)
     
     # Relationship to analysis
     analysis = relationship("ActivityAnalysis", back_populates="activity", uselist=False, cascade="all, delete-orphan")

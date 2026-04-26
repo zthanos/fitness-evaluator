@@ -319,34 +319,50 @@ class StravaClient:
         synced_count = 0
         for activity_data in activities_data:
             strava_id = activity_data["id"]
-            
-            # Check if activity already exists
+            fields = self._map_activity_fields(athlete_id, activity_data)
+
             existing = self.db.query(StravaActivity).filter(
                 StravaActivity.strava_id == strava_id
             ).first()
-            
-            if not existing:
-                # Create new activity (simplified - would need proper mapping)
-                activity = StravaActivity(
-                    athlete_id=athlete_id,
-                    strava_id=strava_id,
-                    activity_type=activity_data.get("type", "Unknown"),
-                    start_date=datetime.fromisoformat(
-                        activity_data["start_date"].replace("Z", "+00:00")
-                    ),
-                    moving_time_s=activity_data.get("moving_time"),
-                    distance_m=activity_data.get("distance"),
-                    elevation_m=activity_data.get("total_elevation_gain"),
-                    avg_hr=activity_data.get("average_heartrate"),
-                    max_hr=activity_data.get("max_heartrate"),
-                    calories=activity_data.get("calories"),
-                    raw_json=str(activity_data)
-                )
-                self.db.add(activity)
+
+            if existing:
+                for k, v in fields.items():
+                    if k not in ("athlete_id", "strava_id"):
+                        setattr(existing, k, v)
+            else:
+                self.db.add(StravaActivity(**fields))
                 synced_count += 1
-        
+
         self.db.commit()
         return synced_count
+
+    @staticmethod
+    def _map_activity_fields(athlete_id: int, d: dict) -> dict:
+        """Extract all known fields from a Strava activity dict."""
+        return {
+            "athlete_id":        athlete_id,
+            "strava_id":         d["id"],
+            "activity_type":     d.get("type", "Unknown"),
+            "sport_type":        d.get("sport_type"),
+            "start_date":        datetime.fromisoformat(
+                                     d["start_date"].replace("Z", "+00:00")
+                                 ),
+            "moving_time_s":     d.get("moving_time"),
+            "distance_m":        d.get("distance"),
+            "elevation_m":       d.get("total_elevation_gain"),
+            "avg_hr":            d.get("average_heartrate"),
+            "max_hr":            d.get("max_heartrate"),
+            "calories":          d.get("calories"),
+            "avg_cadence":       d.get("average_cadence"),
+            "max_cadence":       d.get("max_cadence"),
+            "avg_watts":         d.get("average_watts"),
+            "max_watts":         d.get("max_watts"),
+            "weighted_avg_watts":d.get("weighted_average_watts"),
+            "kilojoules":        d.get("kilojoules"),
+            "suffer_score":      d.get("suffer_score"),
+            "trainer":           int(bool(d.get("trainer"))),
+            "raw_json":          str(d),
+        }
     
     def disconnect(self, athlete_id: int) -> bool:
         """
