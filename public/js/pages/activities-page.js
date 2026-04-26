@@ -68,11 +68,8 @@ class ActivitiesPage {
       button.disabled = true;
       const originalHTML = button.innerHTML;
       button.innerHTML = `<span class="loading loading-spinner loading-sm"></span> Syncing...`;
-  
+
       try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 300_000);
-  
         const token = window.getAuthToken?.();
         const response = await fetch(`${api.baseUrl}/auth/strava/sync`, {
           method: 'POST',
@@ -80,31 +77,24 @@ class ActivitiesPage {
             'Content-Type': 'application/json',
             ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
           },
-          signal: controller.signal,
         });
-        clearTimeout(timeoutId);
 
         if (!response.ok) {
           const err = await response.json();
           throw new Error(err.detail || 'Sync failed');
         }
-  
+
         const result = await response.json();
-        showToast(`✅ ${result.message}`, 'success');
-  
-        if (result.synced_count > 0) {
+        showToast(`⏳ ${result.message}`, 'info');
+
+        // Sync runs in background — reload after 15 s to pick up new activities
+        setTimeout(async () => {
           await this._activityList.loadActivities();
           this._activityList.render();
-        }
+        }, 15_000);
       } catch (err) {
         console.error('Strava sync failed:', err);
-        if (err.name === 'AbortError') {
-          showToast('⏱️ Sync is taking longer than expected. Refresh in a moment.', 'warning');
-          setTimeout(async () => {
-            await this._activityList.loadActivities();
-            this._activityList.render();
-          }, 3000);
-        } else if (err.message.includes('revoked')) {
+        if (err.message.includes('revoked')) {
           showToast('❌ Strava authorization revoked. Reconnect in Settings.', 'error');
         } else if (err.message.includes('No Strava token')) {
           showToast('⚠️ Strava not connected. Connect in Settings.', 'warning');

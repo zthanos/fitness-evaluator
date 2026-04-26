@@ -24,7 +24,25 @@ function _loadScript(src) {
   });
 }
 
+function _checkStorage() {
+  try {
+    const k = '__kc_storage_test__';
+    sessionStorage.setItem(k, '1');
+    sessionStorage.removeItem(k);
+  } catch {
+    // Edge "Tracking Prevention" can block sessionStorage for cross-origin scripts.
+    // Surface a helpful hint rather than a cryptic crash.
+    console.warn(
+      '[auth] Storage blocked by browser Tracking Prevention.\n' +
+      'In Edge: Settings → Privacy → Tracking prevention → Exceptions → add localhost\n' +
+      'Or switch Tracking prevention to "Basic".'
+    );
+  }
+}
+
 export async function initAuth() {
+  _checkStorage();
+
   const resp = await fetch('/api/auth/config');
   if (!resp.ok) throw new Error('Could not fetch auth config from backend');
   const config = await resp.json();
@@ -38,17 +56,24 @@ export async function initAuth() {
   });
 
   await _kc.init({
-    onLoad: 'login-required',
+    onLoad: 'check-sso',
     checkLoginIframe: false,
     pkceMethod: 'S256',
+    enableLogging: false,
   });
 
   // Proactively refresh the token 60s before it expires, every 30s
-  setInterval(() => {
-    _kc.updateToken(60).catch(() => _kc.login());
-  }, 30_000);
+  if (_kc.authenticated) {
+    setInterval(() => {
+      _kc.updateToken(60).catch(() => _kc.login());
+    }, 30_000);
+  }
 
   return _kc;
+}
+
+export function isAuthenticated() {
+  return _kc?.authenticated ?? false;
 }
 
 export function getToken() {

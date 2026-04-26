@@ -4,7 +4,8 @@
   "displayNameHtml": "<b>Fitness App</b>",
   "enabled": true,
   "sslRequired": "external",
-  "registrationAllowed": false,
+  "loginTheme": "fitness",
+  "registrationAllowed": true,
   "registrationEmailAsUsername": false,
   "rememberMe": true,
   "verifyEmail": false,
@@ -68,6 +69,17 @@
         "microprofile-jwt"
       ],
       "protocolMappers": [
+        {
+          "name": "fitness-app-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "fitness-app",
+            "id.token.claim": "false",
+            "access.token.claim": "true"
+          }
+        },
         {
           "name": "athlete-id-mapper",
           "protocol": "openid-connect",

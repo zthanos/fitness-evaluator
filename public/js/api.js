@@ -40,9 +40,18 @@ class APIClient {
       }
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || `HTTP ${response.status}`);
+        let message = `HTTP ${response.status}`;
+        const ct = response.headers.get('content-type') || '';
+        if (ct.includes('application/json')) {
+          try {
+            const errorData = await response.json();
+            message = errorData.detail || message;
+          } catch { /* ignore parse failure */ }
+        }
+        throw new Error(message);
       }
+      const ct = response.headers.get('content-type') || '';
+      if (!ct.includes('application/json')) return null;
       return await response.json();
     } catch (error) {
       console.error(`API Error: ${method} ${endpoint}`, error);

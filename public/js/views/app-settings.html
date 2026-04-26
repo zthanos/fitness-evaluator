@@ -1,0 +1,113 @@
+<div class="flex flex-col h-full overflow-hidden">
+    <!-- Fixed Header -->
+    <div class="flex-shrink-0 p-6 pb-0">
+        <h1 class="text-4xl font-bold">🛠️ Application Settings</h1>
+        <p class="text-base-content/70 mt-2 mb-6">LLM configuration, timeouts, and application-wide settings</p>
+    </div>
+
+    <!-- Scrollable Content -->
+    <div class="flex-1 overflow-y-auto px-6 pb-6">
+
+        <!-- LLM Configuration -->
+        <div class="card bg-base-100 shadow-xl mb-6">
+            <div class="card-body">
+                <h2 class="card-title mb-2">🤖 AI Coach Configuration</h2>
+                <p class="text-sm text-base-content/60 mb-4">Current values loaded from environment. To change permanently, update <code class="badge badge-ghost badge-sm">.env</code> and restart the server.</p>
+
+                <div id="llm-current" class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+                    <div class="stat bg-base-200 rounded-box p-3">
+                        <div class="stat-title text-xs">LLM Type</div>
+                        <div class="stat-value text-lg" id="llm-cur-type">—</div>
+                    </div>
+                    <div class="stat bg-base-200 rounded-box p-3">
+                        <div class="stat-title text-xs">Model</div>
+                        <div class="stat-value text-lg truncate" id="llm-cur-model">—</div>
+                    </div>
+                    <div class="stat bg-base-200 rounded-box p-3">
+                        <div class="stat-title text-xs">Endpoint</div>
+                        <div class="stat-value text-sm font-mono truncate" id="llm-cur-endpoint">—</div>
+                    </div>
+                </div>
+
+                <form id="llm-form" class="space-y-4">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div class="form-control">
+                            <label class="label"><span class="label-text">LLM Type</span></label>
+                            <select id="llm-type" class="select select-bordered">
+                                <option value="ollama">Ollama</option>
+                                <option value="lm-studio">LM Studio</option>
+                            </select>
+                        </div>
+                        <div class="form-control">
+                            <label class="label"><span class="label-text">Model Name</span></label>
+                            <input type="text" id="llm-model" placeholder="mistral" class="input input-bordered" />
+                        </div>
+                    </div>
+
+                    <div class="form-control">
+                        <label class="label"><span class="label-text">Endpoint URL</span></label>
+                        <div class="join w-full">
+                            <select id="llm-endpoint-preset" class="select select-bordered join-item w-56">
+                                <option value="custom">Custom</option>
+                                <option value="http://localhost:11434">Ollama Local</option>
+                                <option value="http://ollama:11434">Ollama Docker</option>
+                                <option value="http://localhost:1234">LM Studio</option>
+                            </select>
+                            <input type="text" id="llm-endpoint" placeholder="http://localhost:11434" class="input input-bordered join-item flex-1" />
+                        </div>
+                    </div>
+
+                    <div class="form-control">
+                        <label class="label">
+                            <span class="label-text">Temperature</span>
+                            <span class="label-text-alt font-mono" id="temperature-value">0.7</span>
+                        </label>
+                        <input type="range" id="llm-temperature" min="0" max="1" step="0.1" value="0.7" class="range range-primary" />
+                        <div class="w-full flex justify-between text-xs px-2 mt-1 text-base-content/50">
+                            <span>Focused</span><span>Balanced</span><span>Creative</span>
+                        </div>
+                    </div>
+
+                    <div id="llm-status" class="hidden"></div>
+
+                    <div class="flex gap-2 flex-wrap">
+                        <button type="button" id="test-llm-btn" class="btn btn-outline gap-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                            </svg>
+                            Test Connection
+                        </button>
+                        <button type="submit" class="btn btn-primary">Apply (shows .env snippet)</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Timeout & Runtime Settings -->
+        <div class="card bg-base-100 shadow-xl mb-6">
+            <div class="card-body">
+                <h2 class="card-title mb-2">⏱️ Timeouts &amp; Runtime</h2>
+                <p class="text-sm text-base-content/60 mb-4">Read-only. Change these in <code class="badge badge-ghost badge-sm">.env</code> or the source files listed below.</p>
+
+                <div id="app-config-table">
+                    <div class="flex justify-center py-6"><span class="loading loading-spinner"></span></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Data Export -->
+        <div class="card bg-base-100 shadow-xl mb-6">
+            <div class="card-body">
+                <h2 class="card-title mb-2">📦 Data Export</h2>
+                <p class="text-base-content/70 mb-4">Export all application data including activities, metrics, logs, evaluations, and chat sessions.</p>
+                <button id="export-data-btn" class="btn btn-outline gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd" />
+                    </svg>
+                    Export Data
+                </button>
+            </div>
+        </div>
+
+    </div>
+</div>

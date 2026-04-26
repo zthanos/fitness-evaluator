@@ -58,29 +58,42 @@ def _validate_token(token: str) -> dict:
             detail="Authentication service unavailable",
         )
 
-    try:
+    decode_kwargs = dict(algorithms=["RS256"], issuer=settings.keycloak_issuer)
+
+    def _decode(keys: dict) -> dict:
+        # First try with strict audience validation.
+        try:
+            return jwt.decode(
+                token, keys,
+                audience=settings.KEYCLOAK_CLIENT_ID,
+                options={"verify_at_hash": False},
+                **decode_kwargs,
+            )
+        except JWTError:
+            pass
+
+        # Keycloak 24 omits the client ID from aud by default; fall back to
+        # verifying without aud and checking azp (authorized party) instead.
         payload = jwt.decode(
-            token,
-            jwks,
-            algorithms=["RS256"],
-            audience=settings.KEYCLOAK_CLIENT_ID,
-            issuer=settings.keycloak_issuer,
-            options={"verify_at_hash": False},
+            token, keys,
+            options={"verify_aud": False, "verify_at_hash": False},
+            **decode_kwargs,
         )
+        aud = payload.get("aud", [])
+        if isinstance(aud, str):
+            aud = [aud]
+        azp = payload.get("azp", "")
+        if settings.KEYCLOAK_CLIENT_ID not in aud and azp != settings.KEYCLOAK_CLIENT_ID:
+            raise JWTError("Token not issued for this client")
         return payload
+
+    try:
+        return _decode(jwks)
     except JWTError as e:
-        # If the error looks like an unknown key, refresh the cache and retry once
+        # Retry once with a fresh JWKS in case keys were rotated.
         _invalidate_jwks_cache()
         try:
-            jwks = _get_jwks()
-            return jwt.decode(
-                token,
-                jwks,
-                algorithms=["RS256"],
-                audience=settings.KEYCLOAK_CLIENT_ID,
-                issuer=settings.keycloak_issuer,
-                options={"verify_at_hash": False},
-            )
+            return _decode(_get_jwks())
         except JWTError:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
