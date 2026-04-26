@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import Column, DateTime, Float, Integer, String, Text, UniqueConstraint, ForeignKey, event
+from sqlalchemy import BigInteger, Column, DateTime, Float, Integer, String, Text, UniqueConstraint, ForeignKey, event
 from sqlalchemy.orm import relationship, validates
 from app.models.base import Base, TimestampMixin
 import uuid
@@ -11,7 +11,7 @@ class StravaActivity(Base, TimestampMixin):
     # Use String(36) for SQLite compatibility instead of UUID
     id: str = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     athlete_id: int = Column(Integer, ForeignKey("athletes.id"), nullable=True)  # Added for v2 platform
-    strava_id: int = Column(Integer, unique=True, nullable=False)
+    strava_id: int = Column(BigInteger, unique=True, nullable=False)
     activity_type: str = Column(String(50), nullable=False)
     start_date: datetime = Column(DateTime, nullable=False)
     moving_time_s: int = Column(Integer, nullable=True)
