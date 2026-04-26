@@ -252,13 +252,12 @@ async def _get_my_weekly_metrics(
             
             weekly_data.append({
                 'week_start': week_start.isoformat(),
-                'week_id': measurement.week_id,
                 'activity_count': activity_count,
                 'total_distance_km': round(total_distance_km, 2),
                 'total_time_hours': round(total_time_hours, 2),
                 'total_elevation_m': round(total_elevation_m, 1),
-                'avg_resting_hr': measurement.avg_resting_hr,
-                'avg_weight_kg': measurement.avg_weight_kg
+                'rhr_bpm': measurement.rhr_bpm,
+                'weight_kg': measurement.weight_kg,
             })
     
     result = {

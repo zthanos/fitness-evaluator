@@ -41,11 +41,12 @@ class BaseSkill(ABC, Generic[InputT, OutputT]):
         from app.services.llm_client import LLMClient
         client = LLMClient()
         messages = [
-            {"role": "system",  "content": system},
-            {"role": "user",    "content": user_content},
+            {"role": "system", "content": system},
+            {"role": "user",   "content": user_content},
         ]
         try:
-            return await client.generate_response(messages)
+            result = await client.chat_completion(messages, max_tokens=1024, temperature=0.3)
+            return result.get("content") or ""
         except Exception as exc:
             logger.warning("%s LLM call failed: %s", self.__class__.__name__, exc)
             return ""

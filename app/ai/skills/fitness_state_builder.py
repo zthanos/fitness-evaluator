@@ -140,8 +140,10 @@ class FitnessStateBuilder(BaseSkill[FitnessStateInput, FitnessState]):
         now = datetime.now(timezone.utc)
 
         def load(days_back: int, window: int) -> float:
-            cutoff = now - timedelta(days=days_back)
-            end    = now - timedelta(days=days_back - window)
+            # days_back: offset from now (0 = current window ending now)
+            # window: size of the window in days
+            cutoff = now - timedelta(days=days_back + window)
+            end    = now - timedelta(days=days_back)
             rows = (
                 self.db.query(StravaActivity.moving_time_s)
                 .filter(
@@ -153,8 +155,8 @@ class FitnessStateBuilder(BaseSkill[FitnessStateInput, FitnessState]):
             )
             return sum(r[0] or 0 for r in rows) / 60  # minutes
 
-        acute  = load(0, 7)
-        chronic_weekly = load(0, 28) / 4  # average 7-day load over 28 days
+        acute  = load(0, 7)           # last 7 days
+        chronic_weekly = load(0, 28) / 4  # last 28 days ÷ 4 = weekly avg
         if chronic_weekly == 0:
             return None
         return round(acute / chronic_weekly, 2)
