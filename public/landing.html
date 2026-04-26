@@ -10,17 +10,17 @@
   <style>
     body { font-family: 'Inter', sans-serif; }
     .gradient-hero {
-      background: linear-gradient(135deg, #1e3a5f 0%, #0f766e 50%, #065f46 100%);
+      background: linear-gradient(135deg, #4c1d95 0%, #7C3AED 40%, #2563EB 100%);
     }
     .gradient-text {
-      background: linear-gradient(135deg, #34d399, #60a5fa);
+      background: linear-gradient(135deg, #a78bfa, #93c5fd);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
     }
     .feature-card:hover { transform: translateY(-4px); transition: transform 0.2s ease; }
     .nav-link { transition: color 0.15s; }
-    .nav-link:hover { color: #34d399; }
+    .nav-link:hover { color: #7C3AED; }
     html { scroll-behavior: smooth; }
   </style>
 </head>
@@ -30,8 +30,11 @@
 <nav class="navbar bg-base-100/95 backdrop-blur sticky top-0 z-50 border-b border-base-200 px-6">
   <div class="navbar-start">
     <a href="/" class="flex items-center gap-2">
-      <span class="text-2xl">🏃</span>
-      <span class="text-xl font-bold">FitCoach <span class="text-primary">AI</span></span>
+      <img src="/assets/logo.png" alt="Logo" class="h-8 w-auto" onerror="this.style.display='none'">
+      <span class="text-xl font-bold">
+        <span style="color:#7C3AED;">Fitness</span>
+        <span style="color:#2563EB;">Platform</span>
+      </span>
     </a>
   </div>
   <div class="navbar-center hidden lg:flex">
@@ -42,8 +45,10 @@
     </ul>
   </div>
   <div class="navbar-end gap-3">
-    <button id="login-btn" class="btn btn-ghost btn-sm">Log In</button>
-    <button id="register-btn" class="btn btn-primary btn-sm">Get Started Free</button>
+    <button id="login-btn" class="btn btn-ghost btn-sm hidden lg:flex">Log In</button>
+    <button id="register-btn" class="btn btn-sm text-white border-none hidden lg:flex" style="background:#7C3AED;">Get Started Free</button>
+    <!-- Mobile: always-visible CTA -->
+    <button id="register-mobile-nav" class="btn btn-sm text-white border-none lg:hidden" style="background:#7C3AED;">Get Started</button>
     <!-- Mobile menu -->
     <div class="dropdown dropdown-end lg:hidden">
       <label tabindex="0" class="btn btn-ghost btn-sm btn-square">
@@ -67,7 +72,7 @@
 <section class="gradient-hero text-white py-24 px-6">
   <div class="max-w-6xl mx-auto grid lg:grid-cols-2 gap-12 items-center">
     <div>
-      <div class="badge badge-outline text-emerald-300 border-emerald-300 mb-6 text-xs font-semibold tracking-wide">
+      <div class="badge badge-outline text-violet-300 border-violet-300 mb-6 text-xs font-semibold tracking-wide">
         🔒 Privacy-First · Runs Locally · No Cloud Required
       </div>
       <h1 class="text-5xl lg:text-6xl font-black leading-tight mb-6">
@@ -75,7 +80,7 @@
         <span class="gradient-text">AI fitness coach</span><br/>
         that knows your data
       </h1>
-      <p class="text-lg text-slate-300 mb-8 max-w-lg leading-relaxed">
+      <p class="text-lg text-slate-100 font-medium mb-8 max-w-lg leading-relaxed">
         Connect Strava, set goals, and get coaching powered by local AI.
         Every recommendation is based on <em>your</em> actual performance — not generic advice.
       </p>
@@ -83,25 +88,25 @@
       <!-- Key benefits above the fold -->
       <ul class="space-y-3 mb-10 text-slate-200">
         <li class="flex items-center gap-3">
-          <span class="text-emerald-400 text-xl">✓</span>
+          <span class="text-violet-300 text-xl">✓</span>
           <span>Automatically syncs your Strava activities</span>
         </li>
         <li class="flex items-center gap-3">
-          <span class="text-emerald-400 text-xl">✓</span>
+          <span class="text-violet-300 text-xl">✓</span>
           <span>AI coach trained on your personal history</span>
         </li>
         <li class="flex items-center gap-3">
-          <span class="text-emerald-400 text-xl">✓</span>
+          <span class="text-violet-300 text-xl">✓</span>
           <span>Your data never leaves your machine</span>
         </li>
         <li class="flex items-center gap-3">
-          <span class="text-emerald-400 text-xl">✓</span>
+          <span class="text-violet-300 text-xl">✓</span>
           <span>Tracks body metrics, nutrition, and training load</span>
         </li>
       </ul>
 
       <div class="flex flex-wrap gap-4">
-        <button id="cta-primary" class="btn btn-lg bg-emerald-400 hover:bg-emerald-300 text-slate-900 border-none font-bold px-8 shadow-lg">
+        <button id="cta-primary" class="btn btn-lg text-white border-none font-bold px-8 shadow-lg" style="background:#7C3AED;" onmouseover="this.style.background='#6d28d9'" onmouseout="this.style.background='#7C3AED'">
           Start for Free →
         </button>
         <a href="#how-it-works" class="btn btn-lg btn-ghost text-white border-white/30 hover:bg-white/10">
@@ -115,17 +120,17 @@
       <div class="bg-white/10 backdrop-blur rounded-2xl p-6 w-full max-w-md border border-white/20 shadow-2xl">
         <!-- Mock chat preview -->
         <div class="flex items-center gap-3 mb-5 pb-4 border-b border-white/20">
-          <div class="w-10 h-10 rounded-full bg-emerald-400 flex items-center justify-center text-slate-900 font-bold">AI</div>
+          <div class="w-10 h-10 rounded-full flex items-center justify-center font-bold" style="background:#a78bfa;color:#1e1b4b;">AI</div>
           <div>
             <div class="font-semibold text-sm">FitCoach AI</div>
-            <div class="text-xs text-emerald-300">● Online</div>
+            <div class="text-xs text-violet-300">● Online</div>
           </div>
         </div>
         <div class="space-y-4 text-sm">
           <div class="bg-white/10 rounded-xl rounded-tl-none p-3 max-w-xs">
             Based on your last 4 runs, your aerobic base is improving. Your avg pace dropped by <strong>12 sec/km</strong> 💪
           </div>
-          <div class="bg-emerald-400 text-slate-900 rounded-xl rounded-tr-none p-3 max-w-xs ml-auto font-medium">
+          <div class="rounded-xl rounded-tr-none p-3 max-w-xs ml-auto font-medium" style="background:#7C3AED;color:#fff;">
             Should I do a long run this weekend?
           </div>
           <div class="bg-white/10 rounded-xl rounded-tl-none p-3 max-w-xs">
@@ -133,9 +138,9 @@
           </div>
         </div>
         <div class="mt-4 pt-4 border-t border-white/20 grid grid-cols-3 gap-3 text-center text-xs">
-          <div><div class="text-emerald-300 font-bold text-lg">142</div><div class="text-slate-300">Activities</div></div>
-          <div><div class="text-emerald-300 font-bold text-lg">8</div><div class="text-slate-300">Goals Met</div></div>
-          <div><div class="text-emerald-300 font-bold text-lg">↓4%</div><div class="text-slate-300">Body Fat</div></div>
+          <div><div class="text-violet-300 font-bold text-lg">142</div><div class="text-slate-300">Activities</div></div>
+          <div><div class="text-violet-300 font-bold text-lg">8</div><div class="text-slate-300">Goals Met</div></div>
+          <div><div class="text-violet-300 font-bold text-lg">↓4%</div><div class="text-slate-300">Body Fat</div></div>
         </div>
       </div>
     </div>
@@ -283,15 +288,50 @@
     <h2 class="text-4xl font-black mb-4">Pricing</h2>
     <p class="text-base-content/60 text-lg mb-12">Simple and transparent. No hidden fees.</p>
 
-    <div class="card bg-base-200 border-2 border-dashed border-base-300 max-w-md mx-auto">
-      <div class="card-body items-center py-16">
-        <div class="text-6xl mb-4">🚧</div>
-        <h3 class="card-title text-2xl mb-3">Coming Soon</h3>
-        <p class="text-base-content/60 text-center mb-6">
-          We're still working out the details. Self-hosting will always be free.
-          A managed cloud option is on the roadmap.
-        </p>
-        <div class="badge badge-outline badge-lg">Pricing TBD</div>
+    <div class="grid md:grid-cols-2 gap-6 max-w-3xl mx-auto text-left">
+      <!-- Free tier -->
+      <div class="card bg-base-100 border border-base-300 shadow-sm">
+        <div class="card-body">
+          <div class="text-3xl font-black mb-1">Free</div>
+          <div class="text-base-content/50 text-sm mb-4">Self-hosted, forever</div>
+          <ul class="space-y-2 text-sm text-base-content/70 mb-6">
+            <li class="flex items-center gap-2"><span style="color:#7C3AED;">✓</span> Unlimited activities & metrics</li>
+            <li class="flex items-center gap-2"><span style="color:#7C3AED;">✓</span> AI coach chat (local LLM)</li>
+            <li class="flex items-center gap-2"><span style="color:#7C3AED;">✓</span> Strava sync</li>
+            <li class="flex items-center gap-2"><span style="color:#7C3AED;">✓</span> Multi-athlete support</li>
+            <li class="flex items-center gap-2"><span style="color:#7C3AED;">✓</span> Your data stays local</li>
+          </ul>
+          <button id="register-pricing" class="btn btn-outline w-full" style="border-color:#7C3AED;color:#7C3AED;">Get Started Free</button>
+        </div>
+      </div>
+
+      <!-- Pro waitlist -->
+      <div class="card border-2 shadow-sm" style="background:linear-gradient(135deg,#f5f3ff,#eff6ff);border-color:#7C3AED;">
+        <div class="card-body">
+          <div class="badge badge-sm mb-2 text-white" style="background:#7C3AED;">Coming Soon</div>
+          <div class="text-3xl font-black mb-1">Pro</div>
+          <div class="text-base-content/50 text-sm mb-4">Managed cloud · no setup</div>
+          <ul class="space-y-2 text-sm text-base-content/70 mb-6">
+            <li class="flex items-center gap-2"><span style="color:#7C3AED;">✓</span> Everything in Free</li>
+            <li class="flex items-center gap-2"><span style="color:#7C3AED;">✓</span> Hosted & managed for you</li>
+            <li class="flex items-center gap-2"><span style="color:#7C3AED;">✓</span> Automatic backups</li>
+            <li class="flex items-center gap-2"><span style="color:#7C3AED;">✓</span> Priority support</li>
+            <li class="flex items-center gap-2 text-base-content/40"><span>○</span> More features TBD</li>
+          </ul>
+          <!-- Waitlist form -->
+          <div id="waitlist-form">
+            <div class="join w-full">
+              <input id="waitlist-email" type="email" placeholder="your@email.com"
+                class="input input-bordered join-item flex-1 input-sm" />
+              <button id="waitlist-submit" class="btn btn-sm join-item text-white border-none" style="background:#7C3AED;">
+                Notify Me
+              </button>
+            </div>
+          </div>
+          <div id="waitlist-thanks" class="hidden text-center py-2">
+            <span class="text-sm font-semibold" style="color:#7C3AED;">You're on the list! We'll be in touch. 🎉</span>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -302,7 +342,7 @@
   <div class="max-w-2xl mx-auto">
     <h2 class="text-4xl font-black mb-4">Ready to train smarter?</h2>
     <p class="text-slate-300 text-lg mb-8">Join athletes who train with data, not guesswork.</p>
-    <button id="cta-bottom" class="btn btn-lg bg-emerald-400 hover:bg-emerald-300 text-slate-900 border-none font-bold px-10 shadow-lg">
+    <button id="cta-bottom" class="btn btn-lg text-white border-none font-bold px-10 shadow-lg" style="background:#7C3AED;" onmouseover="this.style.background='#6d28d9'" onmouseout="this.style.background='#7C3AED'">
       Get Started Free →
     </button>
   </div>
@@ -313,8 +353,11 @@
   <div class="max-w-6xl mx-auto">
     <div class="flex flex-wrap justify-between items-center gap-6">
       <div class="flex items-center gap-2">
-        <span class="text-xl">🏃</span>
-        <span class="text-white font-bold">FitCoach AI</span>
+        <img src="/assets/logo.png" alt="Logo" class="h-7 w-auto" onerror="this.style.display='none'">
+        <span class="font-bold">
+          <span style="color:#a78bfa;">Fitness</span>
+          <span style="color:#93c5fd;">Platform</span>
+        </span>
       </div>
       <div class="flex flex-wrap gap-6 text-sm">
         <a href="#features" class="hover:text-white transition-colors">Features</a>

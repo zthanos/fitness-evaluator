@@ -1,16 +1,15 @@
 """Strava synchronization and activity management endpoints."""
 
-from fastapi import APIRouter, HTTPException, Depends, Query, Request
+from fastapi import APIRouter, HTTPException, Depends, Query, Request, BackgroundTasks
 from sqlalchemy.orm import Session
-from datetime import date, timedelta, datetime
+from datetime import date, datetime
 from typing import Optional, Dict, Any
-from app.database import get_db
+from app.database import get_db, SessionLocal
+from app.middleware.auth import get_current_athlete
+from app.models.athlete import Athlete
 from app.models.strava_activity import StravaActivity
 from app.models.activity_analysis import ActivityAnalysis
-from app.services.strava_service import (
-    sync_week_activities,
-    compute_weekly_aggregates,
-)
+from app.services.strava_service import compute_weekly_aggregates
 from app.services.llm_client import LLMClient
 from app.services.session_matcher import SessionMatcher
 from app.services.strava_client import StravaClient
@@ -21,42 +20,32 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.post("/sync/{week_start}", summary="Sync Strava activities for a week")
-async def sync_strava_activities(week_start: date, db: Session = Depends(get_db)):
-    """
-    Trigger Strava synchronization for the given week.
-    
-    Fetches activities from Strava API and upserts them into the database.
-    Uses the week_start date to determine the sync window (week_start to week_start+7).
-    
-    **Parameters:**
-    - `week_start`: Monday of the week to sync (YYYY-MM-DD)
-    
-    **Returns:**
-    - `week_start`: The start date of the synced week
-    - `activities_synced`: Count of activities fetched and stored
-    - `message`: Status message
-    """
+async def _do_sync(athlete_id: int):
+    """Background worker: creates its own DB session so it outlives the request."""
+    db = SessionLocal()
     try:
-        # Start one week before the requested week_start
-        start_week = week_start - timedelta(days=7)
-        today = date.today()
-
-        total_count = 0
-        current_week = start_week
-
-        # Sync in weekly windows from (week_start - 7) up to today
-        while current_week <= today:
-            total_count += await sync_week_activities(current_week, db)
-            current_week = current_week + timedelta(days=7)
-
-        return {
-            "week_start": week_start,
-            "activities_synced": total_count,
-            "message": f"Successfully synced {total_count} activities from {start_week} through {current_week - timedelta(days=1)}"
-        }
+        client = StravaClient(db)
+        count = await client.sync_activities(athlete_id)
+        logger.info("Background Strava sync complete for athlete %d: %d activities", athlete_id, count)
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.error("Background Strava sync failed for athlete %d: %s", athlete_id, e)
+    finally:
+        db.close()
+
+
+@router.post("/sync/{week_start}", summary="Sync Strava activities")
+async def sync_strava_activities(
+    week_start: date,
+    background_tasks: BackgroundTasks,
+    athlete: Athlete = Depends(get_current_athlete),
+):
+    """Kick off a background sync of this athlete's Strava activities."""
+    background_tasks.add_task(_do_sync, athlete.id)
+    return {
+        "week_start": str(week_start),
+        "activities_synced": 0,
+        "message": "Sync started — activities will appear shortly",
+    }
 
 
 @router.get("/activities/all", summary="List all Strava activities with pagination")
@@ -70,31 +59,10 @@ async def get_all_activities(
     distance_max: Optional[float] = Query(None, ge=0, description="Filter activities with maximum distance (km)"),
     sort_by: str = Query("start_date", description="Sort by field (start_date, distance_m, moving_time_s, elevation_m)"),
     sort_dir: str = Query("desc", description="Sort direction (asc or desc)"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    athlete: Athlete = Depends(get_current_athlete),
 ):
-    """
-    List all Strava activities with pagination, filtering, and sorting.
-    
-    **Parameters:**
-    - `page`: Page number (default: 1)
-    - `page_size`: Number of activities per page (default: 25, max: 100)
-    - `type`: Filter by activity type (e.g., Run, Ride, WeightTraining)
-    - `date_from`: Filter activities from this date (YYYY-MM-DD)
-    - `date_to`: Filter activities until this date (YYYY-MM-DD)
-    - `distance_min`: Filter activities with minimum distance in kilometers
-    - `distance_max`: Filter activities with maximum distance in kilometers
-    - `sort_by`: Sort by field (start_date, distance_m, moving_time_s, elevation_m)
-    - `sort_dir`: Sort direction (asc or desc)
-    
-    **Returns:**
-    - `activities`: Array of activity objects
-    - `total`: Total number of activities matching filters
-    - `page`: Current page number
-    - `page_size`: Number of activities per page
-    - `total_pages`: Total number of pages
-    """
-    # Build query
-    query = db.query(StravaActivity)
+    query = db.query(StravaActivity).filter(StravaActivity.athlete_id == athlete.id)
     
     # Apply filters
     if type:
@@ -147,7 +115,11 @@ async def get_all_activities(
 
 
 @router.get("/activities/detail/{activity_id}", summary="Get activity details")
-async def get_activity_detail(activity_id: int, db: Session = Depends(get_db)):
+async def get_activity_detail(
+    activity_id: int,
+    db: Session = Depends(get_db),
+    athlete: Athlete = Depends(get_current_athlete),
+):
     """
     Get detailed information for a specific activity.
     
@@ -157,11 +129,14 @@ async def get_activity_detail(activity_id: int, db: Session = Depends(get_db)):
     **Returns:**
     - Activity object with all details
     """
-    activity = db.query(StravaActivity).filter(StravaActivity.strava_id == activity_id).first()
-    
+    activity = db.query(StravaActivity).filter(
+        StravaActivity.strava_id == activity_id,
+        StravaActivity.athlete_id == athlete.id,
+    ).first()
+
     if not activity:
         raise HTTPException(status_code=404, detail="Activity not found")
-    
+
     return {
         "strava_id": activity.strava_id,
         "activity_type": activity.activity_type,
@@ -172,12 +147,16 @@ async def get_activity_detail(activity_id: int, db: Session = Depends(get_db)):
         "avg_hr": activity.avg_hr,
         "max_hr": activity.max_hr,
         "calories": activity.calories,
-        "raw_json": activity.raw_json
+        "raw_json": activity.raw_json,
     }
 
 
 @router.get("/activities/{week_start}", summary="List Strava activities for a week")
-async def get_week_activities(week_start: date, db: Session = Depends(get_db)):
+async def get_week_activities(
+    week_start: date,
+    db: Session = Depends(get_db),
+    athlete: Athlete = Depends(get_current_athlete),
+):
     """
     List all Strava activities for a specific week.
     
@@ -200,10 +179,11 @@ async def get_week_activities(week_start: date, db: Session = Depends(get_db)):
     """
     from datetime import timedelta
     week_end = week_start + timedelta(days=7)
-    
+
     activities = db.query(StravaActivity).filter(
+        StravaActivity.athlete_id == athlete.id,
         StravaActivity.start_date >= week_start,
-        StravaActivity.start_date < week_end
+        StravaActivity.start_date < week_end,
     ).order_by(StravaActivity.start_date).all()
     
     if not activities:
@@ -229,7 +209,11 @@ async def get_week_activities(week_start: date, db: Session = Depends(get_db)):
 
 
 @router.get("/aggregates/{week_start}", summary="Get weekly activity aggregates")
-async def get_weekly_aggregates(week_start: date, db: Session = Depends(get_db)):
+async def get_weekly_aggregates(
+    week_start: date,
+    db: Session = Depends(get_db),
+    athlete: Athlete = Depends(get_current_athlete),
+):
     """
     Get aggregated statistics for Strava activities in a week.
     
@@ -248,19 +232,19 @@ async def get_weekly_aggregates(week_start: date, db: Session = Depends(get_db))
       - `total_moving_time_min`: Total active time (minutes)
       - `session_counts`: Activity counts by type
     """
-    from uuid import uuid5, NAMESPACE_DNS
-    week_id = str(uuid5(NAMESPACE_DNS, str(week_start)))
-    
-    aggregates = compute_weekly_aggregates(week_id, db)
-    return {
-        "week_start": week_start,
-        "aggregates": aggregates
-    }
+    iso = week_start.isocalendar()
+    week_id = f"{iso[0]}-W{iso[1]:02d}"
+    aggregates = compute_weekly_aggregates(week_id, db, athlete_id=athlete.id)
+    return {"week_start": week_start, "aggregates": aggregates}
 
 
 
 @router.get("/activities/detail/{activity_id}/analysis", summary="Get or generate activity effort analysis")
-async def get_activity_analysis(activity_id: int, db: Session = Depends(get_db)):
+async def get_activity_analysis(
+    activity_id: int,
+    db: Session = Depends(get_db),
+    athlete: Athlete = Depends(get_current_athlete),
+):
     """
     Get AI-generated effort analysis for an activity.
     
@@ -275,12 +259,14 @@ async def get_activity_analysis(activity_id: int, db: Session = Depends(get_db))
     - `generated_at`: Timestamp when analysis was generated
     - `cached`: Boolean indicating if analysis was cached
     """
-    # Find the activity
-    activity = db.query(StravaActivity).filter(StravaActivity.strava_id == activity_id).first()
-    
+    activity = db.query(StravaActivity).filter(
+        StravaActivity.strava_id == activity_id,
+        StravaActivity.athlete_id == athlete.id,
+    ).first()
+
     if not activity:
         raise HTTPException(status_code=404, detail="Activity not found")
-    
+
     # Check for existing analysis
     existing_analysis = db.query(ActivityAnalysis).filter(
         ActivityAnalysis.activity_id == activity.id
@@ -335,10 +321,7 @@ async def get_activity_analysis(activity_id: int, db: Session = Depends(get_db))
 
 
 @router.get("/webhook", summary="Strava webhook verification")
-async def verify_webhook(
-    request: Request,
-    db: Session = Depends(get_db)
-):
+async def verify_webhook(request: Request):
     """
     Handle Strava webhook subscription verification.
     

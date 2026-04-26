@@ -53,6 +53,47 @@ function Wait-Postgres {
     exit 1
 }
 
+function Wait-Keycloak {
+    Write-Host "Waiting for Keycloak..." -NoNewline
+    for ($i = 0; $i -lt 40; $i++) {
+        try {
+            $r = Invoke-WebRequest -Uri "http://localhost:8081/realms/master" -UseBasicParsing -ErrorAction Stop -TimeoutSec 5
+            if ($r.StatusCode -eq 200) { Write-Host " ready" -ForegroundColor Green; return }
+        } catch {}
+        Write-Host "." -NoNewline
+        Start-Sleep -Seconds 5
+    }
+    Write-Host ""
+    Write-Err "Keycloak did not become ready in time"
+    exit 1
+}
+
+function Invoke-ConfigureKeycloak {
+    Wait-Keycloak
+
+    # Get admin token
+    Write-Host "Authenticating with Keycloak admin..."
+    try {
+        $tokenResp = Invoke-RestMethod -Uri "http://localhost:8081/realms/master/protocol/openid-connect/token" `
+            -Method Post -ContentType "application/x-www-form-urlencoded" `
+            -Body "client_id=admin-cli&username=admin&password=admin&grant_type=password"
+    } catch {
+        Write-Err "Failed to get admin token: $_"; return
+    }
+    $headers = @{ Authorization = "Bearer $($tokenResp.access_token)" }
+
+    # Apply fitness realm settings
+    Write-Host "Applying fitness realm settings..."
+    $body = '{"loginTheme":"fitness","registrationAllowed":true,"rememberMe":true,"resetPasswordAllowed":true,"loginWithEmailAllowed":true}'
+    try {
+        Invoke-RestMethod -Uri "http://localhost:8081/admin/realms/fitness" `
+            -Method Put -Headers $headers -ContentType "application/json" -Body $body
+        Write-Ok "Realm configured: theme=fitness, registration=enabled"
+    } catch {
+        Write-Warn "Could not update realm (may not exist yet - will be imported on next restart): $_"
+    }
+}
+
 switch ($Command.ToLower()) {
 
     "up" {
@@ -65,6 +106,7 @@ switch ($Command.ToLower()) {
         uv run alembic upgrade head
         if ($LASTEXITCODE -ne 0) { Write-Err "Migrations failed"; exit 1 }
         Write-Ok "Migrations applied"
+        Invoke-ConfigureKeycloak
         Write-Host ""
         Write-Ok "Stack is ready"
         Write-Host ""
@@ -73,6 +115,11 @@ switch ($Command.ToLower()) {
         Write-Host "  Keycloak:    http://localhost:8081"
         Write-Host "  Ollama:      http://localhost:11434"
         Write-Host "  PostgreSQL:  localhost:5460  (fitness_user / fitness_password)"
+    }
+
+    "configure-keycloak" {
+        Write-Header "Configuring Keycloak fitness realm"
+        Invoke-ConfigureKeycloak
     }
 
     "down" {
@@ -240,7 +287,10 @@ switch ($Command.ToLower()) {
         Write-Host "  model-pull      Download a model: -Arg mistral"
         Write-Host "  shell-ollama    Open Ollama container shell"
         Write-Host ""
+        Write-Host "Keycloak:"
+        Write-Host "  configure-keycloak   Apply theme + settings to fitness realm via API"
+        Write-Host ""
         Write-Host "App (runs locally, not in Docker):"
-        Write-Host "  uv run uvicorn app.main:app --reload"
+        Write-Host "  start-app            Kill port 8000 then start uvicorn with --reload"
     }
 }

@@ -9,7 +9,8 @@ import { MetricsChart }      from '/js/metrics-chart.js';
 import { MetricsList }       from '/js/metrics-list.js';
 import { CoachChat }         from '/js/coach-chat.js';
 import { TrainingPlansList } from '/js/training-plans-list.js';
-import { SettingsManager }   from '/js/settings.js';   // ← renamed import
+import { SettingsManager }    from '/js/settings.js';
+import { AppSettingsManager } from '/js/app-settings.js';
 import { getWeekStart }      from '/js/utils.js';
 
 // ─── DashboardPage ────────────────────────────────────────────────────────────
@@ -308,8 +309,7 @@ class ActivitiesPage {
       });
       if (!res.ok) throw new Error((await res.json()).detail || 'Sync failed');
       const result = await res.json();
-      window.showToast(`✅ ${result.message}`, 'success');
-      if (result.synced_count > 0) { await this._list.loadActivities(); this._list.render(); }
+      window.showToast(`⏳ ${result.message}`, 'info');
     } catch (err) {
       window.showToast(`❌ ${err.message}`, 'error');
     } finally {
@@ -456,14 +456,20 @@ class TrainingPlansPage {
 }
 
 // ─── SettingsPage ─────────────────────────────────────────────────────────────
-// Χρησιμοποιεί SettingsManager (imported από settings.js με renamed import)
-// για να αποφύγει σύγκρουση με αυτή την class
 
 class SettingsPage {
   async init(params, query) {
     await new SettingsManager().init();
   }
+  destroy() {}
+}
 
+// ─── AppSettingsPage ──────────────────────────────────────────────────────────
+
+class AppSettingsPage {
+  async init(params, query) {
+    await new AppSettingsManager().init();
+  }
   destroy() {}
 }
 
@@ -799,6 +805,7 @@ export {
   ChatPage,
   TrainingPlansPage,
   SettingsPage,
+  AppSettingsPage,
   EvaluationsPage,
   EvaluationDetailPage,
 };

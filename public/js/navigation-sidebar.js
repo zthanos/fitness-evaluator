@@ -173,7 +173,16 @@ class NavigationSidebar {
             d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h6a2 2 0 012 2v1"/>
         </svg>
         <span class="hidden lg:inline">Log out</span>
-      </button>` : ''}`;
+      </button>` : ''}
+      <a href="/app-settings" data-spa-link
+        class="btn btn-ghost btn-xs w-full justify-start gap-2 text-base-content/40 mt-2 hover:text-base-content/70"
+        title="Application Settings">
+        <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/>
+        </svg>
+        <span class="hidden lg:inline text-xs">App Settings</span>
+      </a>`;
   }
 
   _renderNavItems() {

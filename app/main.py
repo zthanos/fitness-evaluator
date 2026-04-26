@@ -10,12 +10,13 @@ Key changes from the MPA version:
   3. Static files are still served (CSS, JS, assets).
 """
 
+import json
 import time
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pathlib import Path
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -34,12 +35,29 @@ class _MetricsMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         t0 = time.perf_counter()
         response = await call_next(request)
+        duration_ms = (time.perf_counter() - t0) * 1000
+
         if request.url.path.startswith('/api/'):
+            error_detail = None
+            if response.status_code >= 400:
+                body = b"".join([chunk async for chunk in response.body_iterator])
+                try:
+                    data = json.loads(body)
+                    error_detail = str(data.get("detail") or data.get("error") or body[:300].decode("utf-8", errors="replace"))
+                except Exception:
+                    error_detail = body[:300].decode("utf-8", errors="replace")
+                response = Response(
+                    content=body,
+                    status_code=response.status_code,
+                    headers=dict(response.headers),
+                    media_type=response.media_type,
+                )
             req_metrics.record(
                 method=request.method,
                 path=request.url.path,
                 status_code=response.status_code,
-                duration_ms=(time.perf_counter() - t0) * 1000,
+                duration_ms=duration_ms,
+                error_detail=error_detail,
             )
         return response
 

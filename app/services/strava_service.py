@@ -82,36 +82,22 @@ async def refresh_access_token() -> str:
     
     return _strava_tokens["access_token"]
 
-async def sync_week_activities(week_start: date, db: Session) -> int:
+async def sync_week_activities(week_start: date, db: Session, athlete_id: int = None) -> int:
     """
     Calls /v3/athlete/activities?after={unix_start}&before={unix_end} with a valid access token.
     For each activity: upsert into strava_activities using strava_id as the conflict key.
     Returns the number of activities upserted.
-    
-    Note: week_id is automatically populated by the StravaActivity model from start_date.
+
+    athlete_id: if provided, associates new activities with that athlete.
     """
     from app.models.strava_activity import StravaActivity
-    from app.models.weekly_measurement import WeeklyMeasurement
 
-    # Look up WeeklyMeasurement by week_start to verify it exists
-    weekly_measurement = db.query(WeeklyMeasurement).filter(
-        WeeklyMeasurement.week_start == week_start
-    ).first()
-    
-    if not weekly_measurement:
-        raise ValueError(f"No WeeklyMeasurement found for week starting {week_start}")
-
-    # Calculate start and end times for the week
     week_end = week_start + timedelta(days=7)
-    
-    # Convert to Unix timestamps
     unix_start = int(datetime.combine(week_start, datetime.min.time()).replace(tzinfo=timezone.utc).timestamp())
     unix_end = int(datetime.combine(week_end, datetime.min.time()).replace(tzinfo=timezone.utc).timestamp())
-    
-    # Get access token
+
     access_token = await refresh_access_token()
-    
-    # Fetch activities from Strava API
+
     async with httpx.AsyncClient() as client:
         response = await client.get(
             f"https://www.strava.com/api/v3/athlete/activities?after={unix_start}&before={unix_end}",
@@ -119,32 +105,30 @@ async def sync_week_activities(week_start: date, db: Session) -> int:
         )
         response.raise_for_status()
         activities_data = response.json()
-        
-        # Upsert each activity into the database
+
         upserted_count = 0
         for activity_data in activities_data:
             strava_id = activity_data["id"]
 
-            existing_activity = db.query(StravaActivity).filter(
+            existing = db.query(StravaActivity).filter(
                 StravaActivity.strava_id == strava_id
             ).first()
 
-            if existing_activity:
-                # Update only mapped fields; never touch primary key id
-                existing_activity.activity_type = activity_data.get("type", existing_activity.activity_type)
-                existing_activity.start_date = datetime.fromisoformat(activity_data["start_date"]).replace(tzinfo=timezone.utc)
-                existing_activity.moving_time_s = activity_data.get("moving_time")
-                existing_activity.distance_m = activity_data.get("distance")
-                existing_activity.elevation_m = activity_data.get("total_elevation_gain")
-                existing_activity.avg_hr = activity_data.get("average_heartrate")
-                existing_activity.max_hr = activity_data.get("max_heartrate")
-                existing_activity.calories = activity_data.get("calories")
-                existing_activity.raw_json = str(activity_data)
-                # week_id will be auto-populated from start_date by the model
+            if existing:
+                existing.activity_type = activity_data.get("type", existing.activity_type)
+                existing.start_date = datetime.fromisoformat(activity_data["start_date"]).replace(tzinfo=timezone.utc)
+                existing.moving_time_s = activity_data.get("moving_time")
+                existing.distance_m = activity_data.get("distance")
+                existing.elevation_m = activity_data.get("total_elevation_gain")
+                existing.avg_hr = activity_data.get("average_heartrate")
+                existing.max_hr = activity_data.get("max_heartrate")
+                existing.calories = activity_data.get("calories")
+                existing.raw_json = str(activity_data)
+                if athlete_id is not None and existing.athlete_id is None:
+                    existing.athlete_id = athlete_id
             else:
-                # Create new activity
-                # week_id will be auto-populated from start_date by the model
-                activity = StravaActivity(
+                db.add(StravaActivity(
+                    athlete_id=athlete_id,
                     strava_id=strava_id,
                     activity_type=activity_data.get("type", "Unknown"),
                     start_date=datetime.fromisoformat(activity_data["start_date"]).replace(tzinfo=timezone.utc),
@@ -154,24 +138,24 @@ async def sync_week_activities(week_start: date, db: Session) -> int:
                     avg_hr=activity_data.get("average_heartrate"),
                     max_hr=activity_data.get("max_heartrate"),
                     calories=activity_data.get("calories"),
-                    raw_json=str(activity_data)
-                )
-                db.add(activity)
+                    raw_json=str(activity_data),
+                ))
 
             upserted_count += 1
-        
+
         db.commit()
         return upserted_count
 
-def compute_weekly_aggregates(week_id: str, db: Session) -> dict:
+def compute_weekly_aggregates(week_id: str, db: Session, athlete_id: int = None) -> dict:
     """
     Queries StravaActivity rows for the week and returns aggregated statistics.
     """
     from app.models.strava_activity import StravaActivity
-    
-    activities = db.query(StravaActivity).filter(
-        StravaActivity.week_id == week_id
-    ).all()
+
+    query = db.query(StravaActivity).filter(StravaActivity.week_id == week_id)
+    if athlete_id is not None:
+        query = query.filter(StravaActivity.athlete_id == athlete_id)
+    activities = query.all()
     
     # Initialize aggregates
     run_km = 0.0

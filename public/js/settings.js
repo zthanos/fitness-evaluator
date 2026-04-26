@@ -13,7 +13,6 @@ class SettingsManager {
         await this.loadProfile();
         await this.loadTrainingPlan();
         await this.loadGoals();
-        await this.loadLLMSettings();
         this.renderActiveGoals();
         this.renderGoalHistory();
         this.renderStravaStatus();
@@ -305,103 +304,19 @@ class SettingsManager {
     }
 
     setupEventListeners() {
-        // Set New Goal button
-        const setGoalBtn = document.getElementById('set-goal-btn');
-        if (setGoalBtn) {
-            setGoalBtn.addEventListener('click', () => {
-                // Navigate to chat page
-                window.location.href = '/chat.html';
-            });
-        }
+        document.getElementById('set-goal-btn')?.addEventListener('click', () => {
+            router.navigate('/chat');
+        });
 
-        // LLM endpoint preset selector
-        const endpointPreset = document.getElementById('llm-endpoint-preset');
-        const endpointInput = document.getElementById('llm-endpoint');
-        if (endpointPreset && endpointInput) {
-            endpointPreset.addEventListener('change', (e) => {
-                if (e.target.value !== 'custom') {
-                    endpointInput.value = e.target.value;
-                }
-            });
-            
-            endpointInput.addEventListener('input', () => {
-                // Set to custom when user types
-                endpointPreset.value = 'custom';
-            });
-        }
+        document.getElementById('profile-form')?.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            await this.saveProfile();
+        });
 
-        // Temperature slider
-        const temperatureSlider = document.getElementById('llm-temperature');
-        const temperatureValue = document.getElementById('temperature-value');
-        if (temperatureSlider && temperatureValue) {
-            temperatureSlider.addEventListener('input', (e) => {
-                temperatureValue.textContent = e.target.value;
-            });
-        }
-
-        // LLM form submission
-        const llmForm = document.getElementById('llm-form');
-        if (llmForm) {
-            llmForm.addEventListener('submit', async (e) => {
-                e.preventDefault();
-                await this.saveLLMSettings();
-            });
-        }
-
-        // Test LLM connection
-        const testLLMBtn = document.getElementById('test-llm-btn');
-        if (testLLMBtn) {
-            testLLMBtn.addEventListener('click', async () => {
-                await this.testLLMConnection();
-            });
-        }
-
-        // Export data button
-        const exportBtn = document.getElementById('export-data-btn');
-        if (exportBtn) {
-            exportBtn.addEventListener('click', async () => {
-                try {
-                    exportBtn.disabled = true;
-                    exportBtn.innerHTML = `
-                        <span class="loading loading-spinner loading-sm"></span>
-                        Exporting...
-                    `;
-                    
-                    // Will be implemented in Task 23
-                    alert('Data export will be available soon');
-                    
-                } catch (error) {
-                    console.error('Error exporting data:', error);
-                    alert('Failed to export data. Please try again.');
-                } finally {
-                    exportBtn.disabled = false;
-                    exportBtn.innerHTML = `
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                            <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd" />
-                        </svg>
-                        Export Data
-                    `;
-                }
-            });
-        }
-
-        // Profile form
-        const profileForm = document.getElementById('profile-form');
-        if (profileForm) {
-            profileForm.addEventListener('submit', async (e) => {
-                e.preventDefault();
-                await this.saveProfile();
-            });
-        }
-
-        // Training plan form
-        const trainingPlanForm = document.getElementById('training-plan-form');
-        if (trainingPlanForm) {
-            trainingPlanForm.addEventListener('submit', async (e) => {
-                e.preventDefault();
-                await this.saveTrainingPlan();
-            });
-        }
+        document.getElementById('training-plan-form')?.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            await this.saveTrainingPlan();
+        });
     }
 
     async markGoalCompleted(goalId) {
@@ -469,32 +384,6 @@ class SettingsManager {
         }, 3000);
     }
 
-    async loadLLMSettings() {
-        try {
-            // Load from API
-            const settings = await api.get('/settings/llm');
-            
-            const llmType = settings.llm_type || 'ollama';
-            document.getElementById('llm-type').value = llmType;
-            document.getElementById('llm-endpoint').value = settings.endpoint || (llmType === 'lm-studio' ? 'http://localhost:1234' : 'http://localhost:11434');
-            document.getElementById('llm-model').value = settings.model || 'mistral';
-            document.getElementById('llm-temperature').value = settings.temperature || 0.7;
-            document.getElementById('temperature-value').textContent = settings.temperature || 0.7;
-            
-            // Set preset if it matches
-            const presetSelect = document.getElementById('llm-endpoint-preset');
-            const endpoint = settings.endpoint || 'http://localhost:11434';
-            const presetOptions = Array.from(presetSelect.options).map(opt => opt.value);
-            if (presetOptions.includes(endpoint)) {
-                presetSelect.value = endpoint;
-            } else {
-                presetSelect.value = 'custom';
-            }
-        } catch (error) {
-            console.error('Error loading LLM settings:', error);
-        }
-    }
-
     async saveProfile() {
         try {
             const profileData = {
@@ -544,130 +433,6 @@ class SettingsManager {
         }
     }
 
-    async saveLLMSettings() {
-        try {
-            const settings = {
-                type: document.getElementById('llm-type').value,
-                endpoint: document.getElementById('llm-endpoint').value,
-                model: document.getElementById('llm-model').value,
-                temperature: parseFloat(document.getElementById('llm-temperature').value)
-            };
-            
-            // Validate endpoint URL
-            try {
-                new URL(settings.endpoint);
-            } catch (e) {
-                this.showToast('Invalid endpoint URL', 'error');
-                return;
-            }
-            
-            // Save to localStorage for now
-            localStorage.setItem('llmSettings', JSON.stringify(settings));
-            
-            this.showToast('LLM settings saved! Please restart the server for changes to take effect.', 'success');
-            
-            // Show instructions
-            const statusDiv = document.getElementById('llm-status');
-            statusDiv.className = 'alert alert-warning';
-            statusDiv.innerHTML = `
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="stroke-current shrink-0 w-6 h-6">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                </svg>
-                <div>
-                    <div class="font-bold">Server Restart Required</div>
-                    <div class="text-sm">Update your .env file with these settings and restart the FastAPI server:</div>
-                    <pre class="text-xs mt-2 bg-base-200 p-2 rounded">LLM_TYPE=${settings.type}
-OLLAMA_ENDPOINT=${settings.endpoint}
-OLLAMA_MODEL=${settings.model}</pre>
-                </div>
-            `;
-            statusDiv.classList.remove('hidden');
-            
-        } catch (error) {
-            console.error('Error saving LLM settings:', error);
-            this.showToast('Failed to save settings', 'error');
-        }
-    }
-
-    async testLLMConnection() {
-        const testBtn = document.getElementById('test-llm-btn');
-        const statusDiv = document.getElementById('llm-status');
-        
-        try {
-            testBtn.disabled = true;
-            testBtn.innerHTML = `
-                <span class="loading loading-spinner loading-sm"></span>
-                Testing...
-            `;
-            
-            // Try to send a test message
-            const token = window.getAuthToken?.();
-            const response = await fetch(`${api.baseUrl}/chat/stream`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
-                },
-                body: JSON.stringify({
-                    content: 'Hello',
-                    session_id: null
-                })
-            });
-            
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}`);
-            }
-            
-            // Read first chunk to verify connection
-            const reader = response.body.getReader();
-            const { done, value } = await reader.read();
-            reader.cancel(); // Cancel the rest
-            
-            if (!done && value) {
-                statusDiv.className = 'alert alert-success';
-                statusDiv.innerHTML = `
-                    <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <span>✅ LLM connection successful! The AI coach is ready.</span>
-                `;
-                statusDiv.classList.remove('hidden');
-                this.showToast('LLM connection successful!', 'success');
-            } else {
-                throw new Error('No response from LLM');
-            }
-            
-        } catch (error) {
-            console.error('LLM connection test failed:', error);
-            statusDiv.className = 'alert alert-error';
-            statusDiv.innerHTML = `
-                <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <div>
-                    <div class="font-bold">❌ Connection Failed</div>
-                    <div class="text-sm">Cannot connect to LLM server. Make sure Ollama/LM Studio is running.</div>
-                    <div class="text-xs mt-1">Error: ${error.message}</div>
-                </div>
-            `;
-            statusDiv.classList.remove('hidden');
-            this.showToast('LLM connection failed', 'error');
-        } finally {
-            testBtn.disabled = false;
-            testBtn.innerHTML = `
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
-                </svg>
-                Test Connection
-            `;
-        }
-    }
 }
 
-// Global instance for onclick handlers
-let settingsPage;
-
-// Note: DOMContentLoaded handler is in settings.html, not here
-// The global settingsPage variable is set there
-
-export { SettingsManager }
+export { SettingsManager };

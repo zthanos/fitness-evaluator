@@ -14,6 +14,7 @@ class RequestRecord:
     path: str
     status_code: int
     duration_ms: float
+    error_detail: Optional[str] = None
 
 
 @dataclass
@@ -76,13 +77,14 @@ class MetricsCollector:
             cls._instance = inst
         return cls._instance
 
-    def record(self, method: str, path: str, status_code: int, duration_ms: float):
+    def record(self, method: str, path: str, status_code: int, duration_ms: float, error_detail: Optional[str] = None):
         self._requests.append(RequestRecord(
             timestamp=time.time(),
             method=method,
             path=path,
             status_code=status_code,
             duration_ms=duration_ms,
+            error_detail=error_detail,
         ))
 
     @property
@@ -149,6 +151,7 @@ class MetricsCollector:
                 'path': r.path,
                 'status': r.status_code,
                 'duration_ms': round(r.duration_ms, 1),
+                'error_detail': r.error_detail,
             }
             for r in reversed(list(self._requests))
             if r.status_code >= 400

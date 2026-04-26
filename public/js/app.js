@@ -9,7 +9,7 @@ import { router }            from '/js/router.js';
 import { api }               from '/js/api.js';
 import { PageLoader }        from '/js/page-loader.js';
 import { NavigationSidebar } from '/js/navigation-sidebar.js';
-import { initAuth, getToken, getUser, logout } from '/js/auth.js';
+import { initAuth, isAuthenticated, getToken, getUser, logout } from '/js/auth.js';
 
 // ─── Globals ──────────────────────────────────────────────────────────────────
 window.api = api;
@@ -169,6 +169,15 @@ router
     return page;
   })
 
+  .on('/app-settings', async (params, query) => {
+    const { AppSettingsPage } = await getPages();
+    const page = await mountPage('/app-settings', '/js/views/app-settings.html', AppSettingsPage, [
+      '/js/app-settings.js',
+    ]);
+    await page.init(params, query);
+    return page;
+  })
+
   .on('/evaluations', async (params, query) => {
     const { EvaluationsPage } = await getPages();
     const page = await mountPage('/evaluations', '/js/views/evaluations-list.html', EvaluationsPage);
@@ -192,6 +201,8 @@ router
   .on('/activities.html',       () => router.replace('/activities'))
   .on('/evaluations-list.html', () => router.replace('/evaluations'))
 
+  .on('/telemetry', () => { window.location.href = '/telemetry'; })
+
   .notFound(path => {
     window.renderPage(`
       <div class="flex flex-col items-center justify-center h-screen gap-6">
@@ -204,7 +215,17 @@ router
 
 // ─── Boot ─────────────────────────────────────────────────────────────────────
 (async () => {
-  await initAuth();
+  try {
+    await initAuth();
+  } catch (err) {
+    console.warn('[app] initAuth failed, redirecting to landing:', err);
+    window.location.replace('/');
+    return;
+  }
+  if (!isAuthenticated()) {
+    window.location.replace('/');
+    return;
+  }
   sidebar.setUser(getUser());
   window.appLogout = logout;
   window.getAuthToken = getToken;

@@ -4,13 +4,15 @@
  * and renders results into the telemetry.html skeleton.
  */
 
-import { initAuth, getToken } from './auth.js';
+import { initAuth, isAuthenticated, getToken } from './auth.js';
 import { NavigationSidebar } from './navigation-sidebar.js';
 import { router } from './router.js';
 
 // ── Auth & sidebar ─────────────────────────────────────────────────────────
 
 await initAuth();
+if (!isAuthenticated()) { window.location.replace('/'); }
+
 
 // In this standalone page, register a fallback so sidebar nav links do full-page redirects.
 router.notFound(path => { window.location.href = path; });
@@ -186,16 +188,25 @@ function renderStats(stats) {
   if (errs.length === 0) {
     errTbody.innerHTML = '<tr><td colspan="5" class="text-center text-base-content/40 py-6">No errors recorded 🎉</td></tr>';
   } else {
-    errTbody.innerHTML = errs.map(e => {
+    errTbody.innerHTML = errs.map((e, i) => {
       const cls = e.status >= 500 ? 'badge-error' : 'badge-warning';
-      return `
-        <tr>
+      const hasDetail = e.error_detail && e.error_detail.trim().length > 0;
+      const detailId = `err-detail-${i}`;
+      const mainRow = `
+        <tr class="${hasDetail ? 'cursor-pointer hover:bg-base-200' : ''}" ${hasDetail ? `onclick="document.getElementById('${detailId}').classList.toggle('hidden')"` : ''}>
           <td class="text-xs text-base-content/50 whitespace-nowrap">${fmtTime(e.timestamp)}</td>
           <td><span class="badge badge-ghost badge-sm font-mono">${e.method}</span></td>
-          <td class="font-mono text-xs">${e.path}</td>
+          <td class="font-mono text-xs">${e.path}${hasDetail ? ' <span class="text-base-content/30 text-xs">▶</span>' : ''}</td>
           <td class="text-right"><span class="badge ${cls} badge-sm">${e.status}</span></td>
           <td class="text-right font-mono text-xs">${e.duration_ms}</td>
         </tr>`;
+      const detailRow = hasDetail ? `
+        <tr id="${detailId}" class="hidden">
+          <td colspan="5" class="bg-base-200 px-4 py-2">
+            <pre class="text-xs text-error whitespace-pre-wrap break-all font-mono">${e.error_detail.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
+          </td>
+        </tr>` : '';
+      return mainRow + detailRow;
     }).join('');
   }
 }

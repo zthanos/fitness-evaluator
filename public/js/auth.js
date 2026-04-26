@@ -56,18 +56,24 @@ export async function initAuth() {
   });
 
   await _kc.init({
-    onLoad: 'login-required',
+    onLoad: 'check-sso',
     checkLoginIframe: false,
     pkceMethod: 'S256',
     enableLogging: false,
   });
 
   // Proactively refresh the token 60s before it expires, every 30s
-  setInterval(() => {
-    _kc.updateToken(60).catch(() => _kc.login());
-  }, 30_000);
+  if (_kc.authenticated) {
+    setInterval(() => {
+      _kc.updateToken(60).catch(() => _kc.login());
+    }, 30_000);
+  }
 
   return _kc;
+}
+
+export function isAuthenticated() {
+  return _kc?.authenticated ?? false;
 }
 
 export function getToken() {

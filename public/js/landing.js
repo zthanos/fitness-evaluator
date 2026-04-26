@@ -1,59 +1,69 @@
 /**
  * landing.js — handles login / register redirects via Keycloak.
- * Fetches the Keycloak config from the backend, then builds the
- * appropriate authorization or registration URL.
+ * Uses the Keycloak JS adapter with pkceMethod:'S256' but no onLoad,
+ * so no SSO iframe or network requests happen at init time.
  */
 
-const APP_REDIRECT = `${window.location.origin}/`;
+const APP_REDIRECT = `${window.location.origin}/index.html`;
 
 async function getKeycloakConfig() {
   const resp = await fetch('/api/auth/config');
-  if (!resp.ok) throw new Error('Could not reach auth config endpoint');
+  if (!resp.ok) throw new Error(`Auth config ${resp.status}`);
+  const ct = resp.headers.get('content-type') ?? '';
+  if (!ct.includes('json')) throw new Error('Auth config returned non-JSON');
   return resp.json();
 }
 
-function buildLoginUrl(cfg) {
-  const base = `${cfg.url}/realms/${cfg.realm}/protocol/openid-connect/auth`;
-  const params = new URLSearchParams({
-    client_id: cfg.clientId,
-    redirect_uri: APP_REDIRECT,
-    response_type: 'code',
-    scope: 'openid',
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    if (document.querySelector(`script[src="${src}"]`)) { resolve(); return; }
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = resolve;
+    s.onerror = () => reject(new Error(`Failed to load ${src}`));
+    document.head.appendChild(s);
   });
-  return `${base}?${params}`;
-}
-
-function buildRegisterUrl(cfg) {
-  const base = `${cfg.url}/realms/${cfg.realm}/protocol/openid-connect/registrations`;
-  const params = new URLSearchParams({
-    client_id: cfg.clientId,
-    redirect_uri: APP_REDIRECT,
-    response_type: 'code',
-    scope: 'openid',
-  });
-  return `${base}?${params}`;
 }
 
 async function redirectToKeycloak(action) {
   try {
     const cfg = await getKeycloakConfig();
-    const url = action === 'register' ? buildRegisterUrl(cfg) : buildLoginUrl(cfg);
-    window.location.href = url;
-  } catch {
-    // Keycloak not reachable — fall through to SPA (initAuth will handle it)
+    await loadScript(`${cfg.url}/js/keycloak.js`);
+
+    const kc = new window.Keycloak({ url: cfg.url, realm: cfg.realm, clientId: cfg.clientId });
+
+    // No onLoad — skips the SSO iframe check entirely, makes no network requests.
+    // pkceMethod ensures login/register URLs include code_challenge + verifier in sessionStorage.
+    await kc.init({ pkceMethod: 'S256' });
+
+    const opts = { redirectUri: APP_REDIRECT };
+    if (action === 'register') {
+      await kc.register(opts);
+    } else {
+      await kc.login(opts);
+    }
+  } catch (err) {
+    console.warn('[landing] Keycloak redirect failed, falling back:', err);
     window.location.href = '/index.html';
   }
 }
 
 function bindButtons() {
   const loginIds = ['login-btn', 'login-mobile'];
-  const registerIds = ['register-btn', 'register-mobile', 'cta-primary', 'cta-bottom'];
+  const registerIds = ['register-btn', 'register-mobile', 'register-mobile-nav', 'cta-primary', 'cta-bottom', 'register-pricing'];
 
   loginIds.forEach(id => {
     document.getElementById(id)?.addEventListener('click', () => redirectToKeycloak('login'));
   });
   registerIds.forEach(id => {
     document.getElementById(id)?.addEventListener('click', () => redirectToKeycloak('register'));
+  });
+
+  document.getElementById('waitlist-submit')?.addEventListener('click', () => {
+    const email = document.getElementById('waitlist-email')?.value?.trim();
+    if (!email) return;
+    document.getElementById('waitlist-form').classList.add('hidden');
+    document.getElementById('waitlist-thanks').classList.remove('hidden');
   });
 }
 
