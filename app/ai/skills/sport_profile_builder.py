@@ -183,12 +183,24 @@ class SportProfileBuilder:
     def _best_duration_distance(
         self, activities: list, min_min: float, max_min: float
     ) -> Optional[float]:
-        candidates = [
-            a.distance_m / 1000
-            for a in activities
-            if a.distance_m and a.moving_time_s
-            and min_min <= a.moving_time_s / 60 <= max_min
-        ]
+        """
+        Estimate the best distance achievable at target_min (midpoint of range).
+
+        Accepts any activity >= min_min and extrapolates to the target duration
+        using average pace.  No upper cap — a 2-hour run contributes a valid
+        60-min projection; previously the hard max_min=70 dropped all of them.
+        """
+        target_min = (min_min + max_min) / 2.0
+        candidates = []
+        for a in activities:
+            if not a.distance_m or not a.moving_time_s:
+                continue
+            dur_min = a.moving_time_s / 60.0
+            if dur_min < min_min:
+                continue
+            dist_km = a.distance_m / 1000.0
+            # project distance to target duration via average pace
+            candidates.append(dist_km * (target_min / dur_min))
         return max(candidates) if candidates else None
 
     def _activity_speeds(
