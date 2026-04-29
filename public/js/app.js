@@ -226,8 +226,8 @@ router
     window.location.replace('/');
     return;
   }
-  sidebar.setUser(getUser());
-  window.appLogout = logout;
   window.getAuthToken = getToken;
+  window.appLogout = logout;
+  sidebar.setUser(getUser());
   router.start();
 })();

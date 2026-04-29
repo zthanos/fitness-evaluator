@@ -305,8 +305,9 @@ class NavigationSidebar {
   async _loadAvatar() {
     try {
       const token = window.getAuthToken?.();
+      if (!token) return;
       const res = await fetch('/api/settings/profile', {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) return;
       const profile = await res.json();
