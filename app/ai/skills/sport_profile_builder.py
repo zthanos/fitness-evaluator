@@ -207,8 +207,19 @@ class SportProfileBuilder:
     def _weekly_averages(
         self, activities: list, weeks: int
     ) -> tuple[Optional[float], Optional[float]]:
-        cutoff = datetime.utcnow() - timedelta(weeks=weeks)
-        recent = [a for a in activities if a.start_date and a.start_date >= cutoff]
+        from datetime import timezone as _tz
+        now = datetime.now(_tz.utc)
+        cutoff = now - timedelta(weeks=weeks)
+        recent = []
+        for a in activities:
+            sd = a.start_date
+            if sd is None:
+                continue
+            # Normalise to UTC-aware so naive and aware datetimes compare safely
+            if sd.tzinfo is None:
+                sd = sd.replace(tzinfo=_tz.utc)
+            if sd >= cutoff:
+                recent.append(a)
         if not recent:
             return None, None
         total_km  = sum(a.distance_m / 1000 for a in recent if a.distance_m)
@@ -360,13 +371,19 @@ class SportProfileBuilder:
             elif longest_km and longest_km >= 60:
                 strengths.append(f"Solid ride endurance ({longest_km:.0f} km best)")
             if ftp_w and ftp_w >= 250:
-                strengths.append(f"Strong power output (FTP ~{ftp_w:.0f} W)")
+                strengths.append(f"Strong FTP (~{ftp_w:.0f} W) → good sustainable power base")
             elif ftp_w and ftp_w < 180:
-                limiters.append("Power development — FTP below typical endurance baseline")
+                limiters.append(
+                    f"Low FTP (~{ftp_w:.0f} W) → limits sustainable power output"
+                    " → reduces average speed on longer efforts"
+                )
             if typical_cadence and typical_cadence >= 88:
                 strengths.append(f"Good cadence efficiency ({typical_cadence:.0f} rpm)")
             elif typical_cadence and typical_cadence < 75:
-                limiters.append(f"Low cadence ({typical_cadence:.0f} rpm) — strains muscles, limits speed")
+                limiters.append(
+                    f"Low cadence ({typical_cadence:.0f} rpm) → increases muscular fatigue"
+                    " → reduces sustainable speed on climbs"
+                )
 
         elif sport_group == "run":
             if longest_km and longest_km >= 21:
@@ -374,10 +391,16 @@ class SportProfileBuilder:
             if typical_speed and typical_speed >= 12:
                 strengths.append(f"Strong running pace ({typical_speed:.1f} km/h typical)")
             elif typical_speed and typical_speed < 9:
-                limiters.append("Running pace — aerobic base needs development")
+                limiters.append(
+                    "Low running pace → aerobic base underdeveloped"
+                    " → limits race performance at all distances"
+                )
 
-        if weekly_km and weekly_km < 20 and sport_group in ("ride", "run"):
-            limiters.append("Low weekly volume — limiting aerobic adaptation")
+        if weekly_km is not None and weekly_km < 20 and sport_group in ("ride", "run"):
+            limiters.append(
+                f"Low weekly volume ({weekly_km:.0f} km/wk) → insufficient aerobic stimulus"
+                " → slows fitness progression"
+            )
         elif weekly_km and weekly_km >= 60 and sport_group == "ride":
             strengths.append(f"High weekly training volume ({weekly_km:.0f} km/week)")
 
@@ -459,3 +482,94 @@ class SportProfileBuilder:
 def _r(val: Optional[float], decimals: int = 1) -> Optional[float]:
     """Round to N decimals, or return None."""
     return round(val, decimals) if val is not None else None
+
+
+# ------------------------------------------------------------------
+# Shared API helpers (imported by settings.py and dashboard.py)
+# ------------------------------------------------------------------
+
+def profile_to_dict(p: "AthleteSportProfile") -> dict:
+    d = {
+        "sport_group": p.sport_group,
+        "profile_confidence": p.profile_confidence,
+        "last_updated_at": p.last_updated_at.isoformat() if p.last_updated_at else None,
+        "summary_text": p.summary_text,
+        "weekly_volume_km": p.weekly_volume_km,
+        "weekly_training_time_min": p.weekly_training_time_min,
+        "longest_distance_km": p.longest_distance_km,
+        "best_60min_distance_km": p.best_60min_distance_km,
+        "best_120min_distance_km": p.best_120min_distance_km,
+        "typical_endurance_speed_kmh": p.typical_endurance_speed_kmh,
+        "best_long_speed_kmh": p.best_long_speed_kmh,
+        "typical_cadence_rpm": p.typical_cadence_rpm,
+        "indoor_cadence_rpm": p.indoor_cadence_rpm,
+        "outdoor_cadence_rpm": p.outdoor_cadence_rpm,
+        "climbing_cadence_rpm": p.climbing_cadence_rpm,
+        "ftp_estimate_w": p.ftp_estimate_w,
+        "ftp_confidence": p.ftp_confidence,
+        "avg_power_baseline_w": p.avg_power_baseline_w,
+        "max_hr_estimate": p.max_hr_estimate,
+        "hr_zone_model": p.hr_zone_model,
+        "pace_zone_model": p.pace_zone_model,
+        "current_strengths": p.current_strengths or [],
+        "current_limiters": p.current_limiters or [],
+    }
+    d["next_focus"] = compute_next_focus(p.sport_group, d)
+    return d
+
+
+def compute_next_focus(sport_group: str, d: dict) -> Optional[str]:
+    """Derive a 1–2 sentence 'next focus' action from the top limiter."""
+    limiters = d.get("current_limiters") or []
+    if not limiters:
+        if sport_group == "ride" and (d.get("ftp_estimate_w") or 0) >= 200:
+            return (
+                "Maintain FTP with 1× weekly threshold session. "
+                "Gradually extend long-ride duration to build aerobic ceiling."
+            )
+        return None
+    top = limiters[0].lower()
+    if "cadence" in top:
+        return (
+            "Add cadence drills: target 80–90 rpm on flat segments. "
+            "Spin at 90+ rpm for 5-min blocks during easy rides to build neuromuscular efficiency."
+        )
+    if "ftp" in top or "power" in top:
+        return (
+            "Add 2× weekly threshold blocks (15–20 min at FTP effort). "
+            "Pair with one longer endurance ride per week to translate power into sustained speed."
+        )
+    if "volume" in top:
+        if sport_group == "ride":
+            return (
+                "Add one extra ride per week — start with 45–60 min easy effort. "
+                "Consistent volume is the fastest route to aerobic improvement."
+            )
+        if sport_group == "run":
+            return (
+                "Add one easy 30–40 min run per week. "
+                "Target 3 sessions minimum before adding intensity."
+            )
+    if "pace" in top or "aerobic" in top or "running" in top:
+        return (
+            "Build aerobic base: 1× weekly easy long run (60+ min) keeping HR in Z2. "
+            "Patience with easy effort delivers the biggest long-term pace gains."
+        )
+    return None
+
+
+def compute_dominant_sport(profiles: list[dict]) -> dict:
+    """Return primary and secondary sport from a list of profile dicts."""
+    if not profiles:
+        return {"primary": None, "secondary": None}
+
+    def _score(p: dict) -> float:
+        conf = p.get("profile_confidence") or 0.0
+        time = p.get("weekly_training_time_min") or 0.0
+        return conf * max(time, 1.0)
+
+    ranked = sorted(profiles, key=_score, reverse=True)
+    return {
+        "primary":   ranked[0]["sport_group"] if ranked else None,
+        "secondary": ranked[1]["sport_group"] if len(ranked) > 1 else None,
+    }

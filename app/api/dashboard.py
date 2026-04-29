@@ -210,35 +210,18 @@ async def get_dashboard_sport_profiles(
     athlete: Athlete = Depends(get_current_athlete),
 ):
     from app.models.athlete_sport_profile import AthleteSportProfile
+    from app.ai.skills.sport_profile_builder import profile_to_dict, compute_dominant_sport
     profiles = (
         db.query(AthleteSportProfile)
         .filter_by(athlete_id=athlete.id)
         .order_by(AthleteSportProfile.sport_group)
         .all()
     )
-
-    def _to_dict(p):
-        return {
-            "sport_group": p.sport_group,
-            "profile_confidence": p.profile_confidence,
-            "last_updated_at": p.last_updated_at.isoformat() if p.last_updated_at else None,
-            "summary_text": p.summary_text,
-            "weekly_volume_km": p.weekly_volume_km,
-            "weekly_training_time_min": p.weekly_training_time_min,
-            "longest_distance_km": p.longest_distance_km,
-            "best_60min_distance_km": p.best_60min_distance_km,
-            "typical_endurance_speed_kmh": p.typical_endurance_speed_kmh,
-            "ftp_estimate_w": p.ftp_estimate_w,
-            "ftp_confidence": p.ftp_confidence,
-            "typical_cadence_rpm": p.typical_cadence_rpm,
-            "max_hr_estimate": p.max_hr_estimate,
-            "hr_zone_model": p.hr_zone_model,
-            "pace_zone_model": p.pace_zone_model,
-            "current_strengths": p.current_strengths or [],
-            "current_limiters": p.current_limiters or [],
-        }
-
-    return {"profiles": [_to_dict(p) for p in profiles]}
+    profile_dicts = [profile_to_dict(p) for p in profiles]
+    return {
+        "profiles": profile_dicts,
+        "dominant_sport": compute_dominant_sport(profile_dicts),
+    }
 
 
 @router.get("/latest-evaluation", summary="Get latest evaluation summary")

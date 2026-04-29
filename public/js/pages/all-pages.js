@@ -278,6 +278,7 @@ class DashboardPage {
     try {
       const data = await api.get('/dashboard/sport-profiles');
       const profiles = data.profiles || [];
+      const dominant = data.dominant_sport || {};
 
       if (profiles.length === 0) {
         container.innerHTML = `
@@ -294,48 +295,84 @@ class DashboardPage {
         swim:     { label: 'Swimming', icon: '🏊' },
         strength: { label: 'Strength', icon: '🏋️' },
       };
-      const confidenceClass = (c) => c >= 0.7 ? 'badge-success' : c >= 0.4 ? 'badge-warning' : 'badge-error';
-      const confidenceLabel = (c) => c >= 0.7 ? 'High' : c >= 0.4 ? 'Medium' : 'Low';
-      const fmt = (v, decimals = 1) => v != null ? parseFloat(v).toFixed(decimals) : '—';
+      const confClass = (c) => c >= 0.7 ? 'badge-success' : c >= 0.4 ? 'badge-warning' : 'badge-error';
+      const fmt = (v, dec = 1) => v != null ? parseFloat(v).toFixed(dec) : '—';
 
-      container.innerHTML = `<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-2">${
-        profiles.map(p => {
-          const meta = sportMeta[p.sport_group] || { label: p.sport_group, icon: '🏅' };
+      const cards = profiles.map(p => {
+        const meta   = sportMeta[p.sport_group] || { label: p.sport_group, icon: '🏅' };
+        const conf   = p.profile_confidence || 0;
+        const isPri  = p.sport_group === dominant.primary;
 
-          // Build 2-3 key metric pills per sport
-          const pills = [];
-          if (p.sport_group === 'ride') {
-            if (p.ftp_estimate_w)            pills.push(`FTP ${Math.round(p.ftp_estimate_w)}W`);
-            if (p.typical_cadence_rpm)       pills.push(`${Math.round(p.typical_cadence_rpm)} rpm`);
-            if (p.typical_endurance_speed_kmh) pills.push(`${fmt(p.typical_endurance_speed_kmh)} km/h`);
-          } else if (p.sport_group === 'run') {
-            if (p.best_60min_distance_km)    pills.push(`${fmt(p.best_60min_distance_km)} km/h best`);
-            if (p.typical_endurance_speed_kmh) pills.push(`${fmt(60 / p.typical_endurance_speed_kmh)} min/km`);
-          } else {
-            if (p.weekly_training_time_min)  pills.push(`${Math.round(p.weekly_training_time_min)} min/wk`);
-          }
-          if (p.max_hr_estimate)             pills.push(`Max HR ${p.max_hr_estimate}`);
-          if (p.weekly_volume_km && p.sport_group !== 'strength') pills.push(`${fmt(p.weekly_volume_km)} km/wk`);
-
-          const limiters = (p.current_limiters || []).slice(0, 2)
-            .map(l => `<span class="badge badge-warning badge-xs">${l}</span>`).join('');
-
+        // No data
+        if (conf < 0.15) {
           return `
-            <div class="bg-base-200 rounded-xl p-4 flex flex-col gap-2">
+            <div class="bg-base-200 rounded-xl p-4 opacity-60 flex flex-col gap-1">
               <div class="flex items-center justify-between">
-                <span class="font-semibold flex items-center gap-1.5">
-                  <span class="text-lg">${meta.icon}</span> ${meta.label}
-                </span>
-                <span class="badge badge-sm ${confidenceClass(p.profile_confidence || 0)}">${confidenceLabel(p.profile_confidence || 0)}</span>
+                <span class="font-semibold flex items-center gap-1.5"><span class="text-lg">${meta.icon}</span> ${meta.label}</span>
+                <span class="badge badge-ghost badge-xs">No data</span>
               </div>
-              <div class="flex flex-wrap gap-1">
-                ${pills.map(t => `<span class="badge badge-outline badge-sm">${t}</span>`).join('')}
-              </div>
-              ${limiters ? `<div class="flex flex-wrap gap-1">${limiters}</div>` : ''}
-              ${p.summary_text ? `<p class="text-[11px] text-base-content/50 leading-tight italic">${p.summary_text}</p>` : ''}
+              <p class="text-xs text-base-content/50">Insufficient sessions for analysis.</p>
             </div>`;
-        }).join('')
-      }</div>`;
+        }
+
+        // Primary metric headline
+        let headline = '';
+        let secondaryPills = [];
+        if (p.sport_group === 'ride') {
+          if (p.ftp_estimate_w) headline = `<span class="text-2xl font-bold text-primary">${Math.round(p.ftp_estimate_w)}<span class="text-sm font-normal ml-0.5">W FTP</span></span>`;
+          else if (p.typical_endurance_speed_kmh) headline = `<span class="text-2xl font-bold text-primary">${fmt(p.typical_endurance_speed_kmh)}<span class="text-sm font-normal ml-0.5">km/h</span></span>`;
+          if (p.typical_endurance_speed_kmh && p.ftp_estimate_w) secondaryPills.push(`${fmt(p.typical_endurance_speed_kmh)} km/h`);
+          if (p.typical_cadence_rpm) secondaryPills.push(`${Math.round(p.typical_cadence_rpm)} rpm`);
+          if (p.weekly_volume_km) secondaryPills.push(`${fmt(p.weekly_volume_km)} km/wk`);
+        } else if (p.sport_group === 'run') {
+          if (p.typical_endurance_speed_kmh) {
+            const pace = (60 / p.typical_endurance_speed_kmh).toFixed(1);
+            headline = `<span class="text-2xl font-bold text-primary">${pace}<span class="text-sm font-normal ml-0.5">min/km</span></span>`;
+          }
+          if (p.best_60min_distance_km) secondaryPills.push(`${fmt(p.best_60min_distance_km)} km best`);
+          if (p.weekly_volume_km) secondaryPills.push(`${fmt(p.weekly_volume_km)} km/wk`);
+        } else if (p.sport_group === 'strength') {
+          const sessions = p.weekly_training_time_min ? Math.max(1, Math.round(p.weekly_training_time_min / 50)) : null;
+          const stimulus = !p.weekly_training_time_min ? '' : p.weekly_training_time_min >= 120 ? 'Building' : 'Maintenance';
+          if (sessions) headline = `<span class="text-2xl font-bold">${sessions}<span class="text-sm font-normal ml-0.5">×/wk</span></span>`;
+          if (p.weekly_training_time_min) secondaryPills.push(`${Math.round(p.weekly_training_time_min)} min/wk`);
+          if (stimulus) secondaryPills.push(stimulus);
+        } else {
+          if (p.weekly_training_time_min) headline = `<span class="text-2xl font-bold">${Math.round(p.weekly_training_time_min)}<span class="text-sm font-normal ml-0.5">min/wk</span></span>`;
+        }
+        if (p.max_hr_estimate) secondaryPills.push(`HR ${p.max_hr_estimate}`);
+
+        // Top limiter only (concise)
+        const topLimiter = (p.current_limiters || [])[0] || '';
+        const topStrength = (p.current_strengths || [])[0] || '';
+
+        return `
+          <div class="bg-base-200 rounded-xl p-4 flex flex-col gap-2 ${isPri ? 'ring-1 ring-primary/30' : ''}">
+            <div class="flex items-center justify-between">
+              <span class="font-semibold flex items-center gap-1.5">
+                <span class="text-lg">${meta.icon}</span> ${meta.label}
+                ${isPri ? '<span class="badge badge-primary badge-xs">Primary</span>' : ''}
+              </span>
+              <span class="badge badge-sm ${confClass(conf)}">${conf >= 0.7 ? 'High' : conf >= 0.4 ? 'Med' : 'Low'}</span>
+            </div>
+            ${headline ? `<div class="my-0.5">${headline}</div>` : ''}
+            ${secondaryPills.length ? `<div class="flex flex-wrap gap-1">${secondaryPills.map(t => `<span class="badge badge-ghost badge-xs text-base-content/60">${t}</span>`).join('')}</div>` : ''}
+            ${topStrength ? `<p class="text-xs text-success/80 leading-snug">✓ ${topStrength}</p>` : ''}
+            ${topLimiter  ? `<p class="text-xs text-warning/80 leading-snug">⚠ ${topLimiter}</p>` : ''}
+            ${p.next_focus ? `<p class="text-[11px] text-primary/70 leading-snug border-t border-base-300 pt-1.5 mt-0.5">🎯 ${p.next_focus}</p>` : ''}
+          </div>`;
+      }).join('');
+
+      // Athlete identity strip above the cards
+      const priLabel = dominant.primary   ? (sportMeta[dominant.primary]?.label   || dominant.primary)   : null;
+      const secLabel = dominant.secondary ? (sportMeta[dominant.secondary]?.label || dominant.secondary) : null;
+      const identityStrip = priLabel ? `
+        <div class="text-sm text-base-content/50 mb-3">
+          <span class="font-semibold text-base-content/70">Primary:</span> ${priLabel}
+          ${secLabel ? `&nbsp;·&nbsp; <span class="font-semibold text-base-content/70">Secondary:</span> ${secLabel}` : ''}
+        </div>` : '';
+
+      container.innerHTML = identityStrip + `<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">${cards}</div>`;
     } catch (err) {
       container.innerHTML = '<p class="text-base-content/60 text-sm py-2">Sport profiles unavailable.</p>';
     }

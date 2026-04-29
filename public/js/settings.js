@@ -323,7 +323,7 @@ class SettingsManager {
         if (!container) return;
         try {
             const data = await api.get('/settings/sport-profiles');
-            this._renderSportProfiles(data.profiles || []);
+            this._renderSportProfiles(data.profiles || [], data.dominant_sport);
         } catch {
             container.innerHTML = '<p class="text-base-content/60 text-sm">Could not load sport profiles.</p>';
         }
@@ -336,7 +336,7 @@ class SettingsManager {
         container.innerHTML = '<div class="flex justify-center py-6"><span class="loading loading-spinner loading-md"></span></div>';
         try {
             const data = await api.post('/settings/sport-profiles/rebuild', {});
-            this._renderSportProfiles(data.profiles || []);
+            this._renderSportProfiles(data.profiles || [], data.dominant_sport);
             this.showToast(`Sport profiles updated (${data.rebuilt} sport${data.rebuilt !== 1 ? 's' : ''})`, 'success');
         } catch (err) {
             container.innerHTML = '<p class="text-error text-sm">Failed to rebuild profiles. Make sure you have synced Strava activities.</p>';
@@ -349,11 +349,11 @@ class SettingsManager {
         }
     }
 
-    _renderSportProfiles(profiles) {
+    _renderSportProfiles(profiles, dominantSport) {
         const container = document.getElementById('sport-profiles-container');
         if (!container) return;
 
-        if (profiles.length === 0) {
+        if (!profiles || profiles.length === 0) {
             container.innerHTML = `
                 <div class="alert">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="stroke-info shrink-0 w-6 h-6">
@@ -370,77 +370,178 @@ class SettingsManager {
             swim:     { label: 'Swimming', icon: '🏊' },
             strength: { label: 'Strength', icon: '🏋️' },
         };
+        const confClass = (c) => c >= 0.7 ? 'badge-success' : c >= 0.4 ? 'badge-warning' : 'badge-error';
+        const confLabel = (c) => c >= 0.7 ? 'High' : c >= 0.4 ? 'Medium' : 'Low';
+        const fmt = (v, dec = 1) => v != null ? parseFloat(v).toFixed(dec) : '—';
 
-        const confidenceClass = (c) => {
-            if (!c) return 'badge-ghost';
-            if (c >= 0.7) return 'badge-success';
-            if (c >= 0.4) return 'badge-warning';
-            return 'badge-error';
-        };
-        const confidenceLabel = (c) => {
-            if (!c) return 'No data';
-            if (c >= 0.7) return 'High';
-            if (c >= 0.4) return 'Medium';
-            return 'Low';
-        };
-        const fmt = (v, unit = '', decimals = 1) =>
-            v != null ? `${parseFloat(v).toFixed(decimals)}${unit}` : '—';
+        // Athlete identity header
+        const primary   = dominantSport?.primary;
+        const secondary = dominantSport?.secondary;
+        const primaryLabel   = primary   ? sportMeta[primary]?.label   : null;
+        const secondaryLabel = secondary ? sportMeta[secondary]?.label : null;
+        const identityHtml = primaryLabel ? `
+            <div class="flex items-center gap-3 mb-4 p-3 bg-base-200 rounded-xl border border-base-300">
+                <div>
+                    <div class="text-xs text-base-content/50 uppercase tracking-widest font-semibold">Athlete identity</div>
+                    <div class="font-semibold text-sm mt-0.5">
+                        Primary: <span class="text-primary">${primaryLabel}</span>
+                        ${secondaryLabel ? `&nbsp;·&nbsp; Secondary: <span class="text-base-content/70">${secondaryLabel}</span>` : ''}
+                    </div>
+                </div>
+            </div>` : '';
 
-        container.innerHTML = `<div class="grid grid-cols-1 md:grid-cols-2 gap-4">${profiles.map(p => {
+        const cards = profiles.map(p => {
             const meta = sportMeta[p.sport_group] || { label: p.sport_group, icon: '🏅' };
+            const isPrimary = p.sport_group === primary;
+            const conf = p.profile_confidence || 0;
 
-            // Sport-specific key metrics
-            let metrics = '';
-            if (p.sport_group === 'ride') {
-                metrics = `
-                    ${p.ftp_estimate_w ? `<div class="stat p-0"><div class="stat-title text-xs">FTP</div><div class="stat-value text-lg">${Math.round(p.ftp_estimate_w)}W</div><div class="stat-desc">${p.ftp_confidence || ''} confidence</div></div>` : ''}
-                    ${p.typical_cadence_rpm ? `<div class="stat p-0"><div class="stat-title text-xs">Cadence</div><div class="stat-value text-lg">${Math.round(p.typical_cadence_rpm)}</div><div class="stat-desc">rpm typical</div></div>` : ''}
-                    ${p.typical_endurance_speed_kmh ? `<div class="stat p-0"><div class="stat-title text-xs">Speed</div><div class="stat-value text-lg">${fmt(p.typical_endurance_speed_kmh)}</div><div class="stat-desc">km/h typical</div></div>` : ''}
-                    ${p.weekly_volume_km ? `<div class="stat p-0"><div class="stat-title text-xs">Weekly Vol.</div><div class="stat-value text-lg">${fmt(p.weekly_volume_km)}</div><div class="stat-desc">km / week</div></div>` : ''}`;
-            } else if (p.sport_group === 'run') {
-                metrics = `
-                    ${p.best_60min_distance_km ? `<div class="stat p-0"><div class="stat-title text-xs">60-min Best</div><div class="stat-value text-lg">${fmt(p.best_60min_distance_km)}</div><div class="stat-desc">km</div></div>` : ''}
-                    ${p.typical_endurance_speed_kmh ? `<div class="stat p-0"><div class="stat-title text-xs">Pace</div><div class="stat-value text-lg">${fmt(60 / p.typical_endurance_speed_kmh, '', 1)}</div><div class="stat-desc">min/km typical</div></div>` : ''}
-                    ${p.weekly_volume_km ? `<div class="stat p-0"><div class="stat-title text-xs">Weekly Vol.</div><div class="stat-value text-lg">${fmt(p.weekly_volume_km)}</div><div class="stat-desc">km / week</div></div>` : ''}`;
-            } else {
-                metrics = `
-                    ${p.weekly_training_time_min ? `<div class="stat p-0"><div class="stat-title text-xs">Weekly Time</div><div class="stat-value text-lg">${Math.round(p.weekly_training_time_min)}</div><div class="stat-desc">min / week</div></div>` : ''}
-                    ${p.longest_distance_km ? `<div class="stat p-0"><div class="stat-title text-xs">Longest</div><div class="stat-value text-lg">${fmt(p.longest_distance_km)}</div><div class="stat-desc">km</div></div>` : ''}`;
+            // ── Low-data sports: explicit message ────────────────────────────
+            const hasData = conf >= 0.15;
+            if (!hasData) {
+                return `
+                    <div class="card bg-base-200 border border-base-300 opacity-70">
+                        <div class="card-body p-4">
+                            <div class="flex items-center justify-between mb-2">
+                                <h3 class="font-bold text-base flex items-center gap-2">
+                                    <span class="text-xl">${meta.icon}</span> ${meta.label}
+                                </h3>
+                                <span class="badge badge-ghost text-xs">No data</span>
+                            </div>
+                            <p class="text-sm text-base-content/60">Insufficient sessions for analysis. Sync more ${meta.label.toLowerCase()} activities to generate a meaningful profile.</p>
+                        </div>
+                    </div>`;
             }
 
-            const hrLine = p.max_hr_estimate
-                ? `<div class="text-xs text-base-content/60 mt-1">Max HR: <span class="font-medium text-base-content">${p.max_hr_estimate} bpm</span></div>`
-                : '';
+            // ── Primary metrics (large, bold) ────────────────────────────────
+            let primaryMetrics = '';
+            let secondaryChips = [];
 
+            if (p.sport_group === 'ride') {
+                if (p.ftp_estimate_w) {
+                    primaryMetrics += `
+                        <div class="flex-1 text-center">
+                            <div class="text-3xl font-bold text-primary">${Math.round(p.ftp_estimate_w)}<span class="text-base font-normal text-base-content/60 ml-1">W</span></div>
+                            <div class="text-xs text-base-content/50 mt-0.5">FTP <span class="opacity-60">(${p.ftp_confidence || 'est.'})</span></div>
+                        </div>`;
+                }
+                if (p.typical_endurance_speed_kmh) {
+                    primaryMetrics += `
+                        <div class="flex-1 text-center">
+                            <div class="text-3xl font-bold">${fmt(p.typical_endurance_speed_kmh)}<span class="text-base font-normal text-base-content/60 ml-1">km/h</span></div>
+                            <div class="text-xs text-base-content/50 mt-0.5">Typical speed</div>
+                        </div>`;
+                }
+                if (p.typical_cadence_rpm) secondaryChips.push(`${Math.round(p.typical_cadence_rpm)} rpm`);
+                if (p.weekly_volume_km)    secondaryChips.push(`${fmt(p.weekly_volume_km)} km/wk <span class="opacity-50 text-[10px]">4-wk avg</span>`);
+                if (p.max_hr_estimate)     secondaryChips.push(`Max HR ${p.max_hr_estimate}`);
+
+            } else if (p.sport_group === 'run') {
+                if (p.typical_endurance_speed_kmh) {
+                    const pace = (60 / p.typical_endurance_speed_kmh).toFixed(1);
+                    primaryMetrics += `
+                        <div class="flex-1 text-center">
+                            <div class="text-3xl font-bold text-primary">${pace}<span class="text-base font-normal text-base-content/60 ml-1">min/km</span></div>
+                            <div class="text-xs text-base-content/50 mt-0.5">Typical pace</div>
+                        </div>`;
+                }
+                if (p.best_60min_distance_km) {
+                    primaryMetrics += `
+                        <div class="flex-1 text-center">
+                            <div class="text-3xl font-bold">${fmt(p.best_60min_distance_km)}<span class="text-base font-normal text-base-content/60 ml-1">km</span></div>
+                            <div class="text-xs text-base-content/50 mt-0.5">60-min best</div>
+                        </div>`;
+                }
+                if (p.weekly_volume_km)    secondaryChips.push(`${fmt(p.weekly_volume_km)} km/wk <span class="opacity-50 text-[10px]">4-wk avg</span>`);
+                if (p.max_hr_estimate)     secondaryChips.push(`Max HR ${p.max_hr_estimate}`);
+
+            } else if (p.sport_group === 'strength') {
+                const sessionsPerWk = p.weekly_training_time_min
+                    ? Math.max(1, Math.round(p.weekly_training_time_min / 50)) : null;
+                const avgSession = (p.weekly_training_time_min && sessionsPerWk)
+                    ? Math.round(p.weekly_training_time_min / sessionsPerWk) : null;
+                const stimulus = !p.weekly_training_time_min ? 'unknown'
+                    : p.weekly_training_time_min >= 120 ? 'Building'
+                    : p.weekly_training_time_min >= 60  ? 'Maintenance'
+                    : 'Low stimulus';
+
+                primaryMetrics += `
+                    <div class="flex-1 text-center">
+                        <div class="text-3xl font-bold">${sessionsPerWk ?? '—'}<span class="text-base font-normal text-base-content/60 ml-1">×/wk</span></div>
+                        <div class="text-xs text-base-content/50 mt-0.5">Frequency</div>
+                    </div>
+                    <div class="flex-1 text-center">
+                        <div class="text-3xl font-bold">${avgSession ?? '—'}<span class="text-base font-normal text-base-content/60 ml-1">min</span></div>
+                        <div class="text-xs text-base-content/50 mt-0.5">Avg session</div>
+                    </div>`;
+                secondaryChips.push(`Focus: ${stimulus}`);
+                if (p.max_hr_estimate) secondaryChips.push(`Max HR ${p.max_hr_estimate}`);
+
+            } else {
+                // swim / other
+                if (p.weekly_training_time_min) {
+                    primaryMetrics += `
+                        <div class="flex-1 text-center">
+                            <div class="text-3xl font-bold">${Math.round(p.weekly_training_time_min)}<span class="text-base font-normal text-base-content/60 ml-1">min/wk</span></div>
+                            <div class="text-xs text-base-content/50 mt-0.5">Weekly volume</div>
+                        </div>`;
+                }
+                if (p.max_hr_estimate) secondaryChips.push(`Max HR ${p.max_hr_estimate}`);
+            }
+
+            // ── Insights ─────────────────────────────────────────────────────
             const strengths = (p.current_strengths || []).map(s =>
-                `<span class="badge badge-success badge-sm gap-1">${s}</span>`).join('');
+                `<li class="flex gap-2 text-sm"><span class="text-success mt-0.5">✓</span><span>${s}</span></li>`
+            ).join('');
             const limiters = (p.current_limiters || []).map(l =>
-                `<span class="badge badge-warning badge-sm gap-1">${l}</span>`).join('');
+                `<li class="flex gap-2 text-sm"><span class="text-warning mt-0.5">⚠</span><span>${l}</span></li>`
+            ).join('');
+
+            const nextFocusHtml = p.next_focus ? `
+                <div class="mt-3 p-3 bg-primary/5 border border-primary/20 rounded-lg">
+                    <div class="text-xs font-semibold text-primary/80 mb-1">🎯 Next focus</div>
+                    <p class="text-sm text-base-content/80">${p.next_focus}</p>
+                </div>` : '';
 
             const updatedAt = p.last_updated_at
                 ? new Date(p.last_updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
                 : null;
 
             return `
-                <div class="card bg-base-200 border border-base-300">
+                <div class="card bg-base-200 border ${isPrimary ? 'border-primary/40' : 'border-base-300'}">
                     <div class="card-body p-4">
+                        <!-- Header -->
                         <div class="flex items-center justify-between mb-3">
                             <h3 class="font-bold text-base flex items-center gap-2">
                                 <span class="text-xl">${meta.icon}</span> ${meta.label}
+                                ${isPrimary ? '<span class="badge badge-primary badge-xs">Primary</span>' : ''}
                             </h3>
-                            <span class="badge ${confidenceClass(p.profile_confidence)}">${confidenceLabel(p.profile_confidence)} confidence</span>
+                            <span class="badge ${confClass(conf)} badge-sm">${confLabel(conf)}</span>
                         </div>
-                        ${p.summary_text ? `<p class="text-xs text-base-content/70 mb-3 italic">"${p.summary_text}"</p>` : ''}
-                        <div class="stats stats-horizontal bg-transparent flex flex-wrap gap-x-4 gap-y-2 mb-3">
-                            ${metrics}
-                        </div>
-                        ${hrLine}
-                        ${strengths ? `<div class="flex flex-wrap gap-1 mt-2">${strengths}</div>` : ''}
-                        ${limiters ? `<div class="flex flex-wrap gap-1 mt-1">${limiters}</div>` : ''}
-                        ${updatedAt ? `<div class="text-[10px] text-base-content/40 mt-3">Updated ${updatedAt}</div>` : ''}
+
+                        <!-- Primary metrics -->
+                        ${primaryMetrics ? `<div class="flex gap-4 mb-3 py-2 border-y border-base-300">${primaryMetrics}</div>` : ''}
+
+                        <!-- Secondary chips -->
+                        ${secondaryChips.length ? `
+                            <div class="flex flex-wrap gap-1.5 mb-3">
+                                ${secondaryChips.map(c => `<span class="badge badge-ghost badge-sm text-base-content/60">${c}</span>`).join('')}
+                            </div>` : ''}
+
+                        <!-- Insights -->
+                        ${(strengths || limiters) ? `
+                            <ul class="space-y-1.5 mb-1">
+                                ${strengths}${limiters}
+                            </ul>` : ''}
+
+                        <!-- Next focus -->
+                        ${nextFocusHtml}
+
+                        ${updatedAt ? `<div class="text-[10px] text-base-content/30 mt-3">Updated ${updatedAt}</div>` : ''}
                     </div>
                 </div>`;
-        }).join('')}</div>`;
+        }).join('');
+
+        container.innerHTML = identityHtml + `<div class="grid grid-cols-1 md:grid-cols-2 gap-4">${cards}</div>`;
     }
 
     setupEventListeners() {
