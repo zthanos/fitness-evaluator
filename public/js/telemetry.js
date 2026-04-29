@@ -240,6 +240,252 @@ function renderLogs(data) {
   }).join('');
 }
 
+// ── Render: traces table ───────────────────────────────────────────────────
+
+const INTENT_BADGE = {
+  activity_list:    'badge-info',
+  workout_analysis: 'badge-warning',
+  recovery_check:   'badge-success',
+  progress_check:   'badge-secondary',
+  plan_generation:  'badge-primary',
+  nutrition_check:  'badge-accent',
+  general:          'badge-ghost',
+};
+
+function intentBadge(intent) {
+  const cls = INTENT_BADGE[intent] ?? 'badge-ghost';
+  return `<span class="badge badge-sm ${cls} font-mono">${intent ?? '—'}</span>`;
+}
+
+function renderTraces(data) {
+  const tbody = document.getElementById('traces-tbody');
+  const rows = data.traces ?? [];
+  if (rows.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" class="text-center text-base-content/40 py-6">No traces yet — send a chat message first</td></tr>';
+    return;
+  }
+  tbody.innerHTML = rows.map(t => {
+    const toolCls = t.tool_calls_made > 0 ? 'text-info font-bold' : 'text-base-content/30';
+    const latCls  = t.total_latency_ms > 10000 ? 'text-error' : t.total_latency_ms > 4000 ? 'text-warning' : 'text-success';
+    const modelShort = (t.model_used || '—').split('/').pop().split(':')[0];
+    return `
+      <tr class="cursor-pointer hover:bg-base-200 transition-colors" onclick="showTrace('${t.trace_id}')">
+        <td class="text-xs text-base-content/50 whitespace-nowrap">${fmtTime(t.timestamp)}</td>
+        <td>${intentBadge(t.intent)}</td>
+        <td class="text-xs font-mono truncate max-w-[120px]" title="${t.model_used}">${modelShort}</td>
+        <td class="text-right ${toolCls}">${t.tool_calls_made}</td>
+        <td class="text-right font-mono text-xs">${t.iterations}</td>
+        <td class="text-right font-mono text-xs ${latCls}">${fmtMs(t.total_latency_ms)}</td>
+        <td class="text-xs text-base-content/60 truncate max-w-[200px]" title="${(t.user_message || '').replace(/"/g, '&quot;')}">${t.user_message || '—'}</td>
+      </tr>`;
+  }).join('');
+}
+
+// ── Trace drill-down modal ─────────────────────────────────────────────────
+
+const STEP_STYLE = {
+  think:   { badge: 'badge-info',    icon: '🧠', label: 'THINK' },
+  act:     { badge: 'badge-warning', icon: '⚙️',  label: 'ACT'   },
+  observe: { badge: 'badge-success', icon: '👁️',  label: 'OBSERVE' },
+};
+
+function fmtParams(params) {
+  if (!params || Object.keys(params).length === 0) return '<span class="text-base-content/30">—</span>';
+  try {
+    return `<pre class="text-xs bg-base-300 rounded p-2 overflow-x-auto whitespace-pre-wrap break-all">${JSON.stringify(params, null, 2)}</pre>`;
+  } catch { return String(params); }
+}
+
+function renderTraceDetail(t) {
+  const modal = document.getElementById('trace-modal');
+  document.getElementById('trace-modal-title').textContent =
+    `Trace — ${t.intent ?? 'unknown'} → ${(t.final_content || '').slice(0, 60)}${t.final_content?.length > 60 ? '…' : ''}`;
+  document.getElementById('trace-modal-meta').textContent =
+    `${new Date(t.timestamp * 1000).toLocaleString()}  ·  session ${t.session_id}  ·  user ${t.user_id}`;
+
+  // Copy button
+  const copyBtn = document.getElementById('trace-copy-btn');
+  copyBtn.onclick = () => {
+    navigator.clipboard.writeText(JSON.stringify(t, null, 2)).then(() => {
+      const orig = copyBtn.textContent;
+      copyBtn.textContent = 'Copied!';
+      setTimeout(() => { copyBtn.textContent = orig; }, 1500);
+    });
+  };
+
+  // ── Overview stats ────────────────────────────────────────────────────────
+  const overviewHtml = `
+    <div>
+      <h4 class="font-semibold text-sm mb-2">Overview</h4>
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        ${statCard('Intent', intentBadge(t.intent))}
+        ${statCard('Total Latency', `<span class="font-mono">${fmtMs(t.total_latency_ms)}</span>`)}
+        ${statCard('Tool Calls', `<span class="text-2xl font-black ${t.tool_calls_made > 0 ? 'text-info' : 'text-base-content/30'}">${t.tool_calls_made}</span>`)}
+        ${statCard('Model', `<span class="font-mono text-xs break-all">${(t.model_used || '—').split('/').pop()}</span>`)}
+      </div>
+      <div class="grid grid-cols-3 gap-3 mt-3">
+        ${statCard('Retrieval', `<span class="font-mono text-sm">${fmtMs(t.retrieval_latency_ms)}</span>`)}
+        ${statCard('Model', `<span class="font-mono text-sm">${fmtMs(t.model_latency_ms)}</span>`)}
+        ${statCard('Context Tokens', `<span class="font-mono text-sm">${t.total_context_tokens ?? 0}</span>`)}
+      </div>
+    </div>`;
+
+  // ── Context layer tokens ──────────────────────────────────────────────────
+  const tokens = t.context_tokens ?? {};
+  const totalTok = Object.values(tokens).reduce((a, b) => a + b, 0) || 1;
+  const tokenRows = Object.entries(tokens)
+    .filter(([, v]) => v > 0)
+    .sort(([, a], [, b]) => b - a)
+    .map(([layer, count]) => {
+      const pct = Math.min(100, Math.round((count / totalTok) * 100));
+      return `
+        <div class="flex items-center gap-2 text-xs">
+          <span class="w-40 text-base-content/60 truncate">${layer.replace(/_/g, ' ')}</span>
+          <div class="flex-1 bg-base-300 rounded-full h-2">
+            <div class="bg-primary h-2 rounded-full" style="width:${pct}%"></div>
+          </div>
+          <span class="font-mono w-12 text-right">${count}</span>
+        </div>`;
+    }).join('');
+  const contextHtml = tokenRows ? `
+    <div>
+      <h4 class="font-semibold text-sm mb-2">Context Layers</h4>
+      <div class="space-y-1.5">${tokenRows}</div>
+    </div>` : '';
+
+  // ── User message ──────────────────────────────────────────────────────────
+  const messageHtml = `
+    <div>
+      <h4 class="font-semibold text-sm mb-1">User Message</h4>
+      <div class="bg-base-200 rounded-lg px-3 py-2 text-sm">${(t.user_message || '—').replace(/</g, '&lt;')}</div>
+    </div>`;
+
+  // ── Chain of thought timeline ─────────────────────────────────────────────
+  let cotHtml = '';
+  if (t.intent_used_tools && t.react_steps?.length > 0) {
+    const stepCards = t.react_steps.map((s, i) => {
+      const style = STEP_STYLE[s.step] ?? { badge: 'badge-ghost', icon: '•', label: s.step.toUpperCase() };
+      const meta = s.metadata ?? {};
+      let extraHtml = '';
+
+      if (s.step === 'think' && meta.tool_calls_requested?.length > 0) {
+        extraHtml = `<div class="mt-1 text-xs text-info">→ will call: <span class="font-mono font-bold">${meta.tool_calls_requested.join(', ')}</span></div>`;
+      } else if (s.step === 'think' && meta.tool_calls_requested?.length === 0) {
+        extraHtml = `<div class="mt-1 text-xs text-success">→ producing final answer (no tool calls)</div>`;
+      } else if (s.step === 'act') {
+        const success = meta.success !== false;
+        extraHtml = `<div class="mt-1 text-xs ${success ? 'text-success' : 'text-error'}">
+          <span class="font-mono font-bold">${meta.tool_name ?? ''}</span>
+          ${success ? '✓ succeeded' : '✗ failed'}
+          ${meta.error_type ? `<span class="opacity-60"> (${meta.error_type})</span>` : ''}
+        </div>`;
+      } else if (s.step === 'observe') {
+        const success = meta.success !== false;
+        extraHtml = `<div class="mt-1 text-xs ${success ? 'text-base-content/50' : 'text-error'}">
+          result appended ${success ? '' : '(error)'} · ${meta.result_length ?? '?'} chars
+        </div>`;
+      }
+
+      return `
+        <div class="flex gap-3">
+          <div class="flex flex-col items-center">
+            <div class="badge ${style.badge} badge-sm w-6 h-6 flex-shrink-0 text-xs">${style.icon}</div>
+            ${i < t.react_steps.length - 1 ? '<div class="w-px flex-1 bg-base-300 mt-1"></div>' : ''}
+          </div>
+          <div class="pb-3 flex-1 min-w-0">
+            <div class="flex items-center gap-2 mb-0.5">
+              <span class="font-semibold text-xs">${style.label}</span>
+              <span class="text-xs text-base-content/40">iter ${s.iteration}</span>
+              <span class="text-xs text-base-content/40 ml-auto">${fmtMs(s.latency_ms)}</span>
+            </div>
+            <p class="text-xs text-base-content/70">${s.detail}</p>
+            ${extraHtml}
+          </div>
+        </div>`;
+    }).join('');
+
+    cotHtml = `
+      <div>
+        <h4 class="font-semibold text-sm mb-3">Chain of Thought</h4>
+        <div class="space-y-0">${stepCards}</div>
+      </div>`;
+  } else if (!t.intent_used_tools) {
+    cotHtml = `
+      <div>
+        <h4 class="font-semibold text-sm mb-2">Chain of Thought</h4>
+        <div class="bg-base-200 rounded-lg px-3 py-2 text-xs text-base-content/60">
+          Structured output path (LLMAdapter) — no tool calls were made for this intent.
+        </div>
+      </div>`;
+  }
+
+  // ── Tool call cards ───────────────────────────────────────────────────────
+  let toolsHtml = '';
+  if (t.tool_calls?.length > 0) {
+    const cards = t.tool_calls.map(tc => {
+      const successCls = tc.success ? 'border-success/30 bg-success/5' : 'border-error/30 bg-error/5';
+      const successIcon = tc.success ? '✓' : '✗';
+      const successTxt = tc.success ? 'text-success' : 'text-error';
+      return `
+        <div class="border ${successCls} rounded-lg p-3 space-y-2">
+          <div class="flex items-center justify-between gap-2">
+            <div class="flex items-center gap-2">
+              <span class="${successTxt} font-bold text-xs">${successIcon}</span>
+              <span class="font-mono font-bold text-sm">${tc.tool_name}</span>
+              <span class="badge badge-ghost badge-xs">iter ${tc.iteration}</span>
+            </div>
+            <span class="text-xs font-mono text-base-content/50">${fmtMs(tc.latency_ms)}</span>
+          </div>
+          ${tc.error ? `<div class="text-xs text-error">${tc.error}${tc.error_type ? ` (${tc.error_type})` : ''}</div>` : ''}
+          <details class="text-xs">
+            <summary class="cursor-pointer text-base-content/50 hover:text-base-content select-none">Parameters</summary>
+            ${fmtParams(tc.parameters)}
+          </details>
+          ${tc.result_preview ? `
+          <details class="text-xs">
+            <summary class="cursor-pointer text-base-content/50 hover:text-base-content select-none">Result preview</summary>
+            <pre class="bg-base-300 rounded p-2 mt-1 overflow-x-auto whitespace-pre-wrap break-all text-xs">${tc.result_preview.replace(/</g, '&lt;')}</pre>
+          </details>` : ''}
+        </div>`;
+    }).join('');
+    toolsHtml = `<div><h4 class="font-semibold text-sm mb-2">Tool Calls</h4><div class="space-y-3">${cards}</div></div>`;
+  }
+
+  // ── Final response preview ────────────────────────────────────────────────
+  const responseHtml = t.final_content ? `
+    <div>
+      <h4 class="font-semibold text-sm mb-1">Response Preview</h4>
+      <div class="bg-base-200 rounded-lg px-3 py-2 text-sm text-base-content/80 whitespace-pre-wrap">${t.final_content.replace(/</g, '&lt;')}${(t.final_content?.length ?? 0) >= 300 ? '…' : ''}</div>
+    </div>` : '';
+
+  document.getElementById('trace-modal-body').innerHTML =
+    [overviewHtml, contextHtml, messageHtml, cotHtml, toolsHtml, responseHtml].filter(Boolean).join('');
+
+  modal.showModal();
+}
+
+function statCard(label, valueHtml) {
+  return `
+    <div class="bg-base-200 rounded-xl p-3">
+      <div class="text-xs text-base-content/50 mb-1">${label}</div>
+      <div>${valueHtml}</div>
+    </div>`;
+}
+
+window.showTrace = async function(traceId) {
+  const modal = document.getElementById('trace-modal');
+  document.getElementById('trace-modal-body').innerHTML =
+    '<div class="text-center py-8 text-base-content/30">Loading…</div>';
+  modal.showModal();
+  try {
+    const t = await apiFetch(`/api/telemetry/traces/${traceId}`);
+    renderTraceDetail(t);
+  } catch (err) {
+    document.getElementById('trace-modal-body').innerHTML =
+      `<div class="text-error text-sm">Failed to load trace: ${err.message}</div>`;
+  }
+};
+
 // ── Fetch & refresh cycle ──────────────────────────────────────────────────
 
 async function refresh() {
@@ -250,14 +496,16 @@ async function refresh() {
   const logLevel = document.getElementById('log-level-filter').value;
 
   try {
-    const [health, stats, logs] = await Promise.all([
+    const [health, stats, logs, tracesData] = await Promise.all([
       apiFetch('/api/telemetry/health'),
       apiFetch(`/api/telemetry/stats?window=${window_}`),
       apiFetch(`/api/telemetry/logs?limit=50${logLevel ? '&level=' + logLevel : ''}`),
+      apiFetch('/api/telemetry/traces?limit=30'),
     ]);
     renderHealth(health);
     renderStats(stats);
     renderLogs(logs);
+    renderTraces(tracesData);
     document.getElementById('last-updated').textContent = new Date().toLocaleTimeString();
   } catch (err) {
     console.error('Telemetry fetch error:', err);

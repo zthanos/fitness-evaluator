@@ -13,6 +13,14 @@ from sqlalchemy.orm import Session
 from app.ai.skills.base_skill import BaseSkill
 from app.ai.skills.schemas import FitnessState, FitnessStateInput
 
+# Activity types grouped for classification
+_SPORT_GROUPS = {
+    "run": {"Run", "VirtualRun", "TrailRun"},
+    "ride": {"Ride", "VirtualRide", "MountainBikeRide", "GravelRide", "EBikeRide"},
+    "swim": {"Swim", "OpenWaterSwim"},
+    "strength": {"WeightTraining", "Crossfit", "Yoga", "Pilates", "Workout"},
+}
+
 logger = logging.getLogger(__name__)
 
 _SYSTEM_PROMPT = """You are a precision endurance coach.
@@ -109,6 +117,9 @@ class FitnessStateBuilder(BaseSkill[FitnessStateInput, FitnessState]):
             2
         ))
 
+        fitness_score = self._compute_fitness_score(acwr, consistency, confidence, len(analyses))
+        athlete_classification = self._classify_athlete(lookback_days)
+
         return FitnessState(
             athlete_id=self.athlete_id,
             comfort_cadence_indoor= round(mean(indoor_cadences), 1)  if indoor_cadences  else None,
@@ -124,6 +135,8 @@ class FitnessStateBuilder(BaseSkill[FitnessStateInput, FitnessState]):
             state_confidence=confidence,
             last_updated_at=now,
             summary_text=None,  # filled after LLM call
+            fitness_score=fitness_score,
+            athlete_classification=athlete_classification,
         )
 
     # ── Helpers ──────────────────────────────────────────────────────────────
@@ -214,6 +227,117 @@ class FitnessStateBuilder(BaseSkill[FitnessStateInput, FitnessState]):
         if diff > 1:   return "improving"
         return "stable"
 
+    def _compute_fitness_score(
+        self,
+        acwr: Optional[float],
+        consistency: float,
+        confidence: float,
+        n_analyses: int,
+    ) -> float:
+        """Composite 0-100 score: load balance (40) + consistency (30) + data quality (30)."""
+        # ACWR component: peak at 0.8-1.3 (optimal training zone), 0 at extremes
+        if acwr is None:
+            acwr_score = 0.0
+        elif 0.8 <= acwr <= 1.3:
+            acwr_score = 40.0
+        elif acwr < 0.8:
+            # Under-trained: linear from 0 at acwr=0 to 40 at acwr=0.8
+            acwr_score = (acwr / 0.8) * 40.0
+        else:
+            # Over-reaching: linear from 40 at acwr=1.3 to 0 at acwr=2.0+
+            acwr_score = max(0.0, 40.0 * (1.0 - (acwr - 1.3) / 0.7))
+
+        consistency_score = consistency * 30.0
+        quality_score = confidence * 20.0 + min(10.0, (n_analyses / 10.0) * 10.0)
+
+        return round(min(100.0, acwr_score + consistency_score + quality_score), 1)
+
+    def _classify_athlete(self, lookback_days: int) -> str:
+        """Classify athlete by dominant sport and training volume over lookback period."""
+        from app.models.strava_activity import StravaActivity
+
+        cutoff = datetime.now(timezone.utc) - timedelta(days=lookback_days)
+        rows = (
+            self.db.query(
+                StravaActivity.activity_type,
+                StravaActivity.sport_type,
+                StravaActivity.moving_time_s,
+                StravaActivity.distance_m,
+            )
+            .filter(
+                StravaActivity.athlete_id == self.athlete_id,
+                StravaActivity.start_date >= cutoff,
+            )
+            .all()
+        )
+
+        if not rows:
+            return "Fitness Enthusiast"
+
+        group_counts: dict[str, int] = Counter()
+        total_run_km = 0.0
+        total_ride_km = 0.0
+        weeks = max(1, lookback_days / 7)
+
+        for row in rows:
+            sport = row.sport_type or row.activity_type or ""
+            for group, types in _SPORT_GROUPS.items():
+                if sport in types:
+                    group_counts[group] += 1
+                    break
+            else:
+                group_counts["other"] = group_counts.get("other", 0) + 1
+
+            if sport in _SPORT_GROUPS["run"] and row.distance_m:
+                total_run_km += row.distance_m / 1000
+            if sport in _SPORT_GROUPS["ride"] and row.distance_m:
+                total_ride_km += row.distance_m / 1000
+
+        run_count   = group_counts.get("run", 0)
+        ride_count  = group_counts.get("ride", 0)
+        swim_count  = group_counts.get("swim", 0)
+        strength_count = group_counts.get("strength", 0)
+        total       = sum(group_counts.values())
+
+        run_km_week  = total_run_km  / weeks
+        ride_km_week = total_ride_km / weeks
+
+        # Multi-sport triathlete detection: meaningful presence in 3 disciplines
+        if run_count >= 3 and ride_count >= 3 and swim_count >= 2:
+            return "Amateur Triathlete"
+
+        # Dual-sport: significant run + ride
+        if run_count >= 4 and ride_count >= 4:
+            return "Duathlete"
+
+        dominant = max(group_counts, key=group_counts.get)
+
+        if dominant == "run":
+            if run_km_week >= 50:
+                return "Competitive Runner"
+            if run_km_week >= 20:
+                return "Dedicated Runner"
+            return "Recreational Runner"
+
+        if dominant == "ride":
+            if ride_km_week >= 200:
+                return "Competitive Cyclist"
+            if ride_km_week >= 80:
+                return "Dedicated Cyclist"
+            return "Recreational Cyclist"
+
+        if dominant == "swim":
+            return "Swimmer"
+
+        if dominant == "strength":
+            return "Strength Athlete"
+
+        # Low overall volume
+        if total <= 4:
+            return "Weekend Warrior"
+
+        return "Fitness Enthusiast"
+
     # ── Persistence ──────────────────────────────────────────────────────────
 
     def _upsert(self, state: FitnessState) -> None:
@@ -237,6 +361,8 @@ class FitnessStateBuilder(BaseSkill[FitnessStateInput, FitnessState]):
             "state_confidence":        state.state_confidence,
             "last_updated_at":         state.last_updated_at,
             "summary_text":            state.summary_text,
+            "fitness_score":           state.fitness_score,
+            "athlete_classification":  state.athlete_classification,
         }
         if existing:
             for k, v in fields.items():

@@ -31,15 +31,38 @@ _CADENCE_BANDS = {
     0.0:  "poor",
 }
 
-_SYSTEM_PROMPT = """You are a precision endurance coach.
-You receive structured metrics for one workout and must produce:
-1. limiter_hypothesis — the most likely performance limiter (e.g. "aerobic_base",
-   "cadence_capacity", "outdoor_transfer", "strength_endurance", "pacing").
-2. main_insight — one sentence naming the key finding from this session.
-3. next_action — one concrete, specific thing the athlete should do next.
+_SYSTEM_PROMPT = """You are a precision endurance coach analysing one of your athlete's sessions.
 
-Be direct and specific. Reference actual numbers. No generic advice.
-Respond ONLY with a JSON object with keys: limiter_hypothesis, main_insight, next_action."""
+Speak directly to the athlete — always "you/your", never "the athlete".
+Reference their actual numbers from the session AND from their personal baseline (provided below).
+Use athlete_demographics (age, weight, resting HR) when relevant — e.g. age informs what "close to max HR" means, weight matters for power-to-weight context.
+
+Produce six fields:
+
+1. limiter_hypothesis — the single most likely limiter token:
+   "aerobic_base" | "cadence_capacity" | "outdoor_transfer" | "strength_endurance" | "pacing" | "volume"
+
+2. session_type — one sentence characterising what kind of session this was.
+   Include the actual HR and/or power numbers. E.g.:
+   "Hard session — avg HR 144 bpm, max 168 bpm, close to your observed max HR, stressing the upper aerobic / threshold range."
+
+3. main_insight — 1-2 sentences on what this session reveals about the athlete's current capabilities or gaps.
+   Must reference at least one actual number AND compare against their personal baseline, not generic targets.
+   E.g. "You can sustain high cardiovascular effort, but cadence dropped to 63 rpm — well below your indoor typical of 78 rpm."
+
+4. key_limiter — a short human-readable label for the primary limiter (3-8 words).
+   E.g. "Cadence control under cardiovascular load."
+
+5. why_it_matters — 1-2 sentences explaining the physiological or performance consequence of this limiter for THIS sport.
+   E.g. "When cadence drops while HR stays high, you convert more effort into muscle strain than forward momentum — making climbs and long efforts feel harder than they need to."
+
+6. next_action — one concrete, achievable next step for THIS athlete at their current level.
+   Calibrate to their actual baseline numbers, not ideal targets.
+   E.g. if their typical cadence is 63 rpm, prescribe a progression step ("add 2×10 min targeting 70 rpm"), not 90 rpm intervals.
+
+No pleasantries. No generic advice. Be sport-specific.
+Respond ONLY with valid JSON:
+{"limiter_hypothesis": "...", "session_type": "...", "main_insight": "...", "key_limiter": "...", "why_it_matters": "...", "next_action": "..."}"""
 
 
 class WorkoutAnalyzer(BaseSkill[WorkoutAnalyzerInput, list[WorkoutAnalysis]]):
@@ -119,7 +142,10 @@ class WorkoutAnalyzer(BaseSkill[WorkoutAnalyzerInput, list[WorkoutAnalysis]]):
             training_purpose=training_purpose,
             suffer_score=row.suffer_score,
             limiter_hypothesis=llm_out.get("limiter_hypothesis"),
+            session_type=llm_out.get("session_type"),
             main_insight=llm_out.get("main_insight", ""),
+            key_limiter=llm_out.get("key_limiter"),
+            why_it_matters=llm_out.get("why_it_matters"),
             next_action=llm_out.get("next_action", ""),
             confidence=confidence,
         )
@@ -142,14 +168,23 @@ class WorkoutAnalyzer(BaseSkill[WorkoutAnalyzerInput, list[WorkoutAnalysis]]):
     ) -> tuple[str, Optional[str]]:
         if avg_hr is None:
             return "no_data", None
-        # Simplified zone estimate — uses 220-age max HR approximation
-        # Without athlete max HR we use absolute thresholds
-        if avg_hr < 115:
-            return "controlled", "Z1"
-        if avg_hr < 140:
-            return "moderate",   "Z2"
-        if avg_hr < 160:
-            return "high",       "Z3-Z4"
+
+        # Use athlete-relative zones from sport profile when available
+        profile_max_hr = self._get_max_hr_from_profile()
+        effective_max = profile_max_hr or max_hr
+
+        if effective_max and effective_max > 0:
+            pct = avg_hr / effective_max
+            if pct < 0.60:  return "controlled", "Z1"
+            if pct < 0.70:  return "moderate",   "Z2"
+            if pct < 0.80:  return "moderate",   "Z3"
+            if pct < 0.90:  return "high",        "Z4"
+            return "maximal", "Z5"
+
+        # Fallback: absolute thresholds (no max HR data)
+        if avg_hr < 115:  return "controlled", "Z1"
+        if avg_hr < 140:  return "moderate",   "Z2"
+        if avg_hr < 160:  return "high",        "Z3-Z4"
         return "maximal", "Z5"
 
     def _compute_effort(
@@ -182,8 +217,34 @@ class WorkoutAnalyzer(BaseSkill[WorkoutAnalyzerInput, list[WorkoutAnalysis]]):
         return base
 
     def _get_ftp(self) -> Optional[float]:
-        """Return athlete's FTP if stored — placeholder for future expansion."""
-        return None
+        """Return FTP estimate from the athlete's ride sport profile, or None."""
+        try:
+            from app.models.athlete_sport_profile import AthleteSportProfile
+            profile = (
+                self.db.query(AthleteSportProfile)
+                .filter_by(athlete_id=self.athlete_id, sport_group="ride")
+                .first()
+            )
+            return profile.ftp_estimate_w if profile else None
+        except Exception:
+            return None
+
+    def _get_max_hr_from_profile(self) -> Optional[int]:
+        """Return max_hr_estimate from whichever sport profile has the highest value."""
+        try:
+            from app.models.athlete_sport_profile import AthleteSportProfile
+            rows = (
+                self.db.query(AthleteSportProfile.max_hr_estimate)
+                .filter(
+                    AthleteSportProfile.athlete_id == self.athlete_id,
+                    AthleteSportProfile.max_hr_estimate.isnot(None),
+                )
+                .all()
+            )
+            vals = [r.max_hr_estimate for r in rows if r.max_hr_estimate]
+            return max(vals) if vals else None
+        except Exception:
+            return None
 
     def _compute_confidence(self, row) -> float:
         """Score 0-1 based on how many key fields are populated."""
@@ -198,15 +259,51 @@ class WorkoutAnalyzer(BaseSkill[WorkoutAnalyzerInput, list[WorkoutAnalysis]]):
         self, row, sport, is_indoor, cadence_quality,
         hr_response, effort_level, target_rpm, intensity_factor
     ) -> dict:
+        # Determine sport_group for profile lookup
+        sport_group = None
+        for grp, types in [
+            ("ride", {"Ride", "VirtualRide", "MountainBikeRide", "GravelRide", "EBikeRide"}),
+            ("run",  {"Run", "VirtualRun", "TrailRun"}),
+            ("swim", {"Swim", "OpenWaterSwim"}),
+        ]:
+            if sport in types or (row.activity_type or "") in types:
+                sport_group = grp
+                break
+
+        athlete_baseline: dict = {}
+        if sport_group:
+            try:
+                from app.models.athlete_sport_profile import AthleteSportProfile
+                profile = (
+                    self.db.query(AthleteSportProfile)
+                    .filter_by(athlete_id=self.athlete_id, sport_group=sport_group)
+                    .first()
+                )
+                if profile:
+                    athlete_baseline = {
+                        "your_typical_cadence_rpm":      profile.typical_cadence_rpm,
+                        "your_indoor_cadence_rpm":       profile.indoor_cadence_rpm,
+                        "your_outdoor_cadence_rpm":      profile.outdoor_cadence_rpm,
+                        "your_ftp_estimate_w":           profile.ftp_estimate_w,
+                        "your_ftp_confidence":           profile.ftp_confidence,
+                        "your_max_hr_estimate":          profile.max_hr_estimate,
+                        "your_weekly_volume_km":         profile.weekly_volume_km,
+                        "your_typical_speed_kmh":        profile.typical_endurance_speed_kmh,
+                        "your_current_limiters":         profile.current_limiters,
+                    }
+            except Exception:
+                pass
+
         metrics = {
             "sport": sport,
             "indoor": is_indoor,
             "duration_min": round(row.moving_time_s / 60, 1) if row.moving_time_s else None,
             "distance_km": round(row.distance_m / 1000, 2) if row.distance_m else None,
             "elevation_m": row.elevation_m,
-            "avg_cadence": row.avg_cadence,
+            # This session
+            "this_session_cadence_rpm": row.avg_cadence,
             "max_cadence": row.max_cadence,
-            "cadence_target_rpm": target_rpm,
+            "cadence_benchmark_rpm": target_rpm,   # sport benchmark, not personal target
             "cadence_quality": cadence_quality,
             "avg_hr": row.avg_hr,
             "max_hr": row.max_hr,
@@ -216,6 +313,10 @@ class WorkoutAnalyzer(BaseSkill[WorkoutAnalyzerInput, list[WorkoutAnalysis]]):
             "intensity_factor": intensity_factor,
             "effort_level": effort_level,
             "suffer_score": row.suffer_score,
+            # Athlete's personal baseline — use this to contextualise gaps
+            "athlete_baseline": athlete_baseline or "no profile data yet",
+            # Athlete demographics — use for age-appropriate HR context and power-to-weight
+            "athlete_demographics": self._get_athlete_demographics() or "not available",
         }
         raw = await self._llm_reason(_SYSTEM_PROMPT, json.dumps(metrics, default=str))
         try:

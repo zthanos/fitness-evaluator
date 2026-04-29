@@ -31,7 +31,8 @@ class DashboardPage {
         this.loadWeightTrendChart(),
         this.loadRecentActivities(),
         this.loadRecentLogs(),
-        this.loadLatestEvaluation()
+        this.loadLatestEvaluation(),
+        this.loadSportProfiles(),
       ]);
     } catch (error) {
       console.error('Error loading dashboard:', error);
@@ -271,6 +272,75 @@ class DashboardPage {
     }
   }
   
+  async loadSportProfiles() {
+    const container = document.getElementById('dashboard-sport-profiles');
+    if (!container) return;
+    try {
+      const data = await api.get('/dashboard/sport-profiles');
+      const profiles = data.profiles || [];
+
+      if (profiles.length === 0) {
+        container.innerHTML = `
+          <div class="text-center py-6 text-base-content/60">
+            <p class="mb-2">No sport profiles yet.</p>
+            <a href="/settings" class="btn btn-sm btn-primary">Build Profiles in Profile Settings</a>
+          </div>`;
+        return;
+      }
+
+      const sportMeta = {
+        ride:     { label: 'Cycling',  icon: '🚴' },
+        run:      { label: 'Running',  icon: '🏃' },
+        swim:     { label: 'Swimming', icon: '🏊' },
+        strength: { label: 'Strength', icon: '🏋️' },
+      };
+      const confidenceClass = (c) => c >= 0.7 ? 'badge-success' : c >= 0.4 ? 'badge-warning' : 'badge-error';
+      const confidenceLabel = (c) => c >= 0.7 ? 'High' : c >= 0.4 ? 'Medium' : 'Low';
+      const fmt = (v, decimals = 1) => v != null ? parseFloat(v).toFixed(decimals) : '—';
+
+      container.innerHTML = `<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-2">${
+        profiles.map(p => {
+          const meta = sportMeta[p.sport_group] || { label: p.sport_group, icon: '🏅' };
+
+          // Build 2-3 key metric pills per sport
+          const pills = [];
+          if (p.sport_group === 'ride') {
+            if (p.ftp_estimate_w)            pills.push(`FTP ${Math.round(p.ftp_estimate_w)}W`);
+            if (p.typical_cadence_rpm)       pills.push(`${Math.round(p.typical_cadence_rpm)} rpm`);
+            if (p.typical_endurance_speed_kmh) pills.push(`${fmt(p.typical_endurance_speed_kmh)} km/h`);
+          } else if (p.sport_group === 'run') {
+            if (p.best_60min_distance_km)    pills.push(`${fmt(p.best_60min_distance_km)} km/h best`);
+            if (p.typical_endurance_speed_kmh) pills.push(`${fmt(60 / p.typical_endurance_speed_kmh)} min/km`);
+          } else {
+            if (p.weekly_training_time_min)  pills.push(`${Math.round(p.weekly_training_time_min)} min/wk`);
+          }
+          if (p.max_hr_estimate)             pills.push(`Max HR ${p.max_hr_estimate}`);
+          if (p.weekly_volume_km && p.sport_group !== 'strength') pills.push(`${fmt(p.weekly_volume_km)} km/wk`);
+
+          const limiters = (p.current_limiters || []).slice(0, 2)
+            .map(l => `<span class="badge badge-warning badge-xs">${l}</span>`).join('');
+
+          return `
+            <div class="bg-base-200 rounded-xl p-4 flex flex-col gap-2">
+              <div class="flex items-center justify-between">
+                <span class="font-semibold flex items-center gap-1.5">
+                  <span class="text-lg">${meta.icon}</span> ${meta.label}
+                </span>
+                <span class="badge badge-sm ${confidenceClass(p.profile_confidence || 0)}">${confidenceLabel(p.profile_confidence || 0)}</span>
+              </div>
+              <div class="flex flex-wrap gap-1">
+                ${pills.map(t => `<span class="badge badge-outline badge-sm">${t}</span>`).join('')}
+              </div>
+              ${limiters ? `<div class="flex flex-wrap gap-1">${limiters}</div>` : ''}
+              ${p.summary_text ? `<p class="text-[11px] text-base-content/50 leading-tight italic">${p.summary_text}</p>` : ''}
+            </div>`;
+        }).join('')
+      }</div>`;
+    } catch (err) {
+      container.innerHTML = '<p class="text-base-content/60 text-sm py-2">Sport profiles unavailable.</p>';
+    }
+  }
+
   destroy() {
     if (this.activityVolumeChart) this.activityVolumeChart.destroy();
     if (this.weightTrendChart) this.weightTrendChart.destroy();

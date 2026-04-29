@@ -1,9 +1,10 @@
 """Settings API endpoints for profile, Strava, and LLM configuration."""
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field, field_validator
 from datetime import date
+from pathlib import Path
 from typing import Optional
 import re
 from app.database import get_db
@@ -13,10 +14,43 @@ from app.models.athlete import Athlete
 router = APIRouter()
 
 
+def _profile_to_dict(p) -> dict:
+    return {
+        "sport_group": p.sport_group,
+        "profile_confidence": p.profile_confidence,
+        "last_updated_at": p.last_updated_at.isoformat() if p.last_updated_at else None,
+        "summary_text": p.summary_text,
+        "weekly_volume_km": p.weekly_volume_km,
+        "weekly_training_time_min": p.weekly_training_time_min,
+        "longest_distance_km": p.longest_distance_km,
+        "best_60min_distance_km": p.best_60min_distance_km,
+        "best_120min_distance_km": p.best_120min_distance_km,
+        "typical_endurance_speed_kmh": p.typical_endurance_speed_kmh,
+        "best_long_speed_kmh": p.best_long_speed_kmh,
+        "typical_cadence_rpm": p.typical_cadence_rpm,
+        "indoor_cadence_rpm": p.indoor_cadence_rpm,
+        "outdoor_cadence_rpm": p.outdoor_cadence_rpm,
+        "climbing_cadence_rpm": p.climbing_cadence_rpm,
+        "ftp_estimate_w": p.ftp_estimate_w,
+        "ftp_confidence": p.ftp_confidence,
+        "avg_power_baseline_w": p.avg_power_baseline_w,
+        "max_hr_estimate": p.max_hr_estimate,
+        "hr_zone_model": p.hr_zone_model,
+        "pace_zone_model": p.pace_zone_model,
+        "current_strengths": p.current_strengths or [],
+        "current_limiters": p.current_limiters or [],
+    }
+
+_AVATAR_DIR = Path(__file__).parent.parent.parent / "public" / "assets" / "avatars"
+_ALLOWED_MIME = {"image/jpeg", "image/png", "image/webp", "image/gif"}
+_MAX_BYTES = 2 * 1024 * 1024  # 2 MB
+
+
 class ProfileUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=255)
     email: Optional[str] = None
     date_of_birth: Optional[date] = None
+    height_cm: Optional[int] = Field(None, ge=100, le=250)
 
     @field_validator('email')
     @classmethod
@@ -27,7 +61,7 @@ class ProfileUpdate(BaseModel):
         return v
 
     class Config:
-        json_schema_extra = {"example": {"name": "John Doe", "email": "john@example.com", "date_of_birth": "1990-01-15"}}
+        json_schema_extra = {"example": {"name": "John Doe", "email": "john@example.com", "date_of_birth": "1990-01-15", "height_cm": 175}}
 
 
 class ProfileResponse(BaseModel):
@@ -35,6 +69,8 @@ class ProfileResponse(BaseModel):
     name: str
     email: Optional[str]
     date_of_birth: Optional[date]
+    height_cm: Optional[int]
+    avatar_url: Optional[str]
     current_plan: Optional[str]
     goals: Optional[str]
 
@@ -71,7 +107,38 @@ async def update_profile(
         if profile_data.date_of_birth < date(1900, 1, 1) or profile_data.date_of_birth > today:
             raise HTTPException(status_code=400, detail=f"Date of birth must be between 1900-01-01 and {today}")
         athlete.date_of_birth = profile_data.date_of_birth
+    if profile_data.height_cm is not None:
+        athlete.height_cm = profile_data.height_cm
 
+    db.commit()
+    db.refresh(athlete)
+    return athlete
+
+
+@router.post("/profile/avatar", response_model=ProfileResponse, summary="Upload profile photo")
+async def upload_avatar(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    athlete: Athlete = Depends(get_current_athlete),
+):
+    if file.content_type not in _ALLOWED_MIME:
+        raise HTTPException(status_code=400, detail="Only JPEG, PNG, WebP, or GIF images are accepted.")
+
+    data = await file.read()
+    if len(data) > _MAX_BYTES:
+        raise HTTPException(status_code=400, detail="Image must be smaller than 2 MB.")
+
+    ext = file.content_type.split("/")[-1].replace("jpeg", "jpg")
+    _AVATAR_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Remove any old avatar file for this athlete
+    for old in _AVATAR_DIR.glob(f"{athlete.id}.*"):
+        old.unlink(missing_ok=True)
+
+    dest = _AVATAR_DIR / f"{athlete.id}.{ext}"
+    dest.write_bytes(data)
+
+    athlete.avatar_url = f"/assets/avatars/{athlete.id}.{ext}"
     db.commit()
     db.refresh(athlete)
     return athlete
@@ -95,6 +162,38 @@ async def update_training_plan(
     db.commit()
     db.refresh(athlete)
     return athlete
+
+
+@router.get("/sport-profiles", summary="Get athlete sport profiles")
+async def get_sport_profiles(
+    db: Session = Depends(get_db),
+    athlete: Athlete = Depends(get_current_athlete),
+):
+    from app.models.athlete_sport_profile import AthleteSportProfile
+    profiles = (
+        db.query(AthleteSportProfile)
+        .filter_by(athlete_id=athlete.id)
+        .order_by(AthleteSportProfile.sport_group)
+        .all()
+    )
+    return {"profiles": [_profile_to_dict(p) for p in profiles]}
+
+
+@router.post("/sport-profiles/rebuild", summary="Rebuild athlete sport profiles from activity history")
+async def rebuild_sport_profiles(
+    db: Session = Depends(get_db),
+    athlete: Athlete = Depends(get_current_athlete),
+):
+    from app.ai.skills.sport_profile_builder import SportProfileBuilder
+    try:
+        builder = SportProfileBuilder(db, athlete.id)
+        profiles = builder.build_all()
+        return {
+            "rebuilt": len(profiles),
+            "profiles": [_profile_to_dict(p) for p in profiles],
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Profile build failed: {exc}")
 
 
 @router.get("/strava", summary="Get Strava connection status")

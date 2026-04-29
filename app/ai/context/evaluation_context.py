@@ -14,6 +14,7 @@ from app.models.strava_activity import StravaActivity
 from app.models.weekly_measurement import WeeklyMeasurement
 from app.models.daily_log import DailyLog
 from app.models.athlete_goal import AthleteGoal
+from app.models.athlete_sport_profile import AthleteSportProfile
 
 
 class EvaluationContextBuilder(ContextBuilder):
@@ -75,15 +76,23 @@ class EvaluationContextBuilder(ContextBuilder):
             AthleteGoal.athlete_id == str(athlete_id),
             AthleteGoal.status == "active"
         ).all()
-        
+
+        # Load athlete sport profiles as baseline context
+        sport_profiles = (
+            self.db.query(AthleteSportProfile)
+            .filter_by(athlete_id=athlete_id)
+            .all()
+        )
+
         # Format as evidence cards
         activity_cards = [self._format_activity_card(a) for a in activities]
         metric_cards = [self._format_metric_card(m) for m in metrics]
         log_cards = [self._format_log_card(l) for l in logs]
         goal_cards = [self._format_goal_card(g) for g in goals]
-        
-        # Add to retrieved data layer
-        self.add_retrieved_data(activity_cards + metric_cards + log_cards + goal_cards)
+        profile_cards = [self._format_sport_profile_card(p) for p in sport_profiles]
+
+        # Add to retrieved data layer — profiles first so the LLM sees baselines before activity data
+        self.add_retrieved_data(profile_cards + activity_cards + metric_cards + log_cards + goal_cards)
         
         return self
     
@@ -151,6 +160,32 @@ class EvaluationContextBuilder(ContextBuilder):
             "adherence_score": log.adherence_score
         }
     
+    def _format_sport_profile_card(self, profile: AthleteSportProfile) -> Dict[str, Any]:
+        card: Dict[str, Any] = {
+            "type": "athlete_sport_profile",
+            "sport": profile.sport_group,
+            "profile_confidence": profile.profile_confidence,
+            "last_updated": profile.last_updated_at.isoformat() if profile.last_updated_at else None,
+            "summary": profile.summary_text,
+            "weekly_volume_km": profile.weekly_volume_km,
+            "weekly_training_time_min": profile.weekly_training_time_min,
+            "longest_distance_km": profile.longest_distance_km,
+            "best_60min_distance_km": profile.best_60min_distance_km,
+            "typical_endurance_speed_kmh": profile.typical_endurance_speed_kmh,
+            "max_hr_estimate": profile.max_hr_estimate,
+            "hr_zone_model": profile.hr_zone_model,
+            "current_strengths": profile.current_strengths or [],
+            "current_limiters": profile.current_limiters or [],
+        }
+        if profile.ftp_estimate_w:
+            card["ftp_w"] = profile.ftp_estimate_w
+            card["ftp_confidence"] = profile.ftp_confidence
+        if profile.typical_cadence_rpm:
+            card["typical_cadence_rpm"] = profile.typical_cadence_rpm
+        if profile.pace_zone_model:
+            card["pace_zones"] = profile.pace_zone_model
+        return card
+
     def _format_goal_card(self, goal: AthleteGoal) -> Dict[str, Any]:
         """
         Format goal as evidence card.

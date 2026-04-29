@@ -2,15 +2,15 @@
 
 from fastapi import APIRouter, HTTPException, Depends, Query, Request, BackgroundTasks
 from sqlalchemy.orm import Session
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Optional, Dict, Any
+import json
 from app.database import get_db, SessionLocal
 from app.middleware.auth import get_current_athlete
 from app.models.athlete import Athlete
 from app.models.strava_activity import StravaActivity
 from app.models.activity_analysis import ActivityAnalysis
 from app.services.strava_service import compute_weekly_aggregates
-from app.services.llm_client import LLMClient
 from app.services.session_matcher import SessionMatcher
 from app.services.strava_client import StravaClient
 import logging
@@ -20,6 +20,16 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _rebuild_sport_profiles(db: Session, athlete_id: int) -> None:
+    """Rebuild all AthleteSportProfile rows for athlete_id (best-effort)."""
+    try:
+        from app.ai.skills.sport_profile_builder import SportProfileBuilder
+        SportProfileBuilder(db, athlete_id).build_all()
+        logger.info("SportProfileBuilder: rebuilt profiles for athlete %d", athlete_id)
+    except Exception as exc:
+        logger.warning("SportProfileBuilder failed for athlete %d: %s", athlete_id, exc)
+
+
 async def _do_sync(athlete_id: int):
     """Background worker: creates its own DB session so it outlives the request."""
     db = SessionLocal()
@@ -27,10 +37,83 @@ async def _do_sync(athlete_id: int):
         client = StravaClient(db)
         count = await client.sync_activities(athlete_id)
         logger.info("Background Strava sync complete for athlete %d: %d activities", athlete_id, count)
+        _rebuild_sport_profiles(db, athlete_id)
     except Exception as e:
         logger.error("Background Strava sync failed for athlete %d: %s", athlete_id, e)
     finally:
         db.close()
+
+
+async def _do_enrich(athlete_id: int, days: int, force: bool):
+    """Background worker: enriches activities with full Strava detail API data."""
+    import asyncio
+    from datetime import timedelta
+    db = SessionLocal()
+    try:
+        client = StravaClient(db)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        query = db.query(StravaActivity).filter(
+            StravaActivity.athlete_id == athlete_id,
+            StravaActivity.start_date >= cutoff,
+        )
+        if not force:
+            # Skip only activities with properly stored JSON that already has splits.
+            # '"splits_metric"' (double-quoted key) only exists in valid JSON from the
+            # detail endpoint. Legacy Python str(dict) rows have 'splits_metric'
+            # (single-quoted) and must be re-fetched to get parseable JSON.
+            query = query.filter(
+                ~StravaActivity.raw_json.contains('"splits_metric"')
+            )
+        activities = query.order_by(StravaActivity.start_date.desc()).all()
+
+        logger.info("Enriching %d activities for athlete %d", len(activities), athlete_id)
+        enriched_count = 0
+        for activity in activities:
+            try:
+                data = await client.get_activity(athlete_id, activity.strava_id)
+                fields = StravaClient._map_activity_fields(athlete_id, data)
+                for k, v in fields.items():
+                    if k not in ("athlete_id", "strava_id"):
+                        setattr(activity, k, v)
+                db.commit()
+                enriched_count += 1
+                # Strava rate limit: 100 req/15 min → 1 req every ~9s; use 6s for headroom
+                await asyncio.sleep(6)
+            except Exception as e:
+                logger.error("Failed to enrich activity %d: %s", activity.strava_id, e)
+                continue
+
+        logger.info(
+            "Enrichment complete for athlete %d: %d/%d activities enriched",
+            athlete_id, enriched_count, len(activities),
+        )
+        _rebuild_sport_profiles(db, athlete_id)
+    except Exception as e:
+        logger.error("Bulk enrichment failed for athlete %d: %s", athlete_id, e)
+    finally:
+        db.close()
+
+
+@router.post("/enrich", summary="Enrich activities with Strava detail data")
+async def enrich_activities(
+    background_tasks: BackgroundTasks,
+    days: int = Query(60, ge=1, le=365, description="Lookback period in days"),
+    force: bool = Query(False, description="Re-enrich already-enriched activities"),
+    athlete: Athlete = Depends(get_current_athlete),
+):
+    """
+    Kick off background enrichment of activities with full Strava detail API data.
+
+    Enrichment adds splits, laps, cadence, power, and suffer score to activities
+    that were synced from the list endpoint (which only returns summary fields).
+    Rate-limited to ~6 s per activity to stay within Strava's 100 req/15 min limit.
+    """
+    background_tasks.add_task(_do_enrich, athlete.id, days, force)
+    return {
+        "message": "Enrichment started — activity details will be updated shortly",
+        "days": days,
+        "force": force,
+    }
 
 
 @router.post("/sync/{week_start}", summary="Sync Strava activities")
@@ -97,6 +180,7 @@ async def get_all_activities(
             {
                 "strava_id": a.strava_id,
                 "activity_type": a.activity_type,
+                "sport_type": a.sport_type,
                 "start_date": a.start_date,
                 "distance_m": a.distance_m,
                 "moving_time_s": a.moving_time_s,
@@ -122,12 +206,13 @@ async def get_activity_detail(
 ):
     """
     Get detailed information for a specific activity.
-    
+    Auto-enriches from Strava on first view if splits data is missing.
+
     **Parameters:**
     - `activity_id`: Strava activity ID
-    
+
     **Returns:**
-    - Activity object with all details
+    - Activity object with all details including performance metrics
     """
     activity = db.query(StravaActivity).filter(
         StravaActivity.strava_id == activity_id,
@@ -137,9 +222,33 @@ async def get_activity_detail(
     if not activity:
         raise HTTPException(status_code=404, detail="Activity not found")
 
+    # Auto-enrich when splits data is absent OR raw_json is legacy Python-dict format.
+    # '"splits_metric"' (double-quoted) only appears in properly stored JSON.
+    # Legacy str(dict) data has 'splits_metric' (single-quoted) and can't be parsed
+    # by the frontend, so it must also be re-fetched.
+    enriched = False
+    if '"splits_metric"' not in (activity.raw_json or ""):
+        try:
+            client = StravaClient(db)
+            data = await client.get_activity(athlete.id, activity_id)
+            fields = StravaClient._map_activity_fields(athlete.id, data)
+            for k, v in fields.items():
+                if k not in ("athlete_id", "strava_id"):
+                    setattr(activity, k, v)
+            # Clear stale AI analysis so it regenerates with the enriched data
+            db.query(ActivityAnalysis).filter(
+                ActivityAnalysis.activity_id == activity.id
+            ).delete()
+            db.commit()
+            enriched = True
+            logger.info("Auto-enriched activity %d for athlete %d", activity_id, athlete.id)
+        except Exception as e:
+            logger.warning("Could not auto-enrich activity %d: %s", activity_id, e)
+
     return {
         "strava_id": activity.strava_id,
         "activity_type": activity.activity_type,
+        "sport_type": activity.sport_type,
         "start_date": activity.start_date,
         "distance_m": activity.distance_m,
         "moving_time_s": activity.moving_time_s,
@@ -147,7 +256,16 @@ async def get_activity_detail(
         "avg_hr": activity.avg_hr,
         "max_hr": activity.max_hr,
         "calories": activity.calories,
+        "avg_cadence": activity.avg_cadence,
+        "max_cadence": activity.max_cadence,
+        "avg_watts": activity.avg_watts,
+        "max_watts": activity.max_watts,
+        "weighted_avg_watts": activity.weighted_avg_watts,
+        "kilojoules": activity.kilojoules,
+        "suffer_score": activity.suffer_score,
+        "trainer": bool(activity.trainer) if activity.trainer is not None else None,
         "raw_json": activity.raw_json,
+        "enriched": enriched,
     }
 
 
@@ -239,9 +357,16 @@ async def get_weekly_aggregates(
 
 
 
+_STALE_ANALYSIS_PREFIXES = (
+    "Unable to generate",
+    "Analysis complete.",  # empty-result sentinel from early version
+)
+
+
 @router.get("/activities/detail/{activity_id}/analysis", summary="Get or generate activity effort analysis")
 async def get_activity_analysis(
     activity_id: int,
+    force: bool = Query(False, description="Delete cached analysis and regenerate"),
     db: Session = Depends(get_db),
     athlete: Athlete = Depends(get_current_athlete),
 ):
@@ -267,56 +392,80 @@ async def get_activity_analysis(
     if not activity:
         raise HTTPException(status_code=404, detail="Activity not found")
 
-    # Check for existing analysis
+    # Check for existing analysis; discard if forced or if it holds a stale fallback
     existing_analysis = db.query(ActivityAnalysis).filter(
         ActivityAnalysis.activity_id == activity.id
     ).first()
-    
+
+    if existing_analysis:
+        is_stale = any(
+            existing_analysis.analysis_text.startswith(p)
+            for p in _STALE_ANALYSIS_PREFIXES
+        )
+        if force or is_stale:
+            db.delete(existing_analysis)
+            db.commit()
+            existing_analysis = None
+
     if existing_analysis:
         return {
             "analysis_text": existing_analysis.analysis_text,
             "generated_at": existing_analysis.generated_at,
-            "cached": True
+            "cached": True,
         }
     
-    # Generate new analysis
+    # Generate new analysis via WorkoutAnalyzer skill (uses reliable chat_completion)
     try:
-        llm_client = LLMClient()
-        
-        # Prepare activity data for analysis
-        activity_data = {
-            "activity_type": activity.activity_type,
-            "distance_m": activity.distance_m,
-            "moving_time_s": activity.moving_time_s,
-            "elevation_m": activity.elevation_m,
-            "avg_hr": activity.avg_hr,
-            "max_hr": activity.max_hr,
-            "raw_json": activity.raw_json
-        }
-        
-        # Generate analysis using LLM
-        analysis_text = await llm_client.generate_effort_analysis(activity_data)
-        
-        # Store analysis in database
+        from app.ai.skills.workout_analyzer import WorkoutAnalyzer
+        from app.ai.skills.schemas import WorkoutAnalyzerInput
+
+        analyzer = WorkoutAnalyzer(db, athlete.id)
+        analyses = await analyzer.run(WorkoutAnalyzerInput(strava_id=activity_id))
+        if not analyses:
+            raise ValueError("WorkoutAnalyzer returned no results")
+
+        wa = analyses[0]
+
+        # Build analysis as sequential paragraphs — one per coaching question:
+        # 1. What kind of session?  2. What does it show?  3. Limiter?
+        # 4. Why it matters?  5. What to do next?
+        paragraphs: list[str] = []
+        if wa.session_type:
+            paragraphs.append(wa.session_type)
+        elif wa.effort_level:
+            # Fallback when new LLM fields are missing (old cache or LLM parse failure)
+            paragraphs.append(f"{wa.effort_level.capitalize()} session.")
+        if wa.main_insight:
+            paragraphs.append(wa.main_insight)
+        if wa.key_limiter:
+            paragraphs.append(wa.key_limiter)
+        elif wa.limiter_hypothesis:
+            paragraphs.append(wa.limiter_hypothesis.replace("_", " ").capitalize() + ".")
+        if wa.why_it_matters:
+            paragraphs.append(wa.why_it_matters)
+        if wa.next_action:
+            paragraphs.append(wa.next_action)
+
+        analysis_text = "\n\n".join(paragraphs).strip() or "Analysis complete."
+
         new_analysis = ActivityAnalysis(
             activity_id=activity.id,
-            analysis_text=analysis_text
+            analysis_text=analysis_text,
         )
         db.add(new_analysis)
         db.commit()
         db.refresh(new_analysis)
-        
+
         return {
             "analysis_text": new_analysis.analysis_text,
             "generated_at": new_analysis.generated_at,
-            "cached": False
+            "cached": False,
         }
-        
+
     except Exception as e:
-        # If analysis generation fails, return error but don't break the API
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to generate effort analysis: {str(e)}"
+            detail=f"Failed to generate effort analysis: {str(e)}",
         )
 
 
@@ -515,15 +664,17 @@ async def _handle_activity_create(
             avg_hr=data.get("average_heartrate"),
             max_hr=data.get("max_heartrate"),
             calories=data.get("calories"),
-            raw_json=str(data) if data else "{}",
+            raw_json=json.dumps(data, default=str) if data else "{}",
         )
         
         db.add(activity)
         db.commit()
         db.refresh(activity)
-        
+
         logger.info(f"Stored activity {activity_id} in database")
-        
+
+        _rebuild_sport_profiles(db, athlete_id)
+
         # Trigger session matching (Requirement 14.1)
         matcher = SessionMatcher(db)
         matched_session_id = matcher.match_activity(activity, athlete_id)

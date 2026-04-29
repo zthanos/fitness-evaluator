@@ -53,6 +53,46 @@ class BaseSkill(ABC, Generic[InputT, OutputT]):
 
     # ── Shared data helpers ──────────────────────────────────────────────────
 
+    def _get_athlete_demographics(self) -> dict:
+        """Return age, weight, body fat, resting HR and stated goals from DB (best-effort)."""
+        out: dict = {}
+        try:
+            from datetime import date
+            from app.models.athlete import Athlete
+            athlete = self.db.query(Athlete).filter_by(id=self.athlete_id).first()
+            if athlete:
+                if athlete.date_of_birth:
+                    today = date.today()
+                    dob = athlete.date_of_birth
+                    age = today.year - dob.year - (
+                        (today.month, today.day) < (dob.month, dob.day)
+                    )
+                    out["age_years"] = age
+                if athlete.height_cm:
+                    out["height_cm"] = athlete.height_cm
+                if athlete.goals:
+                    out["stated_goals"] = athlete.goals
+        except Exception:
+            pass
+        try:
+            from app.models.weekly_measurement import WeeklyMeasurement
+            latest = (
+                self.db.query(WeeklyMeasurement)
+                .filter_by(athlete_id=self.athlete_id)
+                .order_by(WeeklyMeasurement.week_start.desc())
+                .first()
+            )
+            if latest:
+                if latest.weight_kg:
+                    out["weight_kg"] = latest.weight_kg
+                if latest.body_fat_pct:
+                    out["body_fat_pct"] = latest.body_fat_pct
+                if latest.rhr_bpm:
+                    out["resting_hr_bpm"] = latest.rhr_bpm
+        except Exception:
+            pass
+        return out
+
     def _recent_activities(self, days: int = 28, limit: int = 20):
         from datetime import datetime, timezone, timedelta
         from app.models.strava_activity import StravaActivity

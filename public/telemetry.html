@@ -245,8 +245,52 @@
         </div>
       </section>
 
+      <!-- ── Section 8: Chat Traces ─────────────────────────────────── -->
+      <section>
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <h2 class="text-lg font-bold">Chat Traces</h2>
+          <span class="text-xs text-base-content/40">Click a row to drill into the chain of thought</span>
+        </div>
+        <div class="card bg-base-100 shadow-sm border border-base-200 overflow-x-auto">
+          <table class="table table-sm">
+            <thead>
+              <tr class="text-xs text-base-content/50 uppercase tracking-wide">
+                <th>Time</th>
+                <th>Intent</th>
+                <th>Model</th>
+                <th class="text-right">Tools</th>
+                <th class="text-right">Iters</th>
+                <th class="text-right">Latency</th>
+                <th class="max-w-xs">Message</th>
+              </tr>
+            </thead>
+            <tbody id="traces-tbody">
+              <tr><td colspan="7" class="text-center text-base-content/40 py-6">No traces yet — send a chat message first</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
     </div><!-- /max-w -->
   </main>
+
+  <!-- ── Trace Detail Modal ─────────────────────────────────────────── -->
+  <dialog id="trace-modal" class="modal">
+    <div class="modal-box w-11/12 max-w-4xl max-h-[88vh] overflow-y-auto">
+      <form method="dialog">
+        <button class="btn btn-sm btn-circle btn-ghost absolute right-3 top-3">✕</button>
+      </form>
+      <div class="flex items-start gap-2 mb-0.5">
+        <h3 class="font-bold text-base flex-1" id="trace-modal-title">Chat Trace</h3>
+        <button id="trace-copy-btn" class="btn btn-xs btn-ghost opacity-60 hover:opacity-100" title="Copy trace JSON">Copy JSON</button>
+      </div>
+      <p class="text-xs text-base-content/40 mb-4" id="trace-modal-meta"></p>
+      <div id="trace-modal-body" class="space-y-5">
+        <div class="text-center py-8 text-base-content/30">Loading…</div>
+      </div>
+    </div>
+    <form method="dialog" class="modal-backdrop"><button>close</button></form>
+  </dialog>
 
   <script type="module" src="/js/telemetry.js"></script>
 </body>

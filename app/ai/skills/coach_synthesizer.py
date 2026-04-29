@@ -10,19 +10,24 @@ from app.ai.skills.schemas import CoachInput, CoachResponse
 
 logger = logging.getLogger(__name__)
 
-_SYSTEM_PROMPT = """You are an elite endurance coach delivering a post-analysis brief.
+_SYSTEM_PROMPT = """You are an elite endurance coach delivering a personal post-analysis brief.
 
-You receive structured data from multiple evaluation modules. Produce a coaching response with:
-1. headline — one punchy sentence (≤15 words) capturing the single most important finding.
-2. body — 2-4 sentences of specific, evidence-based coaching commentary. Reference actual numbers.
-   Address the user's question directly if one was provided.
-3. next_action — one concrete, specific, actionable next step. Not generic ("train harder"). Specific ("add 10 min Z2 at 85–90 rpm tomorrow").
-4. confidence — 0.0–1.0 reflecting data richness. Low if few activities; high if full state + multiple analyses.
-5. evidence_refs — list of up to 3 short strings naming which data supported the conclusion
-   (e.g. ["last 5 rides avg cadence 78 rpm", "ACWR=1.42", "RHR trending +4 bpm over 3 weeks"]).
+CRITICAL RULES:
+- Always speak directly to the athlete. Use "you" and "your" — NEVER "the athlete".
+- Reference the athlete's actual numbers from their profile (e.g. their typical cadence, their FTP estimate, their best ride speed) — not generic benchmarks.
+- If the sport profile shows the athlete's typical cadence is 63 rpm, that context matters: frame the 90 rpm target as a development gap, not a failure.
+- Use athlete_demographics when relevant: age informs HR zone interpretation (e.g. 168 bpm at age 42 is very close to estimated max), weight informs power-to-weight context.
+- Be specific to the sport discussed (ride vs run vs swim — tailor the language accordingly).
 
-Be direct. No pleasantries. No generic advice. Reference numbers always.
-Respond ONLY with valid JSON matching the schema:
+Produce a coaching response with:
+1. headline — one punchy sentence (≤15 words) capturing the single most important finding, addressed to the athlete.
+2. body — 2-4 sentences of specific, evidence-based coaching commentary using "you/your". Reference actual numbers from their data. Address their question directly.
+3. next_action — one concrete, specific, actionable step calibrated to this athlete's current level. Not generic ("train harder"). Specific and achievable ("add 2×10 min at your current comfortable cadence, targeting 70 rpm, before next ride").
+4. confidence — 0.0–1.0 reflecting data richness.
+5. evidence_refs — list of up to 3 short strings naming the specific data points used
+   (e.g. ["your avg cadence this ride: 63 rpm", "your typical cadence: 63 rpm", "your ACWR=1.42"]).
+
+Respond ONLY with valid JSON:
 {"headline": "...", "body": "...", "next_action": "...", "confidence": 0.0, "evidence_refs": [...]}"""
 
 
@@ -37,6 +42,12 @@ class CoachSynthesizer(BaseSkill[CoachInput, CoachResponse]):
 
     def _build_payload(self, inp: CoachInput) -> dict:
         payload: dict = {}
+
+        # Always include athlete demographics — age matters for HR context,
+        # weight matters for power-to-weight and load management
+        demographics = self._get_athlete_demographics()
+        if demographics:
+            payload["athlete_demographics"] = demographics
 
         if inp.user_question:
             payload["user_question"] = inp.user_question
@@ -76,6 +87,8 @@ class CoachSynthesizer(BaseSkill[CoachInput, CoachResponse]):
                 "hr_response_trend": fs.hr_response_trend,
                 "rhr_trend": fs.rhr_trend,
                 "state_confidence": fs.state_confidence,
+                "fitness_score": fs.fitness_score,
+                "athlete_classification": fs.athlete_classification,
                 "summary": fs.summary_text,
             }
 
@@ -127,6 +140,25 @@ class CoachSynthesizer(BaseSkill[CoachInput, CoachResponse]):
                     }
                     for g in pr.goals
                 ],
+            }
+
+        if inp.sport_profile:
+            payload["athlete_sport_profile"] = inp.sport_profile
+
+        if inp.performance_estimate:
+            pe = inp.performance_estimate
+            payload["performance_goal"] = {
+                "sport_group":                      pe.sport_group,
+                "target_distance_km":               pe.target_distance_km,
+                "target_duration_min":              pe.target_duration_min,
+                "target_speed_kmh":                 pe.target_speed_kmh,
+                "current_best_comparable_speed_kmh": pe.current_best_comparable_speed_kmh,
+                "speed_gap_kmh":                    pe.speed_gap_kmh,
+                "speed_gap_percent":                pe.speed_gap_percent,
+                "comparable_basis":                 pe.comparable_basis,
+                "current_limiters":                 pe.current_limiters,
+                "data_basis":                       pe.data_basis,
+                "confidence":                       pe.confidence,
             }
 
         return payload

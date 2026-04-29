@@ -43,8 +43,11 @@ class WorkoutAnalysis(BaseModel):
     suffer_score: Optional[int]
 
     # Coach interpretation
-    limiter_hypothesis: Optional[str]     # e.g. "outdoor_transfer", "aerobic_base", "cadence_capacity"
-    main_insight: str
+    limiter_hypothesis: Optional[str]     # token: "outdoor_transfer" | "aerobic_base" | "cadence_capacity" …
+    session_type: Optional[str]           # 1 sentence: character of this session with actual numbers
+    main_insight: str                     # 1-2 sentences: what this reveals about the athlete
+    key_limiter: Optional[str]            # human label: "Cadence control under load"
+    why_it_matters: Optional[str]         # 1-2 sentences: physiological/perf impact of this limiter
     next_action: str
 
     confidence: float = Field(ge=0.0, le=1.0)
@@ -81,6 +84,10 @@ class FitnessState(BaseModel):
     state_confidence: float = Field(ge=0.0, le=1.0)
     last_updated_at: datetime
     summary_text: Optional[str]           # generated view, not primary truth
+
+    # Composite score and classification
+    fitness_score: Optional[float] = None          # 0-100
+    athlete_classification: Optional[str] = None   # e.g. "Recreational Runner"
 
 
 # ── RecoveryAnalyzer ──────────────────────────────────────────────────────────
@@ -180,6 +187,28 @@ class GoalSuggestion(BaseModel):
     new_target_date: Optional[str]
 
 
+# ── PerformanceEstimator ─────────────────────────────────────────────────────
+
+class PerformanceGoalInput(BaseModel):
+    query: str                              # natural language goal, e.g. "ride 70 km in 3 hours"
+    sport_group: Optional[str] = None      # override auto-detection: ride | run | swim | strength
+
+
+class PerformanceEstimate(BaseModel):
+    sport_group: str                                    # ride | run | swim | strength
+    target_distance_km: Optional[float] = None
+    target_duration_min: Optional[float] = None
+    target_speed_kmh: Optional[float] = None            # derived: distance / (duration / 60)
+    current_best_comparable_speed_kmh: Optional[float] = None
+    speed_gap_kmh: Optional[float] = None               # positive = need to be faster
+    speed_gap_percent: Optional[float] = None           # (target − current) / current × 100
+    comparable_basis: Optional[str] = None              # e.g. "best 120-min ride speed"
+    current_limiters: list[str] = Field(default_factory=list)
+    data_basis: str = ""                                # what data was used
+    confidence: float = Field(ge=0.0, le=1.0, default=0.0)
+    parse_success: bool = False
+
+
 # ── CoachSynthesizer ─────────────────────────────────────────────────────────
 
 class CoachInput(BaseModel):
@@ -189,6 +218,8 @@ class CoachInput(BaseModel):
     body_trend: Optional[BodyTrend] = None
     nutrition_eval: Optional[NutritionEvaluation] = None
     progress_report: Optional[ProgressReport] = None
+    performance_estimate: Optional[PerformanceEstimate] = None
+    sport_profile: Optional[dict] = None   # key fields from AthleteSportProfile for the relevant sport
     user_question: str = ""
 
 
