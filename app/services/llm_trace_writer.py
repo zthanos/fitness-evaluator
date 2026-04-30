@@ -30,15 +30,35 @@ def write_llm_trace(
     error: Optional[str] = None,
     call_id: Optional[str] = None,
 ) -> None:
-    """Append one LLM call record to today's JSONL trace file (best-effort, never raises)."""
+    """Write one LLM call record to the telemetry DB and the daily JSONL fallback."""
+    cid = call_id or str(uuid.uuid4())
+    truncated_messages = _truncate_messages(messages)
+
+    # ── Persist to telemetry database (fire-and-forget) ───────────────────────
+    try:
+        from app.services.telemetry_writer import persist_llm_call
+        persist_llm_call(
+            call_id=cid,
+            source=source,
+            model=model,
+            messages=truncated_messages,
+            response_content=response_content,
+            duration_ms=duration_ms,
+            tool_calls=tool_calls,
+            error=error,
+        )
+    except Exception:
+        pass
+
+    # ── JSONL fallback (keeps working even if DB is unavailable) ─────────────
     try:
         _LOG_DIR.mkdir(parents=True, exist_ok=True)
         record = {
             "ts": datetime.now(timezone.utc).isoformat(),
-            "call_id": call_id or str(uuid.uuid4()),
+            "call_id": cid,
             "source": source,
             "model": model,
-            "messages": _truncate_messages(messages),
+            "messages": truncated_messages,
             "response_content": (response_content or "")[:3000],
             "tool_calls": tool_calls,
             "duration_ms": round(duration_ms, 1),
@@ -47,7 +67,7 @@ def write_llm_trace(
         with _today_path().open("a", encoding="utf-8") as f:
             f.write(json.dumps(record, default=str) + "\n")
     except Exception:
-        logger.debug("llm_trace_writer: failed to write trace", exc_info=True)
+        logger.debug("llm_trace_writer: failed to write JSONL trace", exc_info=True)
 
 
 def _truncate_messages(messages: list, max_content: int = 2000) -> list:
