@@ -164,6 +164,11 @@ def create_app() -> FastAPI:
         page = static_dir / "telemetry.html"
         return FileResponse(page)
 
+    @app.get("/llm-cost", include_in_schema=False)
+    async def llm_cost_page():
+        page = static_dir / "llm-cost.html"
+        return FileResponse(page)
+
     # ── Static assets (CSS, JS, images) ─────────────────────────────────────
     # Mount ONLY the asset sub-directories, not the whole public/ root.
     # This prevents StaticFiles from intercepting paths like /activities

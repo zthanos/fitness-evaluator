@@ -173,6 +173,13 @@ class LangChainAdapter(LLMProviderAdapter):
                 total_latency_ms=latency_ms,
                 fallback_used=fallback_used,
             )
+            self._persist_llm_call(
+                source=operation_type or "chat_invoke",
+                model=model_used or self.primary_model,
+                messages=messages,
+                response_content=parsed_output.model_dump_json() if parsed_output else None,
+                duration_ms=latency_ms,
+            )
 
             return LLMResponse(
                 parsed_output=parsed_output,
@@ -196,6 +203,14 @@ class LangChainAdapter(LLMProviderAdapter):
                 success=False,
                 error_message=f"{type(e).__name__}: {str(e)}",
                 fallback_used=fallback_used,
+            )
+            self._persist_llm_call(
+                source=operation_type or "chat_invoke",
+                model=model_used or self.primary_model,
+                messages=messages,
+                response_content=None,
+                duration_ms=latency_ms,
+                error=f"{type(e).__name__}: {str(e)}",
             )
 
             # Re-raise the exception
@@ -315,6 +330,15 @@ class LangChainAdapter(LLMProviderAdapter):
                 model_latency_ms=model_latency_ms,
                 total_latency_ms=latency_ms,
                 fallback_used=fallback_used,
+            )
+            self._persist_llm_call(
+                source=operation_type or "chat_stream",
+                model=model_used,
+                messages=messages,
+                response_content=full_text or None,
+                duration_ms=latency_ms,
+                tool_calls=tool_calls_collected or None,
+                error=error_message,
             )
 
             # Yield the terminal "done" chunk with metadata
@@ -533,3 +557,39 @@ class LangChainAdapter(LLMProviderAdapter):
         )
 
         self.invocation_logger.log(invocation_log)
+
+    @staticmethod
+    def _lc_msgs_to_dicts(messages: list) -> list:
+        """Convert LangChain message objects to plain dicts for telemetry storage."""
+        role_map = {"human": "user", "ai": "assistant", "system": "system"}
+        result = []
+        for m in messages:
+            role = role_map.get(getattr(m, "type", ""), getattr(m, "type", "user"))
+            content = getattr(m, "content", "")
+            result.append({"role": role, "content": str(content)})
+        return result
+
+    def _persist_llm_call(
+        self,
+        source: str,
+        model: str,
+        messages: list,
+        response_content: Optional[str],
+        duration_ms: float,
+        tool_calls: Optional[list] = None,
+        error: Optional[str] = None,
+    ) -> None:
+        """Fire-and-forget persist to the llm_calls telemetry table."""
+        try:
+            from app.services.llm_trace_writer import write_llm_trace
+            write_llm_trace(
+                source=source,
+                model=model or self.primary_model,
+                messages=self._lc_msgs_to_dicts(messages),
+                response_content=response_content,
+                duration_ms=duration_ms,
+                tool_calls=tool_calls,
+                error=error,
+            )
+        except Exception:
+            pass

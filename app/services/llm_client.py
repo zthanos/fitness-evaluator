@@ -357,7 +357,8 @@ The following information from the athlete's history may be relevant to this con
         tools: Optional[List[Dict[str, Any]]] = None,
         max_tokens: int = 2048,
         temperature: float = 0.7,
-        response_format: Optional[Dict[str, str]] = None
+        response_format: Optional[Dict[str, str]] = None,
+        source: str = "chat_completion",
     ) -> Dict[str, Any]:
         """
         Send a chat completion request with optional tool calling.
@@ -411,7 +412,8 @@ The following information from the athlete's history may be relevant to this con
 
                         _result = {
                             'content': message.get('content'),
-                            'role': message.get('role', 'assistant')
+                            'role': message.get('role', 'assistant'),
+                            'model': self.model_name,
                         }
 
                         # Check for tool calls
@@ -430,7 +432,7 @@ The following information from the athlete's history may be relevant to this con
         finally:
             from app.services.llm_trace_writer import write_llm_trace
             write_llm_trace(
-                source="chat_completion",
+                source=source,
                 model=self.model_name,
                 messages=messages,
                 response_content=_result.get("content") if _result else None,

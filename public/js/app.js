@@ -219,6 +219,7 @@ router
   .on('/evaluations-list.html', () => router.replace('/evaluations'))
 
   .on('/telemetry', () => { window.location.href = '/telemetry'; })
+  .on('/llm-cost',  () => { window.location.href = '/llm-cost'; })
 
   .notFound(path => {
     window.renderPage(`

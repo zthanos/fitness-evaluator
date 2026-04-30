@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light" class="h-full">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LLM Cost — Fitness Platform</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@4.4.20/dist/full.min.css" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/design-tokens.css" />
+  <link rel="stylesheet" href="/css/navigation-sidebar.css" />
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    .cost-bar { transition: width 0.6s ease; }
+  </style>
+</head>
+<body class="bg-base-200 h-full">
+  <a href="#main-content" class="skip-to-main">Skip to main content</a>
+  <div id="sidebar-container"></div>
+
+  <main id="main-content" class="main-content overflow-y-auto">
+    <!-- ── Sticky header ─────────────────────────────────────────────────── -->
+    <div class="sticky top-0 z-30 bg-base-100 border-b border-base-300 px-6 py-3 flex flex-wrap items-center gap-4 shadow-sm">
+      <div class="flex-1 min-w-0">
+        <h1 class="text-xl font-bold truncate">💰 LLM Cost</h1>
+      </div>
+
+      <!-- Lookback window -->
+      <div class="flex items-center gap-2 text-sm">
+        <span class="text-base-content/50 hidden sm:inline">Period:</span>
+        <select id="days-select" class="select select-bordered select-sm w-28">
+          <option value="1">Last 24h</option>
+          <option value="7" selected>Last 7d</option>
+          <option value="14">Last 14d</option>
+          <option value="30">Last 30d</option>
+          <option value="90">Last 90d</option>
+        </select>
+      </div>
+
+      <!-- Last updated -->
+      <div class="text-xs text-base-content/40 hidden md:block">
+        Updated: <span id="last-updated">—</span>
+      </div>
+
+      <!-- Manual refresh -->
+      <button id="refresh-btn" class="btn btn-sm btn-outline gap-2" title="Refresh (R)">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+        </svg>
+        Refresh
+      </button>
+    </div>
+
+    <!-- ── Page body ──────────────────────────────────────────────────────── -->
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 py-6 space-y-8">
+
+      <!-- ── Summary stats ──────────────────────────────────────────────── -->
+      <section>
+        <h2 class="text-lg font-bold mb-4">Usage Summary</h2>
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-4" id="summary-cards">
+          <!-- populated by JS -->
+          <div class="card bg-base-100 border border-base-200 shadow-sm p-4 animate-pulse h-20"></div>
+          <div class="card bg-base-100 border border-base-200 shadow-sm p-4 animate-pulse h-20"></div>
+          <div class="card bg-base-100 border border-base-200 shadow-sm p-4 animate-pulse h-20"></div>
+          <div class="card bg-base-100 border border-base-200 shadow-sm p-4 animate-pulse h-20"></div>
+        </div>
+      </section>
+
+      <!-- ── Model cost comparison ───────────────────────────────────────── -->
+      <section>
+        <div class="mb-4">
+          <h2 class="text-lg font-bold">Cost Comparison by Model</h2>
+          <p class="text-xs text-base-content/40 mt-0.5">Estimated cost if all recorded LLM calls had been made to each cloud model</p>
+        </div>
+        <div class="card bg-base-100 border border-base-200 shadow-sm overflow-x-auto">
+          <table class="table table-sm">
+            <thead>
+              <tr class="text-xs text-base-content/50 uppercase tracking-wide">
+                <th>Model</th>
+                <th class="text-right">Input $/1M</th>
+                <th class="text-right">Output $/1M</th>
+                <th class="text-right">Est. Cost</th>
+                <th class="w-40">Relative</th>
+              </tr>
+            </thead>
+            <tbody id="model-tbody">
+              <tr><td colspan="5" class="text-center text-base-content/40 py-8">Loading…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ── Cost by source ─────────────────────────────────────────────── -->
+      <section>
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <div>
+            <h2 class="text-lg font-bold">Cost by Source</h2>
+            <p class="text-xs text-base-content/40 mt-0.5">Token usage and estimated cost per skill or pipeline component</p>
+          </div>
+          <select id="model-select" class="select select-bordered select-sm w-52">
+            <!-- populated by JS -->
+          </select>
+        </div>
+        <div class="card bg-base-100 border border-base-200 shadow-sm overflow-x-auto">
+          <table class="table table-sm">
+            <thead>
+              <tr class="text-xs text-base-content/50 uppercase tracking-wide">
+                <th>Source</th>
+                <th class="text-right">Calls</th>
+                <th class="text-right">Input tokens</th>
+                <th class="text-right">Output tokens</th>
+                <th class="text-right">Est. Cost</th>
+                <th class="text-right">% of total</th>
+              </tr>
+            </thead>
+            <tbody id="source-tbody">
+              <tr><td colspan="6" class="text-center text-base-content/40 py-8">Loading…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+    </div><!-- /max-w -->
+  </main>
+
+  <script type="module">
+    import { NavigationSidebar } from '/js/navigation-sidebar.js';
+    import { initAuth, isAuthenticated, getToken } from '/js/auth.js';
+
+    await initAuth();
+    if (!isAuthenticated()) { window.location.replace('/'); }
+
+    const sidebar = new NavigationSidebar('sidebar-container');
+    sidebar.setActiveRoute('/llm-cost');
+
+    async function apiFetch(url) {
+      const token = getToken();
+      const res = await fetch(url, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+      return res.json();
+    }
+
+    // ── Formatting helpers ────────────────────────────────────────────────
+
+    function fmtTokens(n) {
+      if (n === null || n === undefined) return '—';
+      if (n >= 1_000_000) return (n / 1_000_000).toFixed(2) + 'M';
+      if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
+      return n.toLocaleString();
+    }
+
+    function fmtCost(usd) {
+      if (usd === null || usd === undefined) return '—';
+      if (usd < 0.0001) return '<$0.0001';
+      if (usd < 0.01) return '$' + usd.toFixed(4);
+      if (usd < 1) return '$' + usd.toFixed(3);
+      return '$' + usd.toFixed(2);
+    }
+
+    // ── Render: summary cards ─────────────────────────────────────────────
+
+    function renderSummary(data) {
+      const cards = [
+        { label: 'Total Calls',    value: (data.total_calls ?? 0).toLocaleString() },
+        { label: 'Input Tokens',   value: fmtTokens(data.total_input_tokens) },
+        { label: 'Output Tokens',  value: fmtTokens(data.total_output_tokens) },
+        { label: 'Total Tokens',   value: fmtTokens(data.total_tokens) },
+      ];
+      document.getElementById('summary-cards').innerHTML = cards.map(c => `
+        <div class="card bg-base-100 border border-base-200 shadow-sm p-4">
+          <div class="text-xs text-base-content/50 mb-1">${c.label}</div>
+          <div class="text-2xl font-bold font-mono">${c.value}</div>
+        </div>`).join('');
+    }
+
+    // ── Render: model comparison table ───────────────────────────────────
+
+    function renderModels(data) {
+      const models = data.model_estimates ?? {};
+      const keys = Object.keys(models);
+      if (!keys.length) {
+        document.getElementById('model-tbody').innerHTML =
+          '<tr><td colspan="5" class="text-center text-base-content/40 py-8">No data yet</td></tr>';
+        return;
+      }
+
+      const maxCost = Math.max(...keys.map(k => models[k].total_cost ?? 0), 0.000001);
+
+      // Populate model selector
+      const sel = document.getElementById('model-select');
+      const cur = sel.value;
+      sel.innerHTML = keys.map(k =>
+        `<option value="${k}"${k === cur ? ' selected' : ''}>${models[k].name}</option>`
+      ).join('');
+      if (!cur) sel.value = keys[0];
+
+      document.getElementById('model-tbody').innerHTML = keys
+        .sort((a, b) => (models[a].total_cost ?? 0) - (models[b].total_cost ?? 0))
+        .map(k => {
+          const m = models[k];
+          const pct = maxCost > 0 ? ((m.total_cost ?? 0) / maxCost * 100).toFixed(1) : 0;
+          return `
+            <tr class="hover:bg-base-200 transition-colors">
+              <td class="font-medium">${m.name}</td>
+              <td class="text-right font-mono text-xs">$${m.input_price?.toFixed(2)}/M</td>
+              <td class="text-right font-mono text-xs">$${m.output_price?.toFixed(2)}/M</td>
+              <td class="text-right font-mono font-semibold">${fmtCost(m.total_cost)}</td>
+              <td>
+                <div class="flex items-center gap-2">
+                  <div class="flex-1 bg-base-300 rounded-full h-2 overflow-hidden">
+                    <div class="cost-bar bg-primary h-2 rounded-full" style="width:${pct}%"></div>
+                  </div>
+                  <span class="text-xs text-base-content/40 w-10 text-right">${pct}%</span>
+                </div>
+              </td>
+            </tr>`;
+        }).join('');
+
+      renderSourceTable(data);
+    }
+
+    // ── Render: source breakdown table ───────────────────────────────────
+
+    function renderSourceTable(data) {
+      const selectedModel = document.getElementById('model-select').value;
+      const sources = data.by_source ?? [];
+
+      if (!sources.length) {
+        document.getElementById('source-tbody').innerHTML =
+          '<tr><td colspan="6" class="text-center text-base-content/40 py-8">No data yet</td></tr>';
+        return;
+      }
+
+      const totalCost = sources.reduce((acc, s) => acc + (s.cost_estimates?.[selectedModel] ?? 0), 0);
+
+      document.getElementById('source-tbody').innerHTML = sources.map(s => {
+        const cost = s.cost_estimates?.[selectedModel] ?? 0;
+        const pct = totalCost > 0 ? (cost / totalCost * 100).toFixed(1) : '0.0';
+        return `
+          <tr class="hover:bg-base-200 transition-colors">
+            <td><span class="badge badge-outline badge-sm font-mono">${s.source}</span></td>
+            <td class="text-right font-mono text-sm">${s.calls.toLocaleString()}</td>
+            <td class="text-right font-mono text-sm">${fmtTokens(s.input_tokens)}</td>
+            <td class="text-right font-mono text-sm">${fmtTokens(s.output_tokens)}</td>
+            <td class="text-right font-mono font-semibold">${fmtCost(cost)}</td>
+            <td class="text-right font-mono text-sm text-base-content/60">${pct}%</td>
+          </tr>`;
+      }).join('');
+    }
+
+    // ── Fetch & render ─────────────────────────────────────────────────────
+
+    let _lastData = null;
+
+    async function refresh() {
+      const days = document.getElementById('days-select').value;
+      try {
+        const data = await apiFetch(`/api/telemetry/llm-cost?days=${days}`);
+        _lastData = data;
+        renderSummary(data);
+        renderModels(data);
+        document.getElementById('last-updated').textContent = new Date().toLocaleTimeString();
+      } catch (err) {
+        console.error('LLM cost fetch error:', err);
+      }
+    }
+
+    // ── Event listeners ────────────────────────────────────────────────────
+
+    document.getElementById('refresh-btn').addEventListener('click', refresh);
+    document.getElementById('days-select').addEventListener('change', refresh);
+    document.getElementById('model-select').addEventListener('change', () => {
+      if (_lastData) renderSourceTable(_lastData);
+    });
+
+    document.addEventListener('keydown', e => {
+      if (e.key === 'r' && !e.ctrlKey && !e.metaKey && document.activeElement.tagName !== 'INPUT') {
+        refresh();
+      }
+    });
+
+    refresh();
+  </script>
+</body>
+</html>

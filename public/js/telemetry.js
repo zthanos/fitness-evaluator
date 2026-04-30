@@ -486,6 +486,136 @@ window.showTrace = async function(traceId) {
   }
 };
 
+// ── Render: skill LLM calls table ─────────────────────────────────────────
+
+let _knownSources = [];
+
+function renderLlmCalls(data) {
+  const tbody = document.getElementById('llm-calls-tbody');
+  const rows = data.calls ?? [];
+
+  // Populate source filter (once, from first response)
+  if (data.sources?.length && data.sources.length !== _knownSources.length) {
+    _knownSources = data.sources;
+    const sel = document.getElementById('llm-source-filter');
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">All sources</option>' +
+      data.sources.map(s => `<option value="${s}"${s === cur ? ' selected' : ''}>${s}</option>`).join('');
+  }
+
+  if (rows.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" class="text-center text-base-content/40 py-6">No skill LLM calls recorded yet</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = rows.map(r => {
+    const latCls = r.duration_ms > 15000 ? 'text-error' : r.duration_ms > 5000 ? 'text-warning' : 'text-success';
+    const modelShort = (r.model || '—').split('/').pop().split(':')[0];
+    const srcBadge = `<span class="badge badge-outline badge-xs font-mono">${r.source || '—'}</span>`;
+    return `
+      <tr class="cursor-pointer hover:bg-base-200 transition-colors" onclick="showLlmCall('${r.call_id}')">
+        <td class="text-xs text-base-content/50 whitespace-nowrap">${fmtTime(new Date(r.ts).getTime() / 1000)}</td>
+        <td>${srcBadge}</td>
+        <td class="text-xs font-mono truncate max-w-[120px]" title="${r.model}">${modelShort}</td>
+        <td class="text-right font-mono text-xs">${(r.input_tokens ?? 0).toLocaleString()}</td>
+        <td class="text-right font-mono text-xs">${(r.output_tokens ?? 0).toLocaleString()}</td>
+        <td class="text-right font-mono text-xs ${latCls}">${fmtMs(r.duration_ms)}</td>
+        <td class="text-right">${r.has_error ? '<span class="badge badge-error badge-xs">error</span>' : '<span class="badge badge-success badge-xs">ok</span>'}</td>
+      </tr>`;
+  }).join('');
+}
+
+// ── LLM call drill-down modal ──────────────────────────────────────────────
+
+window.showLlmCall = async function(callId) {
+  const modal = document.getElementById('llm-call-modal');
+  document.getElementById('llm-modal-body').innerHTML =
+    '<div class="text-center py-8 text-base-content/30">Loading…</div>';
+  modal.showModal();
+
+  try {
+    const c = await apiFetch(`/api/telemetry/llm-calls/${callId}`);
+
+    document.getElementById('llm-modal-title').textContent = `${c.source ?? 'LLM Call'} — ${(c.model || '').split('/').pop()}`;
+    document.getElementById('llm-modal-meta').textContent =
+      `${c.ts ? new Date(c.ts).toLocaleString() : '—'}  ·  ${fmtMs(c.duration_ms)}  ·  ${(c.input_tokens + c.output_tokens).toLocaleString()} tokens`;
+
+    const copyBtn = document.getElementById('llm-copy-btn');
+    copyBtn.onclick = () => {
+      navigator.clipboard.writeText(JSON.stringify(c, null, 2)).then(() => {
+        const orig = copyBtn.textContent;
+        copyBtn.textContent = 'Copied!';
+        setTimeout(() => { copyBtn.textContent = orig; }, 1500);
+      });
+    };
+
+    // Token overview
+    const tokenHtml = `
+      <div class="grid grid-cols-3 gap-3">
+        ${[['Input tokens', c.input_tokens?.toLocaleString()],
+           ['Output tokens', c.output_tokens?.toLocaleString()],
+           ['Duration', fmtMs(c.duration_ms)]
+          ].map(([l, v]) => `
+          <div class="bg-base-200 rounded-xl p-3">
+            <div class="text-xs text-base-content/50 mb-1">${l}</div>
+            <div class="font-mono font-bold">${v ?? '—'}</div>
+          </div>`).join('')}
+      </div>`;
+
+    // Error
+    const errorHtml = c.error ? `
+      <div class="alert alert-error p-3">
+        <span class="text-xs font-mono">${c.error.replace(/</g, '&lt;')}</span>
+      </div>` : '';
+
+    // Messages
+    const roleColors = { system: 'bg-base-300', user: 'bg-blue-50 dark:bg-blue-900/20', assistant: 'bg-green-50 dark:bg-green-900/20' };
+    const messagesHtml = `
+      <div>
+        <h4 class="font-semibold text-sm mb-2">Prompt Messages (${(c.messages || []).length})</h4>
+        <div class="space-y-2">
+          ${(c.messages || []).map(m => {
+            const content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content);
+            const isLong = content.length > 800;
+            const preview = isLong ? content.slice(0, 800) + '…' : content;
+            const id = `msg-${Math.random().toString(36).slice(2)}`;
+            return `
+              <div class="${roleColors[m.role] || 'bg-base-200'} rounded-lg p-3">
+                <div class="flex items-center justify-between mb-1.5">
+                  <span class="badge badge-ghost badge-xs font-mono uppercase">${m.role}</span>
+                  <span class="text-xs text-base-content/40">${Math.ceil(content.length / 4)} tokens est.</span>
+                </div>
+                <pre class="text-xs whitespace-pre-wrap break-all font-mono leading-relaxed" id="${id}">${preview.replace(/</g, '&lt;')}</pre>
+                ${isLong ? `<button class="btn btn-xs btn-ghost mt-1 text-base-content/50" onclick="
+                  const el=document.getElementById('${id}');
+                  const full=${JSON.stringify(content.replace(/</g, '&lt;'))};
+                  if(el.dataset.expanded){el.textContent=${JSON.stringify(preview.replace(/</g, '&lt;'))};delete el.dataset.expanded;this.textContent='Show more'}
+                  else{el.textContent=full;el.dataset.expanded=1;this.textContent='Show less'}
+                ">Show more</button>` : ''}
+              </div>`;
+          }).join('')}
+        </div>
+      </div>`;
+
+    // Response
+    const responseHtml = c.response_content ? `
+      <div>
+        <h4 class="font-semibold text-sm mb-2">Response</h4>
+        <div class="bg-green-50 dark:bg-green-900/20 rounded-lg p-3">
+          <div class="text-xs text-base-content/40 mb-1.5">${Math.ceil((c.response_content.length) / 4)} tokens est.</div>
+          <pre class="text-xs whitespace-pre-wrap break-all font-mono leading-relaxed">${c.response_content.replace(/</g, '&lt;')}</pre>
+        </div>
+      </div>` : '';
+
+    document.getElementById('llm-modal-body').innerHTML =
+      [tokenHtml, errorHtml, messagesHtml, responseHtml].filter(Boolean).join('');
+
+  } catch (err) {
+    document.getElementById('llm-modal-body').innerHTML =
+      `<div class="text-error text-sm">Failed to load: ${err.message}</div>`;
+  }
+};
+
 // ── Fetch & refresh cycle ──────────────────────────────────────────────────
 
 async function refresh() {
@@ -495,17 +625,21 @@ async function refresh() {
   const window_ = document.getElementById('time-window').value;
   const logLevel = document.getElementById('log-level-filter').value;
 
+  const sourceFilter = document.getElementById('llm-source-filter')?.value || '';
+
   try {
-    const [health, stats, logs, tracesData] = await Promise.all([
+    const [health, stats, logs, tracesData, llmData] = await Promise.all([
       apiFetch('/api/telemetry/health'),
       apiFetch(`/api/telemetry/stats?window=${window_}`),
       apiFetch(`/api/telemetry/logs?limit=50${logLevel ? '&level=' + logLevel : ''}`),
       apiFetch('/api/telemetry/traces?limit=30'),
+      apiFetch(`/api/telemetry/llm-calls?limit=50${sourceFilter ? '&source=' + encodeURIComponent(sourceFilter) : ''}`),
     ]);
     renderHealth(health);
     renderStats(stats);
     renderLogs(logs);
     renderTraces(tracesData);
+    renderLlmCalls(llmData);
     document.getElementById('last-updated').textContent = new Date().toLocaleTimeString();
   } catch (err) {
     console.error('Telemetry fetch error:', err);
@@ -530,6 +664,7 @@ document.getElementById('refresh-btn').addEventListener('click', refresh);
 document.getElementById('time-window').addEventListener('change', refresh);
 document.getElementById('refresh-interval').addEventListener('change', startTimer);
 document.getElementById('log-level-filter').addEventListener('change', refresh);
+document.getElementById('llm-source-filter').addEventListener('change', refresh);
 
 document.addEventListener('keydown', e => {
   if (e.key === 'r' && !e.ctrlKey && !e.metaKey && document.activeElement.tagName !== 'INPUT') {

@@ -45,7 +45,10 @@ class BaseSkill(ABC, Generic[InputT, OutputT]):
             {"role": "user",   "content": user_content},
         ]
         try:
-            result = await client.chat_completion(messages, max_tokens=max_tokens, temperature=0.3)
+            result = await client.chat_completion(
+                messages, max_tokens=max_tokens, temperature=0.3,
+                source=self.__class__.__name__,
+            )
             return result.get("content") or ""
         except Exception as exc:
             logger.warning("%s LLM call failed: %s", self.__class__.__name__, exc)

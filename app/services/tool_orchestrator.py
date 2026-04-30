@@ -161,7 +161,7 @@ class ToolOrchestrator:
         self,
         llm_client: Any,
         db: Any,
-        max_iterations: int = 5,
+        max_iterations: int = 3,
         failure_policy: FailurePolicy = FailurePolicy.SKIP,
     ):
         """
@@ -202,6 +202,7 @@ class ToolOrchestrator:
         conversation: List[Dict[str, str]],
         tool_definitions: List[Dict[str, Any]],
         user_id: int,
+        source: str = "coach_react",
     ) -> Dict[str, Any]:
         """Execute multi-step tool orchestration with ReAct pattern.
 
@@ -278,6 +279,7 @@ class ToolOrchestrator:
             response = await self.llm_client.chat_completion(
                 messages=conversation,
                 tools=tool_definitions or None,
+                source=source,
             )
 
             think_latency = (time.time() - think_start) * 1000
@@ -814,10 +816,13 @@ class ToolOrchestrator:
                 except (json.JSONDecodeError, ValueError):
                     pass
             elif expected_type == "integer":
-                try:
-                    coerced[param_name] = int(param_value)
-                except (ValueError, TypeError):
-                    pass
+                if param_value.lower() in ("null", "none", ""):
+                    coerced[param_name] = None
+                else:
+                    try:
+                        coerced[param_name] = int(param_value)
+                    except (ValueError, TypeError):
+                        pass
             elif expected_type == "number":
                 try:
                     coerced[param_name] = float(param_value)
@@ -871,6 +876,9 @@ class ToolOrchestrator:
                 continue
             expected_type_str = prop_schema.get("type")
             if not expected_type_str:
+                continue
+            # null is valid for any parameter not in 'required'
+            if param_value is None and param_name not in required:
                 continue
             expected_type = _JSON_TYPE_MAP.get(expected_type_str)
             if expected_type and not isinstance(param_value, expected_type):

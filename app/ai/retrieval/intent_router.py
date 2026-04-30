@@ -44,7 +44,7 @@ class IntentRouter:
     INTENT_KEYWORDS: dict[Intent, list[str]] = {
         # Skill-pipeline intents (checked first — more specific)
         Intent.PERFORMANCE_GOAL: [
-            "can i ride", "can i run", "can i complete", "can i do",
+            "can i ride", "can i run", "can i complete",
             "am i ready for", "am i ready to", "ready for a",
             "want to ride", "want to run", "want to complete",
             "planning to ride", "planning to run", "planning to do",
@@ -52,7 +52,7 @@ class IntentRouter:
             "finish a marathon", "finish a half", "finish a century",
             "in 3 hours", "in 4 hours", "in 2 hours", "in 1 hour",
             "in x hours", "within 3h", "within 4h",
-            "how far am i", "how much faster", "what do i need",
+            "how far am i from", "how much faster do i need", "what do i need to achieve",
             "achieve my goal", "hit my goal", "reach my goal",
         ],
         Intent.ACTIVITY_LIST: [
@@ -66,8 +66,8 @@ class IntentRouter:
         Intent.WORKOUT_ANALYSIS: [
             "analyse my", "analyze my", "last ride", "last run", "last workout",
             "last session", "how was my ride", "how was my run", "how did my ride",
-            "how did my run", "how did my workout", "cadence", "power output",
-            "effort", "my performance", "limiter", "what's my fitness",
+            "how did my run", "how did my workout", "my cadence", "check my cadence",
+            "my power output", "my performance", "limiter", "what's my fitness",
         ],
         Intent.RECOVERY_CHECK: [
             "should i train", "can i train", "am i recovered", "how recovered",
