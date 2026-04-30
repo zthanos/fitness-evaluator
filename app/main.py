@@ -22,6 +22,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from starlette.middleware.base import BaseHTTPMiddleware
 from app.limiter import limiter
+from app.services.telemetry_writer import persist_request_metric
 
 from app.api import (
     auth, logs, strava, metrics, goals,
@@ -53,6 +54,13 @@ class _MetricsMiddleware(BaseHTTPMiddleware):
                     media_type=response.media_type,
                 )
             req_metrics.record(
+                method=request.method,
+                path=request.url.path,
+                status_code=response.status_code,
+                duration_ms=duration_ms,
+                error_detail=error_detail,
+            )
+            persist_request_metric(
                 method=request.method,
                 path=request.url.path,
                 status_code=response.status_code,
@@ -183,6 +191,11 @@ def create_app() -> FastAPI:
 
     # ── Custom OpenAPI schema ────────────────────────────────────────────────
     app.openapi = custom_openapi(app)
+
+    # ── Telemetry database (graceful — app runs even if DB is missing) ───────
+    from app.telemetry_database import init_telemetry_db
+    from app.config import get_settings
+    init_telemetry_db(get_settings().DATABASE_URL)
 
     return app
 

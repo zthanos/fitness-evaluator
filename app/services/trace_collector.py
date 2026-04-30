@@ -26,6 +26,11 @@ class TraceCollector:
     def record(self, trace: Dict[str, Any]) -> None:
         """Prepend a new trace (most recent first)."""
         self._traces.appendleft(trace)
+        try:
+            from app.services.telemetry_writer import persist_chat_trace
+            persist_chat_trace(trace)
+        except Exception:
+            pass
 
     def list_traces(self, limit: int = 30) -> List[Dict[str, Any]]:
         """Return summary rows — no tool results / context snapshots."""
