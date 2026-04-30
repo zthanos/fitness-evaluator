@@ -1274,6 +1274,44 @@ class NutritionPage {
   destroy() { this._manager?.destroy(); }
 }
 
+// ─── AdminPage ────────────────────────────────────────────────────────────────
+
+class AdminPage {
+  async init(params, query) {
+    this._setupTabs();
+    await this._loadAppSettings();
+  }
+
+  destroy() {}
+
+  _setupTabs() {
+    const tabs = document.querySelectorAll('[data-admin-tab]');
+    tabs.forEach(btn => {
+      btn.addEventListener('click', () => {
+        tabs.forEach(t => t.classList.remove('tab-active'));
+        btn.classList.add('tab-active');
+        const target = btn.dataset.adminTab;
+        ['app-settings', 'telemetry', 'llm-cost'].forEach(id => {
+          const panel = document.getElementById(`admin-panel-${id}`);
+          if (panel) panel.classList.toggle('hidden', id !== target);
+        });
+      });
+    });
+  }
+
+  async _loadAppSettings() {
+    const { PageLoader } = await import('/js/page-loader.js');
+    const html = await PageLoader.load('/js/views/app-settings.html');
+    const panel = document.getElementById('admin-panel-app-settings');
+    if (panel) {
+      panel.innerHTML = html;
+      const { AppSettingsManager } = await import('/js/app-settings.js');
+      this._appSettings = new AppSettingsManager();
+      await this._appSettings.init();
+    }
+  }
+}
+
 // ─── EvaluationsPage ──────────────────────────────────────────────────────────
 
 class EvaluationsPage {
@@ -1485,4 +1523,5 @@ export {
   EvaluationsPage,
   EvaluationDetailPage,
   NutritionPage,
+  AdminPage,
 };

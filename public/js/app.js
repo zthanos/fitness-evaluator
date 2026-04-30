@@ -225,6 +225,15 @@ router
     return page;
   })
 
+  .on('/admin', async (params, query) => {
+    const { AdminPage } = await getPages();
+    const page = await mountPage('/admin', '/js/views/admin.html', AdminPage);
+    await page.init(params, query);
+    return page;
+  })
+
+  // Legacy redirects for old direct routes
+  .on('/app-settings', () => router.replace('/admin'))
   .on('/telemetry', () => { window.location.href = '/telemetry'; })
   .on('/llm-cost',  () => { window.location.href = '/llm-cost'; })
 
