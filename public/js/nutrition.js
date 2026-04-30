@@ -32,6 +32,7 @@ export class NutritionManager {
       confirmItem,
     };
 
+    initPhotoAnalysis();
     loadDay();
   }
 
@@ -297,6 +298,117 @@ async function confirmItem(mealId, itemId) {
     await loadDay();
   } catch (err) {
     showToast('Failed to confirm item: ' + err.message, 'error');
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Photo analysis
+// ---------------------------------------------------------------------------
+let _photoAnalysisResult = null; // holds MealAnalysisResult between steps
+
+function initPhotoAnalysis() {
+  document.getElementById('analyze-photo-btn').addEventListener('click', handleAnalyzePhoto);
+  document.getElementById('confirm-photo-btn').addEventListener('click', handleConfirmPhoto);
+  document.getElementById('photo-back-btn').addEventListener('click', () => {
+    document.getElementById('photo-results-area').classList.add('hidden');
+    document.getElementById('photo-form-area').classList.remove('hidden');
+    _photoAnalysisResult = null;
+  });
+}
+
+async function handleAnalyzePhoto() {
+  const fileInput = document.getElementById('photo-file-input');
+  if (!fileInput.files[0]) { showToast('Please select a photo first', 'warning'); return; }
+
+  const btn = document.getElementById('analyze-photo-btn');
+  btn.disabled = true;
+  btn.textContent = 'Analyzing…';
+
+  try {
+    const fd = new FormData();
+    fd.append('file', fileInput.files[0]);
+    fd.append('meal_type', document.getElementById('photo-meal-type').value);
+    _photoAnalysisResult = await api.analyzeMealPhoto(fd);
+
+    renderPhotoResults(_photoAnalysisResult);
+    document.getElementById('photo-form-area').classList.add('hidden');
+    document.getElementById('photo-results-area').classList.remove('hidden');
+  } catch (err) {
+    showToast('Photo analysis failed: ' + err.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Analyze';
+  }
+}
+
+function renderPhotoResults(result) {
+  const container = document.getElementById('photo-items-list');
+  if (!result.items?.length) {
+    container.innerHTML = '<p class="text-sm text-base-content/60">No food items detected. Try a clearer photo.</p>';
+    return;
+  }
+
+  container.innerHTML = result.items.map((item, idx) => `
+    <div class="border border-base-300 rounded-lg p-3" data-item-idx="${idx}">
+      <div class="flex justify-between items-start mb-1">
+        <span class="font-medium text-sm">${escHtml(item.name)}</span>
+        <span class="badge badge-sm ${item.confidence >= 0.7 ? 'badge-success' : 'badge-warning'}">
+          ${Math.round(item.confidence * 100)}%
+        </span>
+      </div>
+      ${item.calories != null ? `<div class="text-xs text-base-content/60 mb-1">${item.calories} kcal · P ${item.protein_g ?? '?'}g · C ${item.carbs_g ?? '?'}g · F ${item.fat_g ?? '?'}g</div>` : ''}
+      ${item.needs_confirmation && item.clarification_question ? `
+        <div class="text-xs text-warning mt-1">❓ ${escHtml(item.clarification_question)}</div>
+        <input type="text" class="input input-xs input-bordered mt-1 w-full photo-clarification"
+               placeholder="Your answer (optional)" data-item-idx="${idx}">
+      ` : ''}
+      <div class="flex items-center gap-2 mt-2">
+        <label class="text-xs">Qty:</label>
+        <input type="number" step="any" value="${item.quantity ?? ''}" class="input input-xs input-bordered w-20 photo-qty" data-item-idx="${idx}">
+        <span class="text-xs">${item.unit ?? ''}</span>
+        <label class="cursor-pointer flex items-center gap-1 ml-auto text-xs">
+          <input type="checkbox" class="checkbox checkbox-xs photo-include" data-item-idx="${idx}" checked>
+          Include
+        </label>
+      </div>
+    </div>`).join('');
+}
+
+async function handleConfirmPhoto() {
+  if (!_photoAnalysisResult) return;
+  const mealType = document.getElementById('photo-meal-type').value;
+
+  // Collect user adjustments
+  const items = _photoAnalysisResult.items
+    .filter((_, idx) => document.querySelector(`.photo-include[data-item-idx="${idx}"]`)?.checked)
+    .map((item, idx) => {
+      const qty = document.querySelector(`.photo-qty[data-item-idx="${idx}"]`)?.value;
+      return {
+        name: item.name,
+        quantity: qty ? parseFloat(qty) : item.quantity,
+        unit: item.unit,
+        calories: item.calories,
+        protein_g: item.protein_g,
+        carbs_g: item.carbs_g,
+        fat_g: item.fat_g,
+        source: 'ai',
+        confidence: item.confidence,
+        needs_confirmation: item.needs_confirmation,
+      };
+    });
+
+  if (!items.length) { showToast('No items selected', 'warning'); return; }
+
+  try {
+    await api.createMeal({ log_date: currentDate, meal_type: mealType, items });
+    document.getElementById('photo-modal').close();
+    document.getElementById('photo-results-area').classList.add('hidden');
+    document.getElementById('photo-form-area').classList.remove('hidden');
+    document.getElementById('photo-file-input').value = '';
+    _photoAnalysisResult = null;
+    await loadDay();
+  } catch (err) {
+    showToast('Failed to save meal: ' + err.message, 'error');
   }
 }
 

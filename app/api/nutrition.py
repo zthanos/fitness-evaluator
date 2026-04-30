@@ -4,7 +4,7 @@ import json
 from datetime import date
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -25,6 +25,7 @@ from app.schemas.nutrition_schemas import (
     MealTemplateCreate,
     MealTemplateResponse,
 )
+from app.ai.skills.meal_analyzer import MealAnalyzerSkill, MealAnalysisResult
 
 router = APIRouter()
 
@@ -250,6 +251,43 @@ async def confirm_meal_items(
     db.commit()
     db.refresh(meal)
     return _meal_to_response(meal)
+
+
+# ---------------------------------------------------------------------------
+# AI photo analysis
+# ---------------------------------------------------------------------------
+
+ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
+MAX_IMAGE_BYTES = 10 * 1024 * 1024  # 10 MB
+
+
+@router.post("/analyze-photo", response_model=MealAnalysisResult, summary="Analyze meal photo with AI vision")
+async def analyze_meal_photo(
+    file: UploadFile = File(...),
+    meal_type: str = Form(default="lunch"),
+    db: Session = Depends(get_db),
+    athlete: Athlete = Depends(get_current_athlete),
+):
+    """
+    Upload a meal image and receive AI-estimated nutritional breakdown.
+    Items with confidence < 0.7 are flagged needs_confirmation=true.
+    Call POST /meals to persist after user review.
+    """
+    content_type = file.content_type or "image/jpeg"
+    if content_type not in ALLOWED_IMAGE_TYPES:
+        raise HTTPException(status_code=415, detail=f"Unsupported image type: {content_type}")
+
+    image_bytes = await file.read()
+    if len(image_bytes) > MAX_IMAGE_BYTES:
+        raise HTTPException(status_code=413, detail="Image too large (max 10 MB)")
+
+    skill = MealAnalyzerSkill()
+    result = skill.analyze(image_bytes, content_type)
+
+    if result.error:
+        raise HTTPException(status_code=502, detail=result.error)
+
+    return result
 
 
 # ---------------------------------------------------------------------------
