@@ -34,6 +34,7 @@ export class NutritionManager {
 
     initPhotoAnalysis();
     initFoodSearch();
+    initTemplates();
     loadDay();
   }
 
@@ -150,7 +151,8 @@ function renderMealCard(meal) {
         </div>
         <div class="flex gap-1">
           <button class="btn btn-xs btn-ghost" onclick="window._nutrition.openAddItemModal('${meal.id}')">+ Item</button>
-          <button class="btn btn-xs btn-ghost text-error" onclick="window._nutrition.deleteMeal('${meal.id}')">Delete</button>
+          <button class="btn btn-xs btn-ghost" onclick="window._nutrition.saveAsTemplate('${meal.id}')">💾</button>
+          <button class="btn btn-xs btn-ghost text-error" onclick="window._nutrition.deleteMeal('${meal.id}')">✕</button>
         </div>
       </div>
       <div class="text-xs text-base-content/60 mb-2">
@@ -512,6 +514,134 @@ async function handleConfirmPhoto() {
     await loadDay();
   } catch (err) {
     showToast('Failed to save meal: ' + err.message, 'error');
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Meal templates
+// ---------------------------------------------------------------------------
+let _templates = [];
+
+function initTemplates() {
+  window._nutrition.saveAsTemplate = saveCurrentMealAsTemplate;
+  window._nutrition.applyTemplate = applyTemplate;
+  window._nutrition.deleteTemplate = deleteTemplate;
+  document.getElementById('templates-modal').addEventListener('toggle', loadTemplates);
+}
+
+async function loadTemplates() {
+  const container = document.getElementById('templates-list');
+  container.innerHTML = '<span class="loading loading-spinner loading-sm"></span>';
+  try {
+    _templates = await api.listMealTemplates();
+    renderTemplates();
+  } catch (err) {
+    container.innerHTML = `<p class="text-sm text-error">Failed to load: ${escHtml(err.message)}</p>`;
+  }
+}
+
+function renderTemplates() {
+  const container = document.getElementById('templates-list');
+  if (!_templates.length) {
+    container.innerHTML = '<p class="text-sm text-base-content/40 italic">No templates saved yet. Save a meal as template using the meal actions.</p>';
+    return;
+  }
+
+  // Build apply-to-meal selector options
+  const mealOptions = dayLog?.meals?.length
+    ? dayLog.meals.map(m =>
+        `<option value="${m.id}">${MEAL_ICONS[m.meal_type]} ${m.meal_type}${m.name ? ' – ' + m.name : ''}</option>`
+      ).join('')
+    : '<option value="">No meals today yet</option>';
+
+  container.innerHTML = _templates.map((t, idx) => `
+    <div class="border border-base-300 rounded-lg p-3">
+      <div class="flex justify-between items-center mb-2">
+        <div>
+          <span class="font-medium text-sm">${escHtml(t.name)}</span>
+          ${t.meal_type ? `<span class="badge badge-sm badge-ghost ml-1">${t.meal_type}</span>` : ''}
+          <span class="text-xs text-base-content/50 ml-1">${t.items.length} items</span>
+        </div>
+        <button class="btn btn-xs btn-ghost text-error" onclick="window._nutrition.deleteTemplate('${t.id}')">✕</button>
+      </div>
+      <div class="flex gap-2 items-center">
+        <select class="select select-xs select-bordered flex-1" id="template-target-${idx}">
+          <option value="">New meal</option>
+          ${mealOptions}
+        </select>
+        <button class="btn btn-xs btn-primary" onclick="window._nutrition.applyTemplate('${t.id}', ${idx})">
+          Add to log
+        </button>
+      </div>
+    </div>`).join('');
+}
+
+async function applyTemplate(templateId, idx) {
+  const template = _templates.find(t => t.id === templateId);
+  if (!template) return;
+
+  const targetMealId = document.getElementById(`template-target-${idx}`)?.value;
+
+  try {
+    if (targetMealId) {
+      // Add items to an existing meal
+      for (const item of template.items) {
+        await api.addMealItem(targetMealId, { ...item, source: 'template' });
+      }
+    } else {
+      // Create a new meal with the template items
+      await api.createMeal({
+        log_date: currentDate,
+        meal_type: template.meal_type || 'snack',
+        name: template.name,
+        items: template.items.map(i => ({ ...i, source: 'template' })),
+      });
+    }
+    document.getElementById('templates-modal').close();
+    showToast(`Applied template: ${template.name}`, 'success');
+    await loadDay();
+  } catch (err) {
+    showToast('Failed to apply template: ' + err.message, 'error');
+  }
+}
+
+async function saveCurrentMealAsTemplate(mealId) {
+  const meal = dayLog.meals.find(m => m.id === mealId);
+  if (!meal) return;
+
+  const name = prompt('Template name:', meal.name || meal.meal_type);
+  if (!name) return;
+
+  try {
+    await api.createMealTemplate({
+      name,
+      meal_type: meal.meal_type,
+      items: meal.items.map(i => ({
+        name: i.name,
+        quantity: i.quantity,
+        unit: i.unit,
+        calories: i.calories,
+        protein_g: i.protein_g,
+        carbs_g: i.carbs_g,
+        fat_g: i.fat_g,
+        source: 'manual',
+        confidence: 1.0,
+        needs_confirmation: false,
+      })),
+    });
+    showToast(`Saved template: ${name}`, 'success');
+  } catch (err) {
+    showToast('Failed to save template: ' + err.message, 'error');
+  }
+}
+
+async function deleteTemplate(templateId) {
+  if (!confirm('Delete this template?')) return;
+  try {
+    await api.deleteMealTemplate(templateId);
+    await loadTemplates();
+  } catch (err) {
+    showToast('Failed to delete template: ' + err.message, 'error');
   }
 }
 
