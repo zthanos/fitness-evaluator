@@ -281,6 +281,7 @@ MAX_IMAGE_BYTES = 10 * 1024 * 1024  # 10 MB
 async def analyze_meal_photo(
     file: UploadFile = File(...),
     meal_type: str = Form(default="lunch"),
+    context: Optional[str] = Form(default=None),
     db: Session = Depends(get_db),
     athlete: Athlete = Depends(get_current_athlete),
 ):
@@ -298,7 +299,7 @@ async def analyze_meal_photo(
         raise HTTPException(status_code=413, detail="Image too large (max 10 MB)")
 
     skill = MealAnalyzerSkill()
-    result = skill.analyze(image_bytes, content_type)
+    result = skill.analyze(image_bytes, content_type, user_context=context)
 
     if result.error:
         raise HTTPException(status_code=502, detail=result.error)

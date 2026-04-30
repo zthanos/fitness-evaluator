@@ -75,7 +75,7 @@ Respond ONLY with valid JSON matching this schema, no markdown fences, no commen
   "notes": "string_or_null"
 }"""
 
-    def analyze(self, image_bytes: bytes, mime_type: str = "image/jpeg") -> MealAnalysisResult:
+    def analyze(self, image_bytes: bytes, mime_type: str = "image/jpeg", user_context: str | None = None) -> MealAnalysisResult:
         """
         Analyze a meal image and return detected items with nutritional estimates.
 
@@ -93,13 +93,13 @@ Respond ONLY with valid JSON matching this schema, no markdown fences, no commen
         data_url = f"data:{mime_type};base64,{b64}"
 
         try:
-            raw_json = self._call_vision_model(settings, data_url)
+            raw_json = self._call_vision_model(settings, data_url, user_context)
             return self._parse_response(raw_json)
         except Exception as exc:
             logger.error("MealAnalyzerSkill failed: %s", exc)
             return MealAnalysisResult(error=f"Analysis failed: {exc}")
 
-    def _call_vision_model(self, settings, data_url: str) -> str:
+    def _call_vision_model(self, settings, data_url: str, user_context: str | None = None) -> str:
         from langchain_openai import ChatOpenAI
         from langchain_core.messages import HumanMessage, SystemMessage
 
@@ -115,10 +115,14 @@ Respond ONLY with valid JSON matching this schema, no markdown fences, no commen
             max_tokens=2000,
         )
 
+        user_text = "Analyze this meal photo and return the JSON nutritional breakdown."
+        if user_context:
+            user_text += f"\n\nAdditional context from the user: {user_context}"
+
         messages = [
             SystemMessage(content=self.SYSTEM_PROMPT),
             HumanMessage(content=[
-                {"type": "text", "text": "Analyze this meal photo and return the JSON nutritional breakdown."},
+                {"type": "text", "text": user_text},
                 {"type": "image_url", "image_url": {"url": data_url}},
             ]),
         ]

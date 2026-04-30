@@ -144,6 +144,13 @@
           <option value="snack">Snack</option>
         </select>
       </div>
+      <div class="form-control mb-4">
+        <label class="label">
+          <span class="label-text">Context (optional)</span>
+          <span class="label-text-alt text-base-content/50">helps the AI identify items</span>
+        </label>
+        <textarea id="photo-context" rows="2" placeholder="e.g. Greek salad with feta, homemade pasta ~300g, restaurant burger with fries…" class="textarea textarea-bordered resize-none"></textarea>
+      </div>
       <div class="modal-action">
         <button type="button" class="btn btn-ghost" onclick="this.closest('dialog').close()">Cancel</button>
         <button type="button" class="btn btn-primary" id="analyze-photo-btn">Analyze</button>

@@ -433,6 +433,8 @@ async function handleAnalyzePhoto() {
     const fd = new FormData();
     fd.append('file', fileInput.files[0]);
     fd.append('meal_type', document.getElementById('photo-meal-type').value);
+    const context = document.getElementById('photo-context').value.trim();
+    if (context) fd.append('context', context);
     _photoAnalysisResult = await api.analyzeMealPhoto(fd);
 
     renderPhotoResults(_photoAnalysisResult);
@@ -510,6 +512,7 @@ async function handleConfirmPhoto() {
     document.getElementById('photo-results-area').classList.add('hidden');
     document.getElementById('photo-form-area').classList.remove('hidden');
     document.getElementById('photo-file-input').value = '';
+    document.getElementById('photo-context').value = '';
     _photoAnalysisResult = null;
     await loadDay();
   } catch (err) {
