@@ -290,7 +290,7 @@ class ActivityList {
    */
   renderActivityRow(activity) {
     const name = this.getActivityName(activity);
-    const type = activity.activity_type || 'Unknown';
+    const type = activity.sport_type || activity.activity_type || 'Unknown';
     const date = this.formatDate(activity.start_date);
     const distance = this.formatDistance(activity.distance_m);
     const duration = this.formatDuration(activity.moving_time_s);
@@ -536,8 +536,7 @@ class ActivityList {
    * Get activity name (fallback to type + date if no name)
    */
   getActivityName(activity) {
-    // For now, generate a name from type and date since we don't have a name field
-    const type = activity.activity_type || 'Activity';
+    const type = activity.sport_type || activity.activity_type || 'Activity';
     const date = new Date(activity.start_date);
     const time = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
     return `${type} - ${time}`;

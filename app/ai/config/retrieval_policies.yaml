@@ -57,6 +57,69 @@ comparison:
     - activities
     - metrics
 
+# Intent: Activity List
+# Use case: "Which are my longest rides?", "Show me my best runs", "List my activities"
+activity_list:
+  days_back: null  # All time — needed for "longest ever" style questions
+  max_records: 30  # Return enough to cover ranking queries
+  data_types:
+    - activities
+
+# Intent: Workout Analysis
+# Use case: "How was my last ride?", "Analyse my recent workout", "How was my effort?"
+workout_analysis:
+  days_back: 14  # Focus on recent sessions
+  max_records: 10
+  data_types:
+    - activities
+    - metrics
+
+# Intent: Recovery Check
+# Use case: "Should I train today?", "Am I recovered?", "What's my ACWR?"
+recovery_check:
+  days_back: 14
+  max_records: 20
+  data_types:
+    - activities
+    - metrics
+
+# Intent: Progress Check
+# Use case: "Am I on track?", "How far to my goal?", "What's my fitness trend?"
+progress_check:
+  days_back: 90
+  max_records: 30
+  data_types:
+    - activities
+    - goals
+    - metrics
+
+# Intent: Plan Generation
+# Use case: "Create a training plan", "What should I do this week?"
+plan_generation:
+  days_back: 30  # Recent history to inform the plan
+  max_records: 20
+  data_types:
+    - activities
+    - goals
+    - metrics
+
+# Intent: Performance Goal
+# Use case: "Can I ride 70 km in 3 hours?", "Am I ready for a marathon?"
+performance_goal:
+  days_back: null   # All-time — needs full history for best comparable speed
+  max_records: 20
+  data_types:
+    - activities
+
+# Intent: Nutrition Check
+# Use case: "How many calories did I burn?", "What should I eat after my ride?"
+nutrition_check:
+  days_back: 30
+  max_records: 20
+  data_types:
+    - activities
+    - metrics
+
 # Intent: General
 # Use case: Fallback for queries that don't match specific intents
 general:

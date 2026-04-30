@@ -25,7 +25,7 @@ from app.limiter import limiter
 
 from app.api import (
     auth, logs, strava, metrics, goals,
-    chat, dashboard, settings, evaluations, training_plans,
+    chat, dashboard, settings, evaluations, training_plans, routes,
 )
 from app.api import telemetry
 from app.services.metrics_collector import metrics as req_metrics
@@ -136,6 +136,7 @@ def create_app() -> FastAPI:
     app.include_router(dashboard.router,      prefix="/api/dashboard",      tags=["dashboard"])
     app.include_router(settings.router,       prefix="/api/settings",       tags=["settings"])
     app.include_router(training_plans.router, prefix="/api/training-plans", tags=["training-plans"])
+    app.include_router(routes.router,         prefix="/api/routes",         tags=["routes"])
     app.include_router(telemetry.router,      prefix="/api/telemetry",      tags=["telemetry"])
 
     # ── Health check ────────────────────────────────────────────────────────

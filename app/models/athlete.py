@@ -22,6 +22,8 @@ class Athlete(Base):
     name = Column(String(255), nullable=False)
     email = Column(String(255), nullable=True, index=True)
     date_of_birth = Column(Date, nullable=True)
+    height_cm = Column(Integer, nullable=True)
+    avatar_url = Column(String(500), nullable=True)
     current_plan = Column(Text, nullable=True)
     goals = Column(Text, nullable=True)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)

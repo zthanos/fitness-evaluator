@@ -320,7 +320,7 @@ class AthleteBehaviorSummary:
         """
         # Query active goals
         goals = self.db.query(AthleteGoal).filter(
-            AthleteGoal.athlete_id == athlete_id,
+            AthleteGoal.athlete_id == str(athlete_id),
             AthleteGoal.status == GoalStatus.ACTIVE.value
         ).order_by(AthleteGoal.target_date).limit(2).all()
 

@@ -21,11 +21,14 @@ dependencies = [
     "sse-starlette>=2.2.1", # Server-Sent Events for LLM streaming
     "hypothesis>=6.122.3", # Property-based testing
     "langchain-openai>=1.1.10",
-    "slowapi>=0.1.9",        # Rate limiting for FastAPI
+    "slowapi>=0.1.9", # Rate limiting for FastAPI
     # PostgreSQL + pgvector
-    "psycopg2-binary>=2.9.9",  # PostgreSQL driver
-    "pgvector>=0.3.0",           # pgvector SQLAlchemy integration
+    "psycopg2-binary>=2.9.9", # PostgreSQL driver
+    "pgvector>=0.3.0", # pgvector SQLAlchemy integration
     # Keycloak / JWT auth
-    "python-jose[cryptography]>=3.5.0",  # JWT validation (already present, pinned here)
-    "httpx>=0.28.1",             # Already present; used for JWKS fetch
+    "python-jose[cryptography]>=3.5.0", # JWT validation (already present, pinned here)
+    "httpx>=0.28.1", # Already present; used for JWKS fetch
+    "python-multipart>=0.0.27",
+    "langchain-ollama>=1.1.0",
+    "gpxpy>=1.6.2", # GPX file parsing for route analysis
 ]

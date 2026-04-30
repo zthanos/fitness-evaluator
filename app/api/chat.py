@@ -22,6 +22,7 @@ from app.models.athlete import Athlete
 from app.middleware.auth import get_current_athlete
 from app.services.chat_session_service import ChatSessionService
 from app.services.rag_engine import RAGEngine
+from app.config import get_settings
 
 router = APIRouter()
 
@@ -252,9 +253,24 @@ async def create_message(
     from app.ai.adapter.langchain_adapter import LangChainAdapter
 
     try:
+        settings = get_settings()
+
+        # Primary model — reasoning / synthesis
         llm_client = LLMClient()
+
+        # Tool-calling subagent — a model with reliable function-calling support.
+        # Configured via TOOL_AGENT_MODEL / TOOL_AGENT_ENDPOINT in .env.
+        # Falls back to the primary model if no subagent is configured.
+        tool_agent_client = LLMClient(
+            base_url=settings.tool_agent_base_url,
+            model_name=settings.tool_agent_model,
+        )
+
         rag_engine = RAGEngine(db)
         session_service = ChatSessionService(db, rag_engine)
+
+        from app.services.tool_orchestrator import ToolOrchestrator
+        tool_orchestrator = ToolOrchestrator(llm_client=tool_agent_client, db=db)
 
         # Build ChatAgent with CE components and LLMAdapter
         context_builder = ChatContextBuilder(db=db, token_budget=32000)
@@ -264,6 +280,7 @@ async def create_message(
             llm_adapter=llm_adapter,
             db=db,
             llm_client=llm_client,
+            tool_orchestrator=tool_orchestrator,
         )
 
         # Create thin coordinator handler
@@ -522,10 +539,23 @@ async def stream_chat(
             from app.services.chat_agent import ChatAgent
             from app.ai.context.chat_context import ChatContextBuilder
             from app.ai.adapter.langchain_adapter import LangChainAdapter
+            from app.services.tool_orchestrator import ToolOrchestrator
 
+            settings = get_settings()
+
+            # Primary model — reasoning / synthesis
             llm_client = LLMClient()
+
+            # Tool-calling subagent — a model with reliable function-calling support.
+            tool_agent_client = LLMClient(
+                base_url=settings.tool_agent_base_url,
+                model_name=settings.tool_agent_model,
+            )
+
             rag_engine = RAGEngine(db)
             session_service = ChatSessionService(db, rag_engine)
+
+            tool_orchestrator = ToolOrchestrator(llm_client=tool_agent_client, db=db)
 
             # Build ChatAgent with CE components and LLMAdapter
             context_builder = ChatContextBuilder(db=db, token_budget=32000)
@@ -535,6 +565,7 @@ async def stream_chat(
                 llm_adapter=llm_adapter,
                 db=db,
                 llm_client=llm_client,
+                tool_orchestrator=tool_orchestrator,
             )
 
             # Create thin coordinator handler

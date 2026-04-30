@@ -1,0 +1,372 @@
+"""FitnessStateBuilder — aggregates recent WorkoutAnalysis outputs into a persisted athlete state."""
+from __future__ import annotations
+
+import json
+import logging
+from collections import Counter
+from datetime import datetime, timezone, timedelta
+from statistics import mean
+from typing import Optional
+
+from sqlalchemy.orm import Session
+
+from app.ai.skills.base_skill import BaseSkill
+from app.ai.skills.schemas import FitnessState, FitnessStateInput
+
+# Activity types grouped for classification
+_SPORT_GROUPS = {
+    "run": {"Run", "VirtualRun", "TrailRun"},
+    "ride": {"Ride", "VirtualRide", "MountainBikeRide", "GravelRide", "EBikeRide"},
+    "swim": {"Swim", "OpenWaterSwim"},
+    "strength": {"WeightTraining", "Crossfit", "Yoga", "Pilates", "Workout"},
+}
+
+logger = logging.getLogger(__name__)
+
+_SYSTEM_PROMPT = """You are a precision endurance coach.
+Given an athlete's structured fitness state, write a 2-3 sentence summary that:
+1. Names their current limiter and confidence level.
+2. States their fatigue situation.
+3. Gives the single most important focus for the next 7 days.
+Be specific. No generic advice. No bullet points."""
+
+
+class FitnessStateBuilder(BaseSkill[FitnessStateInput, FitnessState]):
+
+    async def run(self, input: FitnessStateInput) -> FitnessState:
+        from app.ai.skills.workout_analyzer import WorkoutAnalyzer
+        from app.ai.skills.schemas import WorkoutAnalyzerInput, WorkoutAnalysis
+
+        # Pull recent workout analyses
+        analyzer = WorkoutAnalyzer(self.db, self.athlete_id)
+        analyses: list[WorkoutAnalysis] = await analyzer.run(
+            WorkoutAnalyzerInput(n_recent=min(20, input.lookback_days // 2))
+        )
+
+        state = self._aggregate(analyses, input.lookback_days)
+
+        # Generate summary text
+        state_dict = state.model_dump(mode="json", exclude={"summary_text"})
+        state.summary_text = await self._llm_reason(_SYSTEM_PROMPT, json.dumps(state_dict, default=str))
+
+        # Persist
+        self._upsert(state)
+        return state
+
+    # ── Aggregation ──────────────────────────────────────────────────────────
+
+    def _aggregate(self, analyses: list, lookback_days: int) -> FitnessState:
+        now = datetime.now(timezone.utc)
+
+        if not analyses:
+            return FitnessState(
+                athlete_id=self.athlete_id,
+                comfort_cadence_indoor=None,
+                comfort_cadence_outdoor=None,
+                climbing_cadence=None,
+                current_limiter=None,
+                limiter_confidence=0.0,
+                fatigue_level="low",
+                weekly_consistency=0.0,
+                acwr_ratio=None,
+                hr_response_trend=None,
+                rhr_trend=None,
+                state_confidence=0.0,
+                last_updated_at=now,
+                summary_text=None,
+            )
+
+        # Cadence by context
+        indoor_cadences  = [a.avg_cadence for a in analyses if a.is_indoor and a.avg_cadence]
+        outdoor_cadences = [a.avg_cadence for a in analyses if not a.is_indoor and a.avg_cadence]
+        climbing_cadences = [
+            a.avg_cadence for a in analyses
+            if not a.is_indoor and a.avg_cadence
+            and self._is_climb(a)
+        ]
+
+        # Limiter — most common hypothesis with confidence
+        limiters = [a.limiter_hypothesis for a in analyses if a.limiter_hypothesis]
+        current_limiter: Optional[str] = None
+        limiter_confidence = 0.0
+        if limiters:
+            most_common, count = Counter(limiters).most_common(1)[0]
+            current_limiter  = most_common
+            limiter_confidence = round(count / len(limiters), 2)
+
+        # ACWR — acute (7d) vs chronic (28d) moving time
+        acwr = self._compute_acwr(lookback_days)
+
+        # Fatigue from ACWR
+        fatigue_level = self._fatigue_from_acwr(acwr)
+
+        # Weekly consistency
+        consistency = self._compute_consistency(lookback_days)
+
+        # HR trend — compare first half vs second half avg_hr of similar activities
+        hr_trend = self._compute_hr_trend(analyses)
+
+        # RHR trend from WeeklyMeasurement
+        rhr_trend = self._compute_rhr_trend()
+
+        # Confidence based on data richness
+        confidence = min(1.0, round(
+            (len(analyses) / 10) * 0.5 +
+            (1.0 if current_limiter else 0.0) * 0.3 +
+            (1.0 if acwr is not None else 0.0) * 0.2,
+            2
+        ))
+
+        fitness_score = self._compute_fitness_score(acwr, consistency, confidence, len(analyses))
+        athlete_classification = self._classify_athlete(lookback_days)
+
+        return FitnessState(
+            athlete_id=self.athlete_id,
+            comfort_cadence_indoor= round(mean(indoor_cadences), 1)  if indoor_cadences  else None,
+            comfort_cadence_outdoor=round(mean(outdoor_cadences), 1) if outdoor_cadences else None,
+            climbing_cadence=       round(mean(climbing_cadences), 1) if climbing_cadences else None,
+            current_limiter=current_limiter,
+            limiter_confidence=limiter_confidence,
+            fatigue_level=fatigue_level,
+            weekly_consistency=consistency,
+            acwr_ratio=acwr,
+            hr_response_trend=hr_trend,
+            rhr_trend=rhr_trend,
+            state_confidence=confidence,
+            last_updated_at=now,
+            summary_text=None,  # filled after LLM call
+            fitness_score=fitness_score,
+            athlete_classification=athlete_classification,
+        )
+
+    # ── Helpers ──────────────────────────────────────────────────────────────
+
+    def _is_climb(self, a) -> bool:
+        """Heuristic: elevation_m / distance_km > 20 m/km."""
+        if not hasattr(a, "elevation_m") or not a.elevation_m:
+            return False
+        # We don't have distance on WorkoutAnalysis directly — skip for now
+        return False
+
+    def _compute_acwr(self, lookback_days: int) -> Optional[float]:
+        from app.models.strava_activity import StravaActivity
+        now = datetime.now(timezone.utc)
+
+        def load(days_back: int, window: int) -> float:
+            # days_back: offset from now (0 = current window ending now)
+            # window: size of the window in days
+            cutoff = now - timedelta(days=days_back + window)
+            end    = now - timedelta(days=days_back)
+            rows = (
+                self.db.query(StravaActivity.moving_time_s)
+                .filter(
+                    StravaActivity.athlete_id == self.athlete_id,
+                    StravaActivity.start_date >= cutoff,
+                    StravaActivity.start_date < end,
+                )
+                .all()
+            )
+            return sum(r[0] or 0 for r in rows) / 60  # minutes
+
+        acute  = load(0, 7)           # last 7 days
+        chronic_weekly = load(0, 28) / 4  # last 28 days ÷ 4 = weekly avg
+        if chronic_weekly == 0:
+            return None
+        return round(acute / chronic_weekly, 2)
+
+    def _fatigue_from_acwr(self, acwr: Optional[float]) -> str:
+        if acwr is None:    return "low"
+        if acwr > 1.5:      return "overreaching"
+        if acwr > 1.3:      return "high"
+        if acwr > 0.8:      return "moderate"
+        return "low"
+
+    def _compute_consistency(self, lookback_days: int) -> float:
+        from app.models.strava_activity import StravaActivity
+        cutoff = datetime.now(timezone.utc) - timedelta(days=lookback_days)
+        sessions = (
+            self.db.query(StravaActivity)
+            .filter(
+                StravaActivity.athlete_id == self.athlete_id,
+                StravaActivity.start_date >= cutoff,
+            )
+            .count()
+        )
+        target = lookback_days / 7 * 4   # assume 4 sessions/week target
+        return min(1.0, round(sessions / target, 2)) if target > 0 else 0.0
+
+    def _compute_hr_trend(self, analyses: list) -> Optional[str]:
+        hr_values = [a.avg_hr for a in analyses if a.avg_hr]
+        if len(hr_values) < 4:
+            return None
+        mid = len(hr_values) // 2
+        early_avg = mean(hr_values[mid:])   # older
+        recent_avg = mean(hr_values[:mid])   # newer (list is desc by date)
+        diff = recent_avg - early_avg
+        if diff < -3:   return "improving"
+        if diff > 3:    return "degrading"
+        return "stable"
+
+    def _compute_rhr_trend(self) -> Optional[str]:
+        from app.models.weekly_measurement import WeeklyMeasurement
+        rows = (
+            self.db.query(WeeklyMeasurement.rhr_bpm)
+            .filter(
+                WeeklyMeasurement.athlete_id == self.athlete_id,
+                WeeklyMeasurement.rhr_bpm.isnot(None),
+            )
+            .order_by(WeeklyMeasurement.week_start.desc())
+            .limit(6)
+            .all()
+        )
+        values = [r[0] for r in rows if r[0]]
+        if len(values) < 3:
+            return None
+        diff = mean(values[:2]) - mean(values[-2:])  # recent vs older (lower is better)
+        if diff < -1:  return "degrading"
+        if diff > 1:   return "improving"
+        return "stable"
+
+    def _compute_fitness_score(
+        self,
+        acwr: Optional[float],
+        consistency: float,
+        confidence: float,
+        n_analyses: int,
+    ) -> float:
+        """Composite 0-100 score: load balance (40) + consistency (30) + data quality (30)."""
+        # ACWR component: peak at 0.8-1.3 (optimal training zone), 0 at extremes
+        if acwr is None:
+            acwr_score = 0.0
+        elif 0.8 <= acwr <= 1.3:
+            acwr_score = 40.0
+        elif acwr < 0.8:
+            # Under-trained: linear from 0 at acwr=0 to 40 at acwr=0.8
+            acwr_score = (acwr / 0.8) * 40.0
+        else:
+            # Over-reaching: linear from 40 at acwr=1.3 to 0 at acwr=2.0+
+            acwr_score = max(0.0, 40.0 * (1.0 - (acwr - 1.3) / 0.7))
+
+        consistency_score = consistency * 30.0
+        quality_score = confidence * 20.0 + min(10.0, (n_analyses / 10.0) * 10.0)
+
+        return round(min(100.0, acwr_score + consistency_score + quality_score), 1)
+
+    def _classify_athlete(self, lookback_days: int) -> str:
+        """Classify athlete by dominant sport and training volume over lookback period."""
+        from app.models.strava_activity import StravaActivity
+
+        cutoff = datetime.now(timezone.utc) - timedelta(days=lookback_days)
+        rows = (
+            self.db.query(
+                StravaActivity.activity_type,
+                StravaActivity.sport_type,
+                StravaActivity.moving_time_s,
+                StravaActivity.distance_m,
+            )
+            .filter(
+                StravaActivity.athlete_id == self.athlete_id,
+                StravaActivity.start_date >= cutoff,
+            )
+            .all()
+        )
+
+        if not rows:
+            return "Fitness Enthusiast"
+
+        group_counts: dict[str, int] = Counter()
+        total_run_km = 0.0
+        total_ride_km = 0.0
+        weeks = max(1, lookback_days / 7)
+
+        for row in rows:
+            sport = row.sport_type or row.activity_type or ""
+            for group, types in _SPORT_GROUPS.items():
+                if sport in types:
+                    group_counts[group] += 1
+                    break
+            else:
+                group_counts["other"] = group_counts.get("other", 0) + 1
+
+            if sport in _SPORT_GROUPS["run"] and row.distance_m:
+                total_run_km += row.distance_m / 1000
+            if sport in _SPORT_GROUPS["ride"] and row.distance_m:
+                total_ride_km += row.distance_m / 1000
+
+        run_count   = group_counts.get("run", 0)
+        ride_count  = group_counts.get("ride", 0)
+        swim_count  = group_counts.get("swim", 0)
+        strength_count = group_counts.get("strength", 0)
+        total       = sum(group_counts.values())
+
+        run_km_week  = total_run_km  / weeks
+        ride_km_week = total_ride_km / weeks
+
+        # Multi-sport triathlete detection: meaningful presence in 3 disciplines
+        if run_count >= 3 and ride_count >= 3 and swim_count >= 2:
+            return "Amateur Triathlete"
+
+        # Dual-sport: significant run + ride
+        if run_count >= 4 and ride_count >= 4:
+            return "Duathlete"
+
+        dominant = max(group_counts, key=group_counts.get)
+
+        if dominant == "run":
+            if run_km_week >= 50:
+                return "Competitive Runner"
+            if run_km_week >= 20:
+                return "Dedicated Runner"
+            return "Recreational Runner"
+
+        if dominant == "ride":
+            if ride_km_week >= 200:
+                return "Competitive Cyclist"
+            if ride_km_week >= 80:
+                return "Dedicated Cyclist"
+            return "Recreational Cyclist"
+
+        if dominant == "swim":
+            return "Swimmer"
+
+        if dominant == "strength":
+            return "Strength Athlete"
+
+        # Low overall volume
+        if total <= 4:
+            return "Weekend Warrior"
+
+        return "Fitness Enthusiast"
+
+    # ── Persistence ──────────────────────────────────────────────────────────
+
+    def _upsert(self, state: FitnessState) -> None:
+        from app.models.athlete_fitness_state import AthleteFitnessState
+        existing = (
+            self.db.query(AthleteFitnessState)
+            .filter(AthleteFitnessState.athlete_id == self.athlete_id)
+            .first()
+        )
+        fields = {
+            "comfort_cadence_indoor":  state.comfort_cadence_indoor,
+            "comfort_cadence_outdoor": state.comfort_cadence_outdoor,
+            "climbing_cadence":        state.climbing_cadence,
+            "current_limiter":         state.current_limiter,
+            "limiter_confidence":      state.limiter_confidence,
+            "fatigue_level":           state.fatigue_level,
+            "weekly_consistency":      state.weekly_consistency,
+            "acwr_ratio":              state.acwr_ratio,
+            "hr_response_trend":       state.hr_response_trend,
+            "rhr_trend":               state.rhr_trend,
+            "state_confidence":        state.state_confidence,
+            "last_updated_at":         state.last_updated_at,
+            "summary_text":            state.summary_text,
+            "fitness_score":           state.fitness_score,
+            "athlete_classification":  state.athlete_classification,
+        }
+        if existing:
+            for k, v in fields.items():
+                setattr(existing, k, v)
+        else:
+            self.db.add(AthleteFitnessState(athlete_id=self.athlete_id, **fields))
+        self.db.commit()

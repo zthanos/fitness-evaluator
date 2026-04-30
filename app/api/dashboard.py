@@ -6,6 +6,8 @@ from sqlalchemy import func, desc
 from datetime import date, datetime, timedelta
 from typing import Optional
 from app.database import get_db
+from app.middleware.auth import get_current_athlete
+from app.models.athlete import Athlete
 from app.models.strava_activity import StravaActivity
 from app.models.weekly_measurement import WeeklyMeasurement
 from app.models.daily_log import DailyLog
@@ -199,6 +201,26 @@ async def get_recent_logs(db: Session = Depends(get_db)):
             }
             for l in logs
         ]
+    }
+
+
+@router.get("/sport-profiles", summary="Get athlete sport profiles for dashboard")
+async def get_dashboard_sport_profiles(
+    db: Session = Depends(get_db),
+    athlete: Athlete = Depends(get_current_athlete),
+):
+    from app.models.athlete_sport_profile import AthleteSportProfile
+    from app.ai.skills.sport_profile_builder import profile_to_dict, compute_dominant_sport
+    profiles = (
+        db.query(AthleteSportProfile)
+        .filter_by(athlete_id=athlete.id)
+        .order_by(AthleteSportProfile.sport_group)
+        .all()
+    )
+    profile_dicts = [profile_to_dict(p) for p in profiles]
+    return {
+        "profiles": profile_dicts,
+        "dominant_sport": compute_dominant_sport(profile_dicts),
     }
 
 

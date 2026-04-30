@@ -1,13 +1,14 @@
-"""Telemetry API — system health, request stats, and recent logs."""
+"""Telemetry API — system health, request stats, recent logs, and chat traces."""
 import time
 import httpx
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
 from app.database import get_db
 from app.config import get_settings
 from app.services.metrics_collector import metrics
+from app.services.trace_collector import traces
 
 router = APIRouter()
 
@@ -88,3 +89,30 @@ async def get_logs(
     limit: int = Query(default=50, ge=1, le=200),
 ):
     return {"logs": metrics.get_logs(level=level, limit=limit)}
+
+
+@router.get("/traces", summary="Recent chat execution traces")
+async def get_traces(
+    limit: int = Query(default=30, ge=1, le=100, description="Number of traces to return"),
+):
+    """
+    Return summary rows for the most recent chat executions.
+    Use /traces/{trace_id} to drill into the full chain-of-thought for a specific request.
+    """
+    return {"traces": traces.list_traces(limit=limit)}
+
+
+@router.get("/traces/{trace_id}", summary="Full chain-of-thought for one chat request")
+async def get_trace(trace_id: str):
+    """
+    Return the complete execution trace for a single chat request, including:
+    - Intent classification result
+    - Context layer token counts
+    - Full ReAct THINK/ACT/OBSERVE timeline
+    - Tool invocations with parameters and result previews
+    - Latency breakdown
+    """
+    trace = traces.get_trace(trace_id)
+    if trace is None:
+        raise HTTPException(status_code=404, detail=f"Trace {trace_id!r} not found")
+    return trace

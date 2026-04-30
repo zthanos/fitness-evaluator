@@ -64,6 +64,9 @@ class ActivityDetail {
         // Render heart rate if available
         this.renderHeartRate();
 
+        // Render performance metrics (cadence / power) if available
+        this.renderPerformanceMetrics();
+
         // Render splits if available
         this.renderSplits();
 
@@ -82,12 +85,13 @@ class ActivityDetail {
         const typeBadge = document.getElementById('activity-type-badge');
         const dateBadge = document.getElementById('activity-date');
 
-        // Set title (use activity type if no name available)
-        const activityName = this.activity.name || this.activity.activity_type;
+        // Set title (use sport/activity type if no name available)
+        const activityName = this.activity.name ||
+            this.activity.sport_type || this.activity.activity_type;
         title.textContent = activityName;
 
-        // Set type badge
-        typeBadge.textContent = this.activity.activity_type;
+        // Prefer sport_type (e.g. "Tennis") over legacy activity_type (e.g. "Workout")
+        typeBadge.textContent = this.activity.sport_type || this.activity.activity_type;
 
         // Set date badge
         const activityDate = new Date(this.activity.start_date);
@@ -192,30 +196,8 @@ class ActivityDetail {
             return;
         }
 
-        let rawData;
-        try {
-            // Handle both JSON string and Python dict string formats
-            if (typeof this.activity.raw_json === 'string') {
-                try {
-                    // Try parsing as JSON first
-                    rawData = JSON.parse(this.activity.raw_json);
-                } catch (e) {
-                    // If JSON parsing fails, try to handle Python dict format
-                    // Replace single quotes with double quotes for JSON compatibility
-                    const jsonString = this.activity.raw_json
-                        .replace(/'/g, '"')
-                        .replace(/None/g, 'null')
-                        .replace(/True/g, 'true')
-                        .replace(/False/g, 'false');
-                    rawData = JSON.parse(jsonString);
-                }
-            } else {
-                rawData = this.activity.raw_json;
-            }
-        } catch (e) {
-            console.error('Failed to parse raw_json:', e);
-            return;
-        }
+        const rawData = this._parseRawJson();
+        if (!rawData) return;
 
         const splits = rawData.splits_metric || rawData.splits_standard;
         
@@ -281,30 +263,8 @@ class ActivityDetail {
             return;
         }
 
-        let rawData;
-        try {
-            // Handle both JSON string and Python dict string formats
-            if (typeof this.activity.raw_json === 'string') {
-                try {
-                    // Try parsing as JSON first
-                    rawData = JSON.parse(this.activity.raw_json);
-                } catch (e) {
-                    // If JSON parsing fails, try to handle Python dict format
-                    // Replace single quotes with double quotes for JSON compatibility
-                    const jsonString = this.activity.raw_json
-                        .replace(/'/g, '"')
-                        .replace(/None/g, 'null')
-                        .replace(/True/g, 'true')
-                        .replace(/False/g, 'false');
-                    rawData = JSON.parse(jsonString);
-                }
-            } else {
-                rawData = this.activity.raw_json;
-            }
-        } catch (e) {
-            console.error('Failed to parse raw_json for map:', e);
-            return;
-        }
+        const rawData = this._parseRawJson();
+        if (!rawData) return;
 
         // Check for map data (polyline or lat/lng coordinates)
         const map = rawData.map;
@@ -380,6 +340,24 @@ class ActivityDetail {
     }
 
     /**
+     * Parse raw_json — returns the object or null if unparseable.
+     * Handles both proper JSON (new enrichments) and legacy Python-dict strings.
+     */
+    _parseRawJson() {
+        const raw = this.activity.raw_json;
+        if (!raw) return null;
+        if (typeof raw !== 'string') return raw;
+
+        // Fast path: proper JSON (all new data)
+        try { return JSON.parse(raw); } catch (_) {}
+
+        // Slow path: legacy Python str(dict) stored before the json.dumps fix.
+        // Only safe for activities that haven't been re-enriched yet.
+        // Silently return null rather than log an error — the sections stay hidden.
+        return null;
+    }
+
+    /**
      * Decode Google polyline format to lat/lng coordinates
      * Based on the Polyline encoding algorithm
      */
@@ -425,21 +403,59 @@ class ActivityDetail {
     }
 
     /**
+     * Render cadence and power metrics if available
+     */
+    renderPerformanceMetrics() {
+        const section = document.getElementById('performance-section');
+        let hasData = false;
+
+        const show = (wrapperId, statId, value, unit) => {
+            if (value != null) {
+                document.getElementById(wrapperId).classList.remove('hidden');
+                document.getElementById(statId).textContent = `${Math.round(value)} ${unit}`;
+                hasData = true;
+            }
+        };
+
+        show('avg-cadence-detail',  'stat-avg-cadence',    this.activity.avg_cadence,        'rpm');
+        show('max-cadence-detail',  'stat-max-cadence',    this.activity.max_cadence,        'rpm');
+        show('avg-watts-detail',    'stat-avg-watts',      this.activity.avg_watts,          'W');
+        show('weighted-watts-detail','stat-weighted-watts', this.activity.weighted_avg_watts, 'W');
+
+        if (hasData) section.classList.remove('hidden');
+    }
+
+    /**
      * Render additional details
      */
     renderAdditionalDetails() {
         // Calories
-        const caloriesDetail = document.getElementById('calories-detail');
-        const caloriesEl = document.getElementById('stat-calories');
-        
         if (this.activity.calories != null) {
-            caloriesDetail.classList.remove('hidden');
-            caloriesEl.textContent = `${Math.round(this.activity.calories)} kcal`;
+            document.getElementById('calories-detail').classList.remove('hidden');
+            document.getElementById('stat-calories').textContent =
+                `${Math.round(this.activity.calories)} kcal`;
+        }
+
+        // Suffer score
+        if (this.activity.suffer_score != null) {
+            document.getElementById('suffer-score-detail').classList.remove('hidden');
+            document.getElementById('stat-suffer-score').textContent = this.activity.suffer_score;
+        }
+
+        // Legacy activity_type (only show when different from sport_type to avoid duplication)
+        if (this.activity.activity_type && this.activity.activity_type !== this.activity.sport_type) {
+            document.getElementById('sport-type-detail').classList.remove('hidden');
+            document.getElementById('stat-sport-type').textContent = this.activity.activity_type;
+            document.querySelector('#sport-type-detail p.text-sm').textContent = 'Activity Type (legacy)';
         }
 
         // Activity ID
-        const activityIdEl = document.getElementById('stat-activity-id');
-        activityIdEl.textContent = this.activity.strava_id;
+        document.getElementById('stat-activity-id').textContent = this.activity.strava_id;
+
+        // Enrichment badge
+        if (this.activity.enriched) {
+            document.getElementById('enriched-badge').classList.remove('hidden');
+        }
     }
 
     /**
@@ -470,74 +486,87 @@ class ActivityDetail {
     }
 
     /**
-     * Fetch and display AI effort analysis
+     * Fetch and display AI effort analysis.
+     * @param {boolean} force - bypass cache and regenerate
      */
-    async fetchAndDisplayAnalysis() {
+    async fetchAndDisplayAnalysis(force = false) {
         const analysisSection = document.getElementById('analysis-section');
         const analysisLoading = document.getElementById('analysis-loading');
         const analysisContent = document.getElementById('analysis-content');
         const analysisError = document.getElementById('analysis-error');
 
-        // Show the analysis section
+        // Reset to loading state
         analysisSection.classList.remove('hidden');
+        analysisLoading.classList.remove('hidden');
+        analysisContent.classList.add('hidden');
+        analysisError.classList.add('hidden');
+        analysisContent.innerHTML = '';
 
         try {
-            // Set a timeout for the analysis request (3 seconds as per requirements)
+            // 60 s timeout — newly enriched activities need a full LLM generation pass
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 3000);
+            const timeoutId = setTimeout(() => controller.abort(), 60000);
 
             const token = window.getAuthToken?.();
-            const response = await fetch(
-                `/api/strava/activities/detail/${this.activityId}/analysis`,
-                {
-                    signal: controller.signal,
-                    headers: token ? { 'Authorization': `Bearer ${token}` } : {},
-                }
-            );
+            const url = `/api/strava/activities/detail/${this.activityId}/analysis` +
+                (force ? '?force=true' : '');
+            const response = await fetch(url, {
+                signal: controller.signal,
+                headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+            });
 
             clearTimeout(timeoutId);
 
-            if (!response.ok) {
-                throw new Error('Failed to fetch analysis');
-            }
+            if (!response.ok) throw new Error('Failed to fetch analysis');
 
             const data = await response.json();
 
-            // Hide loading, show content
             analysisLoading.classList.add('hidden');
             analysisContent.classList.remove('hidden');
 
-            // Format and display the analysis text
-            // Convert markdown-style formatting to HTML
             let formattedText = data.analysis_text
-                .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>') // Bold
-                .replace(/\n\n/g, '</p><p>') // Paragraphs
-                .replace(/\n/g, '<br>'); // Line breaks
+                .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+                .replace(/\n\n/g, '</p><p>')
+                .replace(/\n/g, '<br>');
 
             analysisContent.innerHTML = `<p>${formattedText}</p>`;
 
-            // Add a badge if it's cached
+            // Footer row: cached badge + regenerate button
+            const footer = document.createElement('div');
+            footer.className = 'flex items-center gap-3 mt-3';
+
             if (data.cached) {
-                const cachedBadge = document.createElement('div');
-                cachedBadge.className = 'badge badge-ghost badge-sm mt-2';
+                const cachedBadge = document.createElement('span');
+                cachedBadge.className = 'badge badge-ghost badge-sm';
                 cachedBadge.textContent = 'Cached analysis';
-                analysisContent.appendChild(cachedBadge);
+                footer.appendChild(cachedBadge);
             }
 
+            const regenBtn = document.createElement('button');
+            regenBtn.className = 'btn btn-xs btn-outline';
+            regenBtn.textContent = 'Regenerate';
+            regenBtn.addEventListener('click', () => this.fetchAndDisplayAnalysis(true));
+            footer.appendChild(regenBtn);
+
+            analysisContent.appendChild(footer);
+
         } catch (error) {
-            // Hide loading, show error
             analysisLoading.classList.add('hidden');
-            
-            if (error.name === 'AbortError') {
-                // Timeout occurred - show error but don't break the page
-                analysisError.querySelector('span').textContent = 
-                    'Analysis generation is taking longer than expected. Please refresh to try again.';
-            }
-            
-            analysisError.classList.remove('hidden');
-            
-            // Log error for debugging
             console.error('Failed to fetch effort analysis:', error);
+
+            const msg = error.name === 'AbortError'
+                ? 'Analysis generation timed out.'
+                : 'Unable to generate effort analysis at this time.';
+
+            analysisError.querySelector('span').textContent = msg;
+            analysisError.classList.remove('hidden');
+
+            // Retry button inside the error alert
+            const retryBtn = document.createElement('button');
+            retryBtn.className = 'btn btn-xs btn-warning ml-3';
+            retryBtn.textContent = 'Retry';
+            retryBtn.addEventListener('click', () => this.fetchAndDisplayAnalysis(true));
+            analysisError.appendChild(retryBtn);
         }
     }
 }

@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import Column, DateTime, Float, Integer, String, Text, UniqueConstraint, ForeignKey, event
+from sqlalchemy import BigInteger, Column, DateTime, Float, Integer, String, Text, UniqueConstraint, ForeignKey, event
 from sqlalchemy.orm import relationship, validates
 from app.models.base import Base, TimestampMixin
 import uuid
@@ -11,7 +11,7 @@ class StravaActivity(Base, TimestampMixin):
     # Use String(36) for SQLite compatibility instead of UUID
     id: str = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     athlete_id: int = Column(Integer, ForeignKey("athletes.id"), nullable=True)  # Added for v2 platform
-    strava_id: int = Column(Integer, unique=True, nullable=False)
+    strava_id: int = Column(BigInteger, unique=True, nullable=False)
     activity_type: str = Column(String(50), nullable=False)
     start_date: datetime = Column(DateTime, nullable=False)
     moving_time_s: int = Column(Integer, nullable=True)
@@ -22,6 +22,16 @@ class StravaActivity(Base, TimestampMixin):
     calories: float = Column(Float, nullable=True)
     raw_json: dict = Column(Text, nullable=False)
     week_id: str = Column(String(36), nullable=True)
+    # v1 enrichment fields (extracted from raw_json on sync)
+    avg_cadence: float = Column(Float, nullable=True)
+    max_cadence: float = Column(Float, nullable=True)
+    avg_watts: float = Column(Float, nullable=True)
+    max_watts: float = Column(Float, nullable=True)
+    weighted_avg_watts: float = Column(Float, nullable=True)
+    kilojoules: float = Column(Float, nullable=True)
+    suffer_score: int = Column(Integer, nullable=True)
+    trainer: bool = Column(Integer, nullable=True)   # stored as 0/1 for SQLite compat
+    sport_type: str = Column(String(50), nullable=True)
     
     # Relationship to analysis
     analysis = relationship("ActivityAnalysis", back_populates="activity", uselist=False, cascade="all, delete-orphan")

@@ -14,6 +14,8 @@ import time
 import logging
 
 from app.database import get_db
+from app.middleware.auth import get_current_athlete
+from app.models.athlete import Athlete
 from app.models.training_plan import TrainingPlan as TrainingPlanModel
 from app.models.training_plan_week import TrainingPlanWeek as TrainingPlanWeekModel
 from app.models.training_plan_session import TrainingPlanSession as TrainingPlanSessionModel
@@ -26,8 +28,8 @@ router = APIRouter()
 
 @router.get("", summary="List all training plans")
 async def list_training_plans(
-    user_id: int = Query(1, description="User ID for filtering plans"),
     status: Optional[str] = Query(None, description="Filter by status (draft, active, completed, abandoned)"),
+    athlete: Athlete = Depends(get_current_athlete),
     db: Session = Depends(get_db)
 ):
     """
@@ -56,48 +58,27 @@ async def list_training_plans(
     Requirements: 12.1, 12.2, 12.3, 12.5, 18.1, 20.2
     """
     start_time = time.time()
-    
-    # Validate user_id is present (Requirement 20.2)
-    if user_id is None:
-        logger.error("SECURITY VIOLATION: user_id is None in list_training_plans")
-        raise HTTPException(status_code=400, detail="user_id is required")
-    
-    # Validate status if provided
+
     valid_statuses = ['draft', 'active', 'completed', 'abandoned']
     if status and status not in valid_statuses:
-        raise HTTPException(
-            status_code=400, 
-            detail=f"Invalid status '{status}'. Must be one of: {', '.join(valid_statuses)}"
-        )
-    
+        raise HTTPException(status_code=400, detail=f"Invalid status '{status}'. Must be one of: {', '.join(valid_statuses)}")
+
     try:
-        # Query plans with user_id scoping (Requirement 20.2)
-        query = db.query(TrainingPlanModel).filter(
-            TrainingPlanModel.user_id == user_id
-        )
-        
-        # Apply status filter if provided
+        query = db.query(TrainingPlanModel).filter(TrainingPlanModel.user_id == athlete.id)
         if status:
             query = query.filter(TrainingPlanModel.status == status)
-        
+
         plans = query.options(
-            joinedload(TrainingPlanModel.weeks)
-            .joinedload(TrainingPlanWeekModel.sessions)
+            joinedload(TrainingPlanModel.weeks).joinedload(TrainingPlanWeekModel.sessions)
         ).order_by(TrainingPlanModel.created_at.desc()).all()
-        
-        # Format response
+
         plan_summaries = []
         for plan in plans:
-            # Calculate adherence (Requirement 12.3)
             adherence = AdherenceCalculator.calculate_plan_adherence(plan)
-            
-            # Count sessions
             total_sessions = sum(len(week.sessions) for week in plan.weeks)
             completed_sessions = sum(
-                sum(1 for session in week.sessions if session.completed)
-                for week in plan.weeks
+                sum(1 for s in week.sessions if s.completed) for week in plan.weeks
             )
-            
             plan_summaries.append({
                 "id": plan.id,
                 "title": plan.title,
@@ -108,96 +89,69 @@ async def list_training_plans(
                 "status": plan.status,
                 "adherence_percentage": round(adherence, 1),
                 "total_sessions": total_sessions,
-                "completed_sessions": completed_sessions
+                "completed_sessions": completed_sessions,
             })
-        
-        # Log performance (Requirement 18.1)
+
         latency_ms = (time.time() - start_time) * 1000
-        logger.info(
-            f"Listed {len(plan_summaries)} plans for user_id={user_id} in {latency_ms:.0f}ms"
-        )
-        
-        # Warn if latency exceeds target (Requirement 18.3)
-        if latency_ms > 2000:
-            logger.warning(
-                f"PERFORMANCE WARNING: list_training_plans exceeded 2s target: {latency_ms:.0f}ms",
-                extra={"user_id": user_id, "latency_ms": latency_ms}
-            )
-        
+        logger.info("Listed %d plans for athlete=%d in %.0fms", len(plan_summaries), athlete.id, latency_ms)
         return {"plans": plan_summaries}
-        
+
     except Exception as e:
-        logger.error(f"Error listing training plans for user_id={user_id}: {e}", exc_info=True)
+        logger.error("Error listing training plans for athlete=%d: %s", athlete.id, e, exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/{plan_id}", summary="Get plan details")
 async def get_training_plan(
     plan_id: str,
-    user_id: int = Query(1, description="User ID for security scoping"),
+    athlete: Athlete = Depends(get_current_athlete),
     db: Session = Depends(get_db)
 ):
     """
     Get detailed training plan with all weeks and sessions.
-    
-    Returns complete plan data for display in the Plan Detail View.
-    
-    **Path Parameters:**
-    - `plan_id`: Plan UUID
-    
-    **Query Parameters:**
-    - `user_id`: User ID for security scoping (required)
-    
-    **Returns:**
-    - `plan`: Complete plan object with:
-      - `id`: Plan UUID
-      - `user_id`: Owner user ID
-      - `title`: Plan title
-      - `sport`: Primary sport
-      - `goal_id`: Linked goal ID (if any)
-      - `start_date`: Plan start date (ISO format)
-      - `end_date`: Plan end date (ISO format)
-      - `status`: Plan status
-      - `overall_adherence`: Overall adherence percentage
-      - `weeks`: Array of week objects with sessions
-    
-    **Performance Target:** < 2 seconds at p95 (Requirement 18.2)
-    
+
     Requirements: 13.1, 13.2, 13.3, 13.4, 13.6, 18.2, 20.2
     """
     start_time = time.time()
-    
-    # Validate user_id is present (Requirement 20.2)
-    if user_id is None:
-        logger.error(f"SECURITY VIOLATION: user_id is None in get_training_plan for plan_id={plan_id}")
-        raise HTTPException(status_code=400, detail="user_id is required")
-    
+
     try:
-        # Query plan with user_id scoping (Requirement 20.2)
         plan = db.query(TrainingPlanModel).filter(
             TrainingPlanModel.id == plan_id,
-            TrainingPlanModel.user_id == user_id
+            TrainingPlanModel.user_id == athlete.id
         ).options(
             joinedload(TrainingPlanModel.weeks)
             .joinedload(TrainingPlanWeekModel.sessions)
         ).first()
         
         if not plan:
-            raise HTTPException(
-                status_code=404, 
-                detail=f"Plan {plan_id} not found or access denied"
-            )
-        
-        # Calculate overall adherence
+            raise HTTPException(status_code=404, detail=f"Plan {plan_id} not found or access denied")
+
         overall_adherence = AdherenceCalculator.calculate_plan_adherence(plan)
-        
+
+        # Fetch route context when this is a route-specific plan
+        route_context = None
+        if plan.route_profile_id:
+            try:
+                from app.models.route_profile import RouteProfile
+                route = db.query(RouteProfile).filter_by(id=plan.route_profile_id).first()
+                if route:
+                    route_context = {
+                        "id":                    route.id,
+                        "name":                  (route.filename or "Route").replace(".gpx", "").replace("_", " ").replace("-", " "),
+                        "distance_km":           route.distance_km,
+                        "total_elevation_gain_m": route.total_elevation_gain_m,
+                        "max_gradient_pct":      route.max_gradient_pct,
+                        "route_difficulty":      route.route_difficulty,
+                        "critical_sections":     route.critical_sections or [],
+                        "analysis_summary":      route.analysis_summary,
+                    }
+            except Exception:
+                pass
+
         # Format weeks
         weeks_data = []
         for week in plan.weeks:
-            # Calculate week adherence
             week_adherence = AdherenceCalculator.calculate_week_adherence(week)
-            
-            # Format sessions
             sessions_data = []
             for session in week.sessions:
                 session_data = {
@@ -210,8 +164,6 @@ async def get_training_plan(
                     "completed": session.completed,
                     "matched_activity_id": session.matched_activity_id
                 }
-                
-                # Include matched activity details if available
                 if session.matched_activity and session.matched_activity_id:
                     session_data["matched_activity"] = {
                         "id": session.matched_activity.id,
@@ -219,19 +171,19 @@ async def get_training_plan(
                         "distance_m": session.matched_activity.distance_m,
                         "moving_time_s": session.matched_activity.moving_time_s
                     }
-                
                 sessions_data.append(session_data)
-            
+
             weeks_data.append({
                 "id": week.id,
                 "week_number": week.week_number,
+                "phase": week.phase,
                 "focus": week.focus,
                 "volume_target": week.volume_target,
+                "distance_target_km": week.distance_target_km,
                 "adherence": round(week_adherence, 1),
                 "sessions": sessions_data
             })
-        
-        # Format response
+
         plan_data = {
             "id": plan.id,
             "user_id": plan.user_id,
@@ -244,7 +196,10 @@ async def get_training_plan(
                 "goal_type": plan.goal.goal_type,
                 "target_date": plan.goal.target_date.isoformat() if plan.goal.target_date else None,
                 "target_value": plan.goal.target_value
-            } if plan.goal else None,  # Include full goal object
+            } if plan.goal else None,
+            "route_profile_id": plan.route_profile_id,
+            "route_context": route_context,
+            "plan_metadata": plan.plan_metadata,
             "start_date": plan.start_date.isoformat(),
             "end_date": plan.end_date.isoformat(),
             "status": plan.status,
@@ -252,75 +207,72 @@ async def get_training_plan(
             "weeks": weeks_data
         }
         
-        # Log performance (Requirement 18.2)
         latency_ms = (time.time() - start_time) * 1000
-        logger.info(
-            f"Retrieved plan {plan_id} for user_id={user_id} in {latency_ms:.0f}ms"
-        )
-        
-        # Warn if latency exceeds target (Requirement 18.3)
+        logger.info("Retrieved plan %s for athlete=%d in %.0fms", plan_id, athlete.id, latency_ms)
         if latency_ms > 2000:
-            logger.warning(
-                f"PERFORMANCE WARNING: get_training_plan exceeded 2s target: {latency_ms:.0f}ms",
-                extra={"user_id": user_id, "plan_id": plan_id, "latency_ms": latency_ms}
-            )
-        
+            logger.warning("PERFORMANCE WARNING: get_training_plan exceeded 2s target: %.0fms", latency_ms)
+
         return {"plan": plan_data}
-        
+
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error retrieving plan {plan_id} for user_id={user_id}: {e}", exc_info=True)
+        logger.error("Error retrieving plan %s for athlete=%d: %s", plan_id, athlete.id, e, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/{plan_id}", summary="Delete a training plan")
+async def delete_training_plan(
+    plan_id: str,
+    athlete: Athlete = Depends(get_current_athlete),
+    db: Session = Depends(get_db)
+):
+    """Delete a training plan and all its weeks/sessions."""
+    try:
+        plan = db.query(TrainingPlanModel).filter(
+            TrainingPlanModel.id == plan_id,
+            TrainingPlanModel.user_id == athlete.id
+        ).first()
+
+        if not plan:
+            raise HTTPException(status_code=404, detail=f"Plan {plan_id} not found or access denied")
+
+        db.delete(plan)
+        db.commit()
+        logger.info("Deleted plan %s for athlete=%d", plan_id, athlete.id)
+        return {"ok": True}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error("Error deleting plan %s for athlete=%d: %s", plan_id, athlete.id, e, exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/{plan_id}/adherence", summary="Get adherence time series")
 async def get_plan_adherence(
     plan_id: str,
-    user_id: int = Query(1, description="User ID for security scoping"),
+    athlete: Athlete = Depends(get_current_athlete),
     db: Session = Depends(get_db)
 ):
     """
     Get adherence time series for charting.
-    
-    Returns weekly adherence percentages for display in the adherence chart.
-    
-    **Path Parameters:**
-    - `plan_id`: Plan UUID
-    
-    **Query Parameters:**
-    - `user_id`: User ID for security scoping (required)
-    
-    **Returns:**
-    - `adherence_by_week`: Array of objects with:
-      - `week`: Week number
-      - `adherence`: Adherence percentage for that week
-    - `overall_adherence`: Overall plan adherence percentage
-    
+
     Requirement: 13.5, 20.2
     """
-    # Validate user_id is present (Requirement 20.2)
-    if user_id is None:
-        logger.error(f"SECURITY VIOLATION: user_id is None in get_plan_adherence for plan_id={plan_id}")
-        raise HTTPException(status_code=400, detail="user_id is required")
-    
     try:
-        # Query plan with user_id scoping (Requirement 20.2)
         plan = db.query(TrainingPlanModel).filter(
             TrainingPlanModel.id == plan_id,
-            TrainingPlanModel.user_id == user_id
+            TrainingPlanModel.user_id == athlete.id
         ).options(
             joinedload(TrainingPlanModel.weeks)
             .joinedload(TrainingPlanWeekModel.sessions)
         ).first()
-        
+
         if not plan:
-            raise HTTPException(
-                status_code=404, 
-                detail=f"Plan {plan_id} not found or access denied"
-            )
-        
-        # Calculate adherence by week
+            raise HTTPException(status_code=404, detail=f"Plan {plan_id} not found or access denied")
+
         adherence_by_week = []
         for week in plan.weeks:
             week_adherence = AdherenceCalculator.calculate_week_adherence(week)
@@ -328,17 +280,16 @@ async def get_plan_adherence(
                 "week": week.week_number,
                 "adherence": round(week_adherence, 1)
             })
-        
-        # Calculate overall adherence
+
         overall_adherence = AdherenceCalculator.calculate_plan_adherence(plan)
-        
+
         return {
             "adherence_by_week": adherence_by_week,
             "overall_adherence": round(overall_adherence, 1)
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error retrieving adherence for plan {plan_id}: {e}", exc_info=True)
+        logger.error("Error retrieving adherence for plan %s for athlete=%d: %s", plan_id, athlete.id, e, exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

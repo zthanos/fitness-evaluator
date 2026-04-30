@@ -1,13 +1,228 @@
 <div class="p-6">
     <!-- Header -->
     <div class="flex justify-between items-center mb-6">
-        <h1 class="text-4xl font-bold">🎯 Training Plans</h1>
+        <h1 class="text-4xl font-bold">Training Plans</h1>
+        <button id="btn-new-plan" class="btn btn-primary gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/>
+            </svg>
+            New Plan
+        </button>
     </div>
 
-    <!-- Plans Container -->
+    <!-- Plans list -->
     <div id="plans-container">
         <div class="flex justify-center items-center py-8">
             <span class="loading loading-spinner loading-lg"></span>
         </div>
     </div>
 </div>
+
+<!-- ── New Plan Modal ──────────────────────────────────────────────────────── -->
+<dialog id="new-plan-modal" class="modal">
+  <div class="modal-box w-11/12 max-w-2xl max-h-[90vh] overflow-y-auto">
+
+    <!-- Step 1 — Plan type -->
+    <div id="plan-step-type">
+      <h3 class="font-bold text-xl mb-1">Create Training Plan</h3>
+      <p class="text-sm text-base-content/60 mb-6">Choose what you are training for</p>
+      <div class="grid grid-cols-2 gap-4">
+        <button id="btn-type-general" class="btn btn-outline h-auto py-6 flex-col gap-2 hover:btn-primary">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z"/>
+          </svg>
+          <span class="font-semibold">General Fitness</span>
+          <span class="text-xs font-normal opacity-70 text-center">Chat with your coach to build a personalised plan</span>
+        </button>
+        <button id="btn-type-route" class="btn btn-outline h-auto py-6 flex-col gap-2 hover:btn-primary">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 6.75V15m6-6v8.25m.503 3.498l4.875-2.437c.381-.19.622-.58.622-1.006V4.82c0-.836-.88-1.38-1.628-1.006l-3.869 1.934c-.317.159-.69.159-1.006 0L9.503 3.252a1.125 1.125 0 00-1.006 0L3.622 5.689C3.24 5.88 3 6.27 3 6.695V19.18c0 .836.88 1.38 1.628 1.006l3.869-1.934c-.317-.159.69-.159 1.006 0l4.994 2.497c.317.159.69.159 1.006 0z"/>
+          </svg>
+          <span class="font-semibold">Event / Route</span>
+          <span class="text-xs font-normal opacity-70 text-center">Train for a specific route or event</span>
+        </button>
+      </div>
+      <div class="modal-action mt-6">
+        <button onclick="document.getElementById('new-plan-modal').close()" class="btn btn-ghost">Cancel</button>
+      </div>
+    </div>
+
+    <!-- Step 2 — Route upload + event details -->
+    <div id="plan-step-route" class="hidden">
+      <div class="flex items-center gap-3 mb-6">
+        <button id="btn-back-to-type" class="btn btn-ghost btn-sm btn-circle">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5"/>
+          </svg>
+        </button>
+        <h3 class="font-bold text-xl">Event / Route Plan</h3>
+      </div>
+
+      <!-- Sport selection -->
+      <div class="mb-5">
+        <label class="label pt-0"><span class="label-text font-semibold">Sport</span></label>
+        <div class="flex gap-4">
+          <label class="cursor-pointer flex items-center gap-2">
+            <input type="radio" name="plan-sport" value="run" class="radio radio-primary radio-sm" checked>
+            <span class="text-sm">Running</span>
+          </label>
+          <label class="cursor-pointer flex items-center gap-2">
+            <input type="radio" name="plan-sport" value="ride" class="radio radio-primary radio-sm">
+            <span class="text-sm">Cycling</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- GPX upload zone -->
+      <div class="mb-5">
+        <label class="label pt-0"><span class="label-text font-semibold">GPX File</span></label>
+        <div id="gpx-drop-zone" class="border-2 border-dashed border-base-300 rounded-xl p-6 text-center cursor-pointer hover:border-primary/60 transition-colors">
+          <input type="file" id="gpx-file-input" accept=".gpx" class="hidden">
+          <div id="gpx-upload-prompt">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-10 h-10 mx-auto text-base-content/30 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/>
+            </svg>
+            <p class="font-medium text-sm">Drop .gpx file here or <span class="text-primary underline">browse</span></p>
+            <p class="text-xs text-base-content/50 mt-1">Works with Strava exports, Garmin .gpx, planned routes</p>
+          </div>
+          <div id="gpx-analyzing" class="hidden">
+            <span class="loading loading-spinner loading-md text-primary"></span>
+            <p class="text-sm mt-2">Analyzing route...</p>
+          </div>
+          <div id="gpx-selected" class="hidden">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-8 h-8 mx-auto text-success mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <p id="gpx-filename" class="text-sm font-medium text-success"></p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Route info block (shown after GPX analysis) ── -->
+      <div id="route-summary-card" class="hidden space-y-3 mb-4">
+
+        <!-- Route profile card -->
+        <div class="bg-base-200 rounded-xl p-4">
+          <div class="flex items-start justify-between gap-2 mb-3">
+            <p class="font-semibold text-sm leading-tight" id="rs-name"></p>
+            <div class="flex flex-col items-end gap-1 shrink-0">
+              <div class="flex items-center gap-1.5">
+                <span class="text-xs text-base-content/50">Route:</span>
+                <span id="rs-difficulty" class="badge badge-sm"></span>
+              </div>
+              <div id="rs-athlete-difficulty-row" class="hidden flex items-center gap-1.5">
+                <span class="text-xs text-base-content/50">For you:</span>
+                <span id="rs-athlete-difficulty" class="badge badge-sm badge-outline"></span>
+              </div>
+            </div>
+          </div>
+          <div class="grid grid-cols-3 gap-3 text-center mb-3" id="rs-metrics"></div>
+          <div id="rs-critical" class="hidden mt-2">
+            <p class="text-xs text-base-content/60 font-semibold uppercase tracking-wide mb-1">Critical sections</p>
+            <div id="rs-critical-list" class="space-y-1"></div>
+          </div>
+        </div>
+
+        <!-- Readiness loading -->
+        <div id="rs-readiness-loading" class="hidden flex items-center gap-2 text-xs text-base-content/50 px-1">
+          <span class="loading loading-spinner loading-xs"></span>
+          Assessing your readiness...
+        </div>
+
+        <!-- Readiness card -->
+        <div id="rs-readiness-card" class="hidden bg-base-200 rounded-xl p-4">
+          <p class="text-xs font-semibold uppercase tracking-wide text-base-content/60 mb-3">Your readiness</p>
+          <div id="rs-readiness-rows" class="space-y-2"></div>
+          <div class="mt-3 pt-3 border-t border-base-300 flex items-center gap-2">
+            <span class="text-xs font-semibold text-base-content/60">Overall:</span>
+            <span id="rs-overall-label" class="text-xs font-semibold"></span>
+          </div>
+        </div>
+
+        <!-- Route demands card -->
+        <div id="rs-demands-card" class="hidden bg-base-200 rounded-xl p-4">
+          <p class="text-xs font-semibold uppercase tracking-wide text-base-content/60 mb-2">Route demands</p>
+          <div id="rs-demands-list" class="space-y-1.5"></div>
+        </div>
+
+      </div>
+
+      <!-- ── Event details (shown after route analysis) ── -->
+      <div id="event-details-form" class="hidden space-y-4">
+        <div class="divider text-xs text-base-content/50 my-1">Event Details</div>
+
+        <div class="form-control">
+          <label class="label pt-0"><span class="label-text font-semibold">Event Date</span></label>
+          <input type="date" id="event-date-input" class="input input-bordered input-sm">
+        </div>
+
+        <div class="form-control">
+          <label class="label pt-0"><span class="label-text font-semibold">Goal</span></label>
+          <div class="grid grid-cols-2 gap-2">
+            <label class="cursor-pointer flex items-center gap-2 p-3 rounded-lg border border-base-300 hover:border-primary/50">
+              <input type="radio" name="plan-goal" value="finish" class="radio radio-primary radio-xs" checked>
+              <span class="text-sm">Finish comfortably</span>
+            </label>
+            <label class="cursor-pointer flex items-center gap-2 p-3 rounded-lg border border-base-300 hover:border-primary/50">
+              <input type="radio" name="plan-goal" value="improve_climbing" class="radio radio-primary radio-xs">
+              <span class="text-sm">Improve on climbs</span>
+            </label>
+            <label class="cursor-pointer flex items-center gap-2 p-3 rounded-lg border border-base-300 hover:border-primary/50">
+              <input type="radio" name="plan-goal" value="improve_pace" class="radio radio-primary radio-xs">
+              <span class="text-sm">Improve pace / speed</span>
+            </label>
+            <label class="cursor-pointer flex items-center gap-2 p-3 rounded-lg border border-base-300 hover:border-primary/50">
+              <input type="radio" name="plan-goal" value="target_time" class="radio radio-primary radio-xs">
+              <span class="text-sm">Hit a target time</span>
+            </label>
+          </div>
+
+          <!-- Target time input — only visible when "target_time" is selected -->
+          <div id="target-time-row" class="hidden mt-3 p-3 bg-base-200 rounded-lg">
+            <label class="text-sm font-semibold block mb-2">Target time</label>
+            <div class="flex items-center gap-2">
+              <input type="number" id="target-hours" min="0" max="99" placeholder="hh"
+                     class="input input-bordered input-sm w-20 text-center">
+              <span class="font-bold text-base-content/60 text-lg">:</span>
+              <input type="number" id="target-minutes" min="0" max="59" placeholder="mm"
+                     class="input input-bordered input-sm w-20 text-center">
+              <span id="target-time-estimate" class="text-xs text-base-content/50 ml-1"></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-control">
+          <label class="label pt-0">
+            <span class="label-text font-semibold">Plan Duration</span>
+            <span id="duration-label" class="label-text-alt text-primary font-semibold">8 weeks</span>
+          </label>
+          <input type="range" id="duration-input" min="4" max="24" value="8" step="2" class="range range-primary range-sm">
+          <div class="flex justify-between text-xs text-base-content/50 mt-1 px-1">
+            <span>4 wk</span><span>12 wk</span><span>24 wk</span>
+          </div>
+          <p id="duration-suggestion" class="hidden text-xs text-primary mt-1.5"></p>
+        </div>
+
+        <!-- Gap summary — populated from readiness API -->
+        <div id="rs-gap-card" class="hidden bg-base-200 rounded-xl p-4">
+          <p class="text-xs font-semibold uppercase tracking-wide text-base-content/60 mb-2">Your key gaps for this route</p>
+          <div id="rs-gap-list" class="space-y-1 mb-3"></div>
+          <p class="text-xs font-semibold text-base-content/60 mb-1">Plan will focus on:</p>
+          <div id="rs-focus-list" class="space-y-1"></div>
+        </div>
+      </div>
+
+      <div class="modal-action mt-6">
+        <button onclick="document.getElementById('new-plan-modal').close()" class="btn btn-ghost">Cancel</button>
+        <button id="btn-generate-plan" class="btn btn-primary gap-2 hidden">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/>
+          </svg>
+          Generate Plan
+        </button>
+      </div>
+    </div>
+
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>

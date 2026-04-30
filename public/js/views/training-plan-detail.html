@@ -1,20 +1,81 @@
-<div class="p-6">
-    <!-- Back Button -->
-    <div class="mb-4">
-        <a href="/training-plans.html" class="btn btn-ghost btn-sm gap-2">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                <path fill-rule="evenodd"
-                    d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z"
-                    clip-rule="evenodd" />
+<div class="p-6 max-w-3xl mx-auto">
+    <!-- Header -->
+    <div class="flex items-start gap-3 mb-6">
+        <button onclick="history.back()" class="btn btn-ghost btn-sm btn-circle mt-1 shrink-0">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5"/>
             </svg>
-            Back to Plans
-        </a>
+        </button>
+        <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 flex-wrap">
+                <h1 id="pd-title" class="text-2xl font-bold"></h1>
+                <span id="pd-status" class="badge badge-sm"></span>
+            </div>
+            <p id="pd-meta" class="text-sm text-base-content/60 mt-0.5"></p>
+        </div>
+        <button id="pd-delete-btn" class="btn btn-ghost btn-sm btn-circle text-error shrink-0 mt-1" title="Delete plan">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/>
+            </svg>
+        </button>
     </div>
 
-    <!-- Plan Detail Container -->
-    <div id="plan-detail-container">
-        <div class="flex justify-center items-center py-8">
-            <span class="loading loading-spinner loading-lg"></span>
+    <!-- Loading -->
+    <div id="pd-loading" class="flex justify-center py-12">
+        <span class="loading loading-spinner loading-lg"></span>
+    </div>
+
+    <div id="pd-content" class="hidden space-y-4">
+
+        <!-- ── Route context (route-specific plans only) ── -->
+        <div id="pd-route-context" class="hidden card bg-base-100 shadow-sm border border-base-200">
+            <div class="card-body p-4">
+                <div class="flex items-start justify-between gap-2 mb-3">
+                    <div>
+                        <p class="text-xs font-semibold uppercase tracking-wide text-base-content/50 mb-0.5">Target Route</p>
+                        <p id="pd-route-name" class="font-bold text-base"></p>
+                    </div>
+                    <span id="pd-route-difficulty" class="badge badge-sm shrink-0 mt-1"></span>
+                </div>
+                <div class="grid grid-cols-3 gap-3 text-center mb-3" id="pd-route-metrics"></div>
+                <div id="pd-route-demands" class="hidden">
+                    <p class="text-xs font-semibold text-base-content/50 uppercase tracking-wide mb-1.5">Key demands</p>
+                    <div id="pd-route-demands-list" class="space-y-1"></div>
+                </div>
+            </div>
         </div>
+
+        <!-- ── Why this plan works ── -->
+        <div id="pd-rationale" class="hidden card bg-base-100 shadow-sm border border-base-200">
+            <div class="card-body p-4">
+                <p class="text-xs font-semibold uppercase tracking-wide text-base-content/50 mb-2">Why this plan works</p>
+                <p id="pd-rationale-text" class="text-sm text-base-content/80 mb-3 leading-relaxed"></p>
+                <div id="pd-strategy-list" class="space-y-1"></div>
+            </div>
+        </div>
+
+        <!-- ── Performance target ── -->
+        <div id="pd-perf-target" class="hidden card bg-primary/5 shadow-sm border border-primary/20">
+            <div class="card-body p-4">
+                <p class="text-xs font-semibold uppercase tracking-wide text-primary/70 mb-1">Performance target</p>
+                <p id="pd-perf-target-label" class="font-bold text-primary text-sm mb-2"></p>
+                <div id="pd-perf-metrics" class="flex flex-wrap gap-2"></div>
+            </div>
+        </div>
+
+        <!-- ── Adherence card ── -->
+        <div class="card bg-base-100 shadow-sm">
+            <div class="card-body p-4">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="font-semibold text-sm">Adherence</span>
+                    <span id="pd-adh-pct" class="font-bold text-lg text-primary"></span>
+                </div>
+                <progress id="pd-adh-bar" class="progress progress-primary" value="0" max="100"></progress>
+                <p id="pd-adh-detail" class="text-xs text-base-content/60 mt-1.5"></p>
+            </div>
+        </div>
+
+        <!-- ── Weeks ── -->
+        <div id="pd-weeks" class="space-y-3"></div>
     </div>
 </div>

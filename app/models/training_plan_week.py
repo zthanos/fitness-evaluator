@@ -2,7 +2,7 @@
 
 Represents a single week within a training plan with focus and volume targets.
 """
-from sqlalchemy import Column, String, Integer, Float, ForeignKey, UniqueConstraint, Index
+from sqlalchemy import Column, String, Integer, Float, ForeignKey, UniqueConstraint, Index, JSON
 from sqlalchemy.orm import relationship
 from app.models.base import Base
 import uuid
@@ -28,8 +28,10 @@ class TrainingPlanWeek(Base):
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     plan_id = Column(String(36), ForeignKey('training_plans.id', ondelete='CASCADE'), nullable=False, index=True)
     week_number = Column(Integer, nullable=False)
-    focus = Column(String(255), nullable=True)
+    phase = Column(String(20), nullable=True)           # base | specific | taper
+    focus = Column(String(500), nullable=True)
     volume_target = Column(Float, nullable=True)
+    distance_target_km = Column(Float, nullable=True)  # target long-session km this week
     
     # Relationships
     plan = relationship('TrainingPlan', back_populates='weeks')

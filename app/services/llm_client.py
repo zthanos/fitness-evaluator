@@ -3,6 +3,7 @@ import httpx
 import asyncio
 import json
 import logging
+import time
 from typing import Dict, Any, List, Optional, Callable, AsyncGenerator
 from app.config import get_settings
 from langchain_openai import ChatOpenAI
@@ -66,22 +67,23 @@ class LLMClient:
     Requirements: 21.1, 21.2, 21.3, 21.8, 21.10
     """
     
-    def __init__(self):
+    def __init__(self, base_url: Optional[str] = None, model_name: Optional[str] = None):
         """
         Initialize LLM client with settings.
-        
-        Logs all initialization parameters for debugging (Requirement 21.10).
+
+        Optional overrides allow a second client to target a different model
+        (e.g. a tool-calling subagent) without changing global settings.
         """
         self.settings = get_settings()
         self.tools: Dict[str, Callable] = {}
-        self.endpoint_url = construct_openai_endpoint(self.settings.llm_base_url)
-        self.model_name = (
-            self.settings.OLLAMA_MODEL 
-            if self.settings.is_ollama 
+        self.endpoint_url = construct_openai_endpoint(base_url or self.settings.llm_base_url)
+        self.model_name = model_name or (
+            self.settings.OLLAMA_MODEL
+            if self.settings.is_ollama
             else self.settings.LM_STUDIO_MODEL
         )
-        
-        logger.debug("Initializing: backend=%s endpoint=%s model=%s", self.settings.LLM_TYPE, self.endpoint_url, self.model_name)
+
+        logger.debug("Initializing: endpoint=%s model=%s", self.endpoint_url, self.model_name)
     
     async def generate_response(
         self,
@@ -386,38 +388,56 @@ The following information from the athlete's history may be relevant to this con
         if tools:
             payload["tools"] = tools
         
-        for attempt in range(3):
-            try:
-                async with httpx.AsyncClient(timeout=120.0) as client:
-                    response = await client.post(self.endpoint_url, json=payload)
-                    
-                    # Log the error response for debugging
-                    if response.status_code == 400:
-                        error_detail = response.text
-                        logger.error("400 Bad Request from %s: %s", self.backend, error_detail)
-                        logger.debug("Request payload: %s", json.dumps(payload, indent=2))
-                    
-                    response.raise_for_status()
-                    
-                    data = response.json()
-                    choice = data["choices"][0]
-                    message = choice["message"]
-                    
-                    result = {
-                        'content': message.get('content'),
-                        'role': message.get('role', 'assistant')
-                    }
-                    
-                    # Check for tool calls
-                    if 'tool_calls' in message:
-                        result['tool_calls'] = message['tool_calls']
-                    
-                    return result
-                    
-            except (httpx.ConnectError, httpx.TimeoutException) as e:
-                if attempt == 2:
-                    raise
-                await asyncio.sleep(2 ** attempt)
+        _t0 = time.monotonic()
+        _result: Optional[Dict[str, Any]] = None
+        _error_str: Optional[str] = None
+        try:
+            for attempt in range(3):
+                try:
+                    async with httpx.AsyncClient(timeout=120.0) as client:
+                        response = await client.post(self.endpoint_url, json=payload)
+
+                        # Log the error response for debugging
+                        if response.status_code == 400:
+                            error_detail = response.text
+                            logger.error("400 Bad Request from %s: %s", self.endpoint_url, error_detail)
+                            logger.debug("Request payload: %s", json.dumps(payload, indent=2))
+
+                        response.raise_for_status()
+
+                        data = response.json()
+                        choice = data["choices"][0]
+                        message = choice["message"]
+
+                        _result = {
+                            'content': message.get('content'),
+                            'role': message.get('role', 'assistant')
+                        }
+
+                        # Check for tool calls
+                        if 'tool_calls' in message:
+                            _result['tool_calls'] = message['tool_calls']
+
+                        return _result
+
+                except (httpx.ConnectError, httpx.TimeoutException) as e:
+                    if attempt == 2:
+                        raise
+                    await asyncio.sleep(2 ** attempt)
+        except Exception as exc:
+            _error_str = str(exc)
+            raise
+        finally:
+            from app.services.llm_trace_writer import write_llm_trace
+            write_llm_trace(
+                source="chat_completion",
+                model=self.model_name,
+                messages=messages,
+                response_content=_result.get("content") if _result else None,
+                duration_ms=(time.monotonic() - _t0) * 1000,
+                tool_calls=_result.get("tool_calls") if _result else None,
+                error=_error_str,
+            )
     
     async def chat_with_tools(
         self,
@@ -639,10 +659,20 @@ Weight maintenance should show minimal weekly change (within ±0.2 kg/week).""")
         
         # Generate structured analysis
         chain = prompt | structured_llm
-        
+
+        _t0_trend = time.monotonic()
         try:
             result = await chain.ainvoke({"context": context})
-            
+
+            from app.services.llm_trace_writer import write_llm_trace
+            write_llm_trace(
+                source="generate_trend_analysis",
+                model=self.model_name,
+                messages=[{"role": "user", "content": context}],
+                response_content=f"trend: {result.trend_direction}, weekly_change: {result.weekly_change_rate}, summary: {result.summary}",
+                duration_ms=(time.monotonic() - _t0_trend) * 1000,
+            )
+
             # Return as dict for API response
             return {
                 'weekly_change_rate': result.weekly_change_rate,
@@ -653,8 +683,17 @@ Weight maintenance should show minimal weekly change (within ±0.2 kg/week).""")
                 'confidence_level': result.confidence_level,
                 'data_points_analyzed': result.data_points_analyzed
             }
-            
+
         except Exception as e:
+            from app.services.llm_trace_writer import write_llm_trace
+            write_llm_trace(
+                source="generate_trend_analysis",
+                model=self.model_name,
+                messages=[{"role": "user", "content": context}],
+                response_content=None,
+                duration_ms=(time.monotonic() - _t0_trend) * 1000,
+                error=str(e),
+            )
             # If LLM fails, return a basic analysis based on calculated metrics
             trend_direction = 'stable'
             if abs(weekly_change_rate) < 0.2:
@@ -787,30 +826,49 @@ Be specific and reference the actual data points provided."""),
         
         # Generate structured analysis
         chain = prompt | structured_llm
-        
+
+        _t0_effort = time.monotonic()
         try:
             result = await chain.ainvoke({"context": context})
-            
+
+            from app.services.llm_trace_writer import write_llm_trace
+            write_llm_trace(
+                source="generate_effort_analysis",
+                model=self.model_name,
+                messages=[{"role": "user", "content": context}],
+                response_content=f"effort: {result.effort_level}, summary: {result.summary}",
+                duration_ms=(time.monotonic() - _t0_effort) * 1000,
+            )
+
             # Format the structured response into readable text
             analysis_parts = []
-            
+
             analysis_parts.append(f"**Effort Level:** {result.effort_level}\n")
             analysis_parts.append(f"**Summary:** {result.summary}\n")
-            
+
             if result.heart_rate_analysis:
                 analysis_parts.append(f"**Heart Rate Analysis:** {result.heart_rate_analysis}\n")
-            
+
             if result.pace_analysis:
                 analysis_parts.append(f"**Pace Analysis:** {result.pace_analysis}\n")
-            
+
             if result.elevation_analysis:
                 analysis_parts.append(f"**Elevation Analysis:** {result.elevation_analysis}\n")
-            
+
             analysis_parts.append(f"**Recommendations:** {result.recommendations}")
-            
+
             return "\n".join(analysis_parts)
-            
+
         except Exception as e:
+            from app.services.llm_trace_writer import write_llm_trace
+            write_llm_trace(
+                source="generate_effort_analysis",
+                model=self.model_name,
+                messages=[{"role": "user", "content": context}],
+                response_content=None,
+                duration_ms=(time.monotonic() - _t0_effort) * 1000,
+                error=str(e),
+            )
             # If LLM fails, return a basic analysis
             return f"Unable to generate detailed analysis. Activity: {distance_km:.2f}km in {duration_min:.1f} minutes with {elevation_m:.0f}m elevation gain."
         async def generate_trend_analysis(
