@@ -38,6 +38,7 @@ class NavigationSidebar {
         id: 'metrics', label: 'Metrics', path: '/metrics',
         icon: icon('<path d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>'),
       },
+      { separator: true, label: 'Tracking' },
       {
         id: 'logs', label: 'Logs', path: '/logs',
         icon: icon('<path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>'),
@@ -206,6 +207,15 @@ class NavigationSidebar {
 
   _renderNavItems(items) {
     return items.map(item => {
+      // Section separator with optional label
+      if (item.separator) {
+        return `
+          <li class="menu-title px-2 pt-3 pb-0.5">
+            <span class="hidden lg:inline text-[10px] font-semibold tracking-widest uppercase text-base-content/30 select-none">${item.label}</span>
+            <span class="lg:hidden block border-t border-base-300/60 mt-1"></span>
+          </li>`;
+      }
+
       const isActive = this._isActiveRoute(item.path);
       const activeClass = isActive ? 'active bg-primary text-primary-content' : '';
       const dimClass = !isActive ? 'text-base-content/60 hover:text-base-content' : '';

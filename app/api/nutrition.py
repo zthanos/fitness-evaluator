@@ -5,6 +5,7 @@ from datetime import date
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -12,6 +13,7 @@ from app.middleware.auth import get_current_athlete
 from app.models.athlete import Athlete
 from app.models.meal import Meal, MealItem
 from app.models.meal_template import MealTemplate
+from app.models.daily_log import DailyLog
 from app.schemas.nutrition_schemas import (
     MealCreate,
     MealUpdate,
@@ -97,6 +99,41 @@ def _get_item_or_404(item_id: str, meal: Meal, db: Session) -> MealItem:
     return item
 
 
+def _sync_daily_log(athlete_id: int, log_date: date, db: Session) -> None:
+    """Recalculate macro totals from all meal items and upsert into DailyLog."""
+    meals = db.query(Meal).filter(
+        Meal.athlete_id == athlete_id,
+        Meal.log_date == log_date,
+    ).all()
+    all_items = [item for m in meals for item in m.items]
+
+    total_calories = round(sum(i.calories or 0 for i in all_items))
+    total_protein  = round(sum(i.protein_g or 0 for i in all_items), 1)
+    total_carbs    = round(sum(i.carbs_g or 0 for i in all_items), 1)
+    total_fat      = round(sum(i.fat_g or 0 for i in all_items), 1)
+
+    existing = db.query(DailyLog).filter(
+        DailyLog.athlete_id == athlete_id,
+        DailyLog.log_date == log_date,
+    ).first()
+
+    if existing:
+        existing.calories_in = total_calories
+        existing.protein_g   = total_protein
+        existing.carbs_g     = total_carbs
+        existing.fat_g       = total_fat
+    else:
+        db.add(DailyLog(
+            athlete_id=athlete_id,
+            log_date=log_date,
+            calories_in=total_calories,
+            protein_g=total_protein,
+            carbs_g=total_carbs,
+            fat_g=total_fat,
+        ))
+    db.commit()
+
+
 # ---------------------------------------------------------------------------
 # Day log (aggregate, computed on the fly)
 # ---------------------------------------------------------------------------
@@ -145,6 +182,7 @@ async def create_meal(
 
     db.commit()
     db.refresh(meal)
+    _sync_daily_log(athlete.id, meal.log_date, db)
     return _meal_to_response(meal)
 
 
@@ -180,8 +218,10 @@ async def delete_meal(
     athlete: Athlete = Depends(get_current_athlete),
 ):
     meal = _get_meal_or_404(meal_id, athlete.id, db)
+    log_date = meal.log_date
     db.delete(meal)
     db.commit()
+    _sync_daily_log(athlete.id, log_date, db)
 
 
 # ---------------------------------------------------------------------------
@@ -195,11 +235,12 @@ async def add_meal_item(
     db: Session = Depends(get_db),
     athlete: Athlete = Depends(get_current_athlete),
 ):
-    _get_meal_or_404(meal_id, athlete.id, db)
+    meal = _get_meal_or_404(meal_id, athlete.id, db)
     item = MealItem(meal_id=meal_id, **payload.model_dump())
     db.add(item)
     db.commit()
     db.refresh(item)
+    _sync_daily_log(athlete.id, meal.log_date, db)
     return MealItemResponse.model_validate(item)
 
 
@@ -217,6 +258,7 @@ async def update_meal_item(
         setattr(item, field, value)
     db.commit()
     db.refresh(item)
+    _sync_daily_log(athlete.id, meal.log_date, db)
     return MealItemResponse.model_validate(item)
 
 
@@ -231,23 +273,28 @@ async def delete_meal_item(
     item = _get_item_or_404(item_id, meal, db)
     db.delete(item)
     db.commit()
+    _sync_daily_log(athlete.id, meal.log_date, db)
 
 
 # ---------------------------------------------------------------------------
 # Confirm AI items (bulk)
 # ---------------------------------------------------------------------------
 
+class _ConfirmBody(BaseModel):
+    item_ids: Optional[list[str]] = None
+
+
 @router.post("/meals/{meal_id}/confirm", response_model=MealResponse, summary="Confirm all pending AI items in a meal")
 async def confirm_meal_items(
     meal_id: str,
-    item_ids: Optional[list[str]] = None,
+    body: _ConfirmBody = _ConfirmBody(),
     db: Session = Depends(get_db),
     athlete: Athlete = Depends(get_current_athlete),
 ):
     """Mark needs_confirmation=False for specified items (or all if item_ids is omitted)."""
     meal = _get_meal_or_404(meal_id, athlete.id, db)
     for item in meal.items:
-        if item_ids is None or item.id in item_ids:
+        if body.item_ids is None or item.id in body.item_ids:
             item.needs_confirmation = False
     db.commit()
     db.refresh(meal)
