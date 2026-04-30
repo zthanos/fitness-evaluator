@@ -1,7 +1,10 @@
-<div class="p-6">
-    <!-- Header -->
-    <div class="flex justify-between items-center mb-6">
-        <h1 class="text-4xl font-bold">Training Plans</h1>
+<div class="flex flex-col flex-1 min-h-0">
+    <!-- Sticky header -->
+    <div class="shrink-0 flex justify-between items-center px-6 py-5 border-b border-base-200">
+        <div>
+            <h1 class="text-3xl font-bold">Training Plans</h1>
+            <p class="text-base-content/60 text-sm mt-0.5">Your structured training programs</p>
+        </div>
         <button id="btn-new-plan" class="btn btn-primary gap-2">
             <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/>
@@ -10,8 +13,8 @@
         </button>
     </div>
 
-    <!-- Plans list -->
-    <div id="plans-container">
+    <!-- Scrollable plans list -->
+    <div id="plans-container" class="flex-1 overflow-y-auto px-6 py-5">
         <div class="flex justify-center items-center py-8">
             <span class="loading loading-spinner loading-lg"></span>
         </div>

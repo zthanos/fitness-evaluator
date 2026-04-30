@@ -151,20 +151,23 @@ class TrainingPlanner(BaseSkill[TrainingPlannerInput, TrainingPlannerOutput]):
 
     # ── Plan persistence ──────────────────────────────────────────────────────
 
-    def _save_plan(self, data: dict, goal_id: Optional[str]) -> str:
+    def _save_plan(self, data: dict, goal_id: Optional[str], plan_type: str = "primary") -> str:
         from app.models.training_plan import TrainingPlan
         from app.models.training_plan_week import TrainingPlanWeek
         from app.models.training_plan_session import TrainingPlanSession
+        from app.services.plan_coordinator import sport_plan_type
 
         today = date.today()
         duration = len(data.get("weeks", []))
         end_date = today + timedelta(weeks=max(duration, 1))
+        resolved_type = plan_type or sport_plan_type(data.get("sport", "other"))
 
         plan = TrainingPlan(
             id=str(uuid.uuid4()),
             user_id=self.athlete_id,
             title=data.get("title", "Training Plan")[:255],
             sport=data.get("sport", "other"),
+            plan_type=resolved_type,
             goal_id=goal_id,
             start_date=today,
             end_date=end_date,

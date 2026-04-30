@@ -9,6 +9,7 @@ Requirements: 12.1, 12.2, 12.3, 12.4, 12.5, 13.1, 13.2, 13.3, 13.4, 13.5, 13.6, 
 """
 from fastapi import APIRouter, HTTPException, Depends, Query
 from sqlalchemy.orm import Session, joinedload
+from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 import time
 import logging
@@ -20,11 +21,121 @@ from app.models.training_plan import TrainingPlan as TrainingPlanModel
 from app.models.training_plan_week import TrainingPlanWeek as TrainingPlanWeekModel
 from app.models.training_plan_session import TrainingPlanSession as TrainingPlanSessionModel
 from app.services.adherence_calculator import AdherenceCalculator
+from app.services.plan_coordinator import check_compatibility, deactivate_plan, sport_plan_type
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+
+# ── Plan coordination endpoints (declared first — must precede /{plan_id} routes) ─
+
+@router.get("/compatibility", summary="Check if a new plan is compatible with active plans")
+async def check_plan_compatibility(
+    sport: str = Query(..., description="Sport for the new plan (running, cycling, etc.)"),
+    athlete: Athlete = Depends(get_current_athlete),
+    db: Session = Depends(get_db),
+):
+    """Returns whether a new primary plan for `sport` would conflict with existing active plans."""
+    plan_type = sport_plan_type(sport)
+    return check_compatibility(athlete.id, sport, plan_type, db)
+
+
+class GeneratePlanRequest(BaseModel):
+    goal_id: str
+    sport: str
+    duration_weeks: int = 8
+
+
+@router.post("/generate", summary="Generate a training plan from a goal")
+async def generate_plan_from_goal(
+    req: GeneratePlanRequest,
+    athlete: Athlete = Depends(get_current_athlete),
+    db: Session = Depends(get_db),
+):
+    """Generate a goal-aligned training plan and link it to the goal.
+
+    Caller must have already resolved any plan conflicts via the compatibility
+    and deactivate endpoints.
+    """
+    from app.models.athlete_goal import AthleteGoal
+    from app.ai.skills.training_planner import TrainingPlanner, TrainingPlannerInput
+    from app.models.athlete_fitness_state import AthleteFitnessState
+    from app.ai.skills.sport_profile_builder import profile_to_dict
+    from app.models.athlete_sport_profile import AthleteSportProfile
+
+    goal = db.query(AthleteGoal).filter(AthleteGoal.id == req.goal_id).first()
+    if not goal:
+        raise HTTPException(status_code=404, detail="Goal not found")
+
+    plan_type = sport_plan_type(req.sport)
+    compat = check_compatibility(athlete.id, req.sport, plan_type, db)
+    if not compat["compatible"]:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "Conflicting active plan exists — deactivate it first",
+                "conflicts": compat["conflicts"],
+            },
+        )
+
+    context: dict = {
+        "duration_weeks": req.duration_weeks,
+        "sport": req.sport,
+        "goal": {
+            "goal_type":    goal.goal_type,
+            "description":  goal.description,
+            "target_value": goal.target_value,
+            "target_date":  goal.target_date.isoformat() if goal.target_date else None,
+        },
+    }
+
+    fs_row = db.query(AthleteFitnessState).filter_by(athlete_id=athlete.id).first()
+    if fs_row:
+        context["fitness_state"] = {
+            "current_limiter":    fs_row.current_limiter,
+            "fatigue_level":      fs_row.fatigue_level,
+            "weekly_consistency": fs_row.weekly_consistency,
+            "summary":            fs_row.summary_text,
+        }
+
+    sport_group = "ride" if req.sport == "cycling" else req.sport
+    sp_model = db.query(AthleteSportProfile).filter_by(
+        athlete_id=athlete.id, sport_group=sport_group
+    ).first()
+    if sp_model:
+        from app.ai.skills.sport_profile_builder import profile_to_dict
+        context["sport_profile"] = profile_to_dict(sp_model)
+
+    try:
+        output = await TrainingPlanner(db, athlete.id).run(
+            TrainingPlannerInput(
+                duration_weeks=req.duration_weeks,
+                goal_id=req.goal_id,
+                context=context,
+            )
+        )
+        plan = db.query(TrainingPlanModel).filter_by(id=output.plan_id).first()
+        if plan:
+            plan.plan_type = plan_type
+            db.commit()
+
+        logger.info(
+            "Generated %s plan '%s' for athlete=%d, goal=%s",
+            plan_type, output.title, athlete.id, req.goal_id,
+        )
+        return {
+            "plan_id": output.plan_id,
+            "title":   output.title,
+            "sport":   output.sport,
+            "weeks":   output.weeks,
+        }
+    except Exception as e:
+        logger.error("Plan generation failed for athlete=%d: %s", athlete.id, e, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 
 @router.get("", summary="List all training plans")
 async def list_training_plans(
@@ -83,6 +194,7 @@ async def list_training_plans(
                 "id": plan.id,
                 "title": plan.title,
                 "sport": plan.sport,
+                "plan_type": plan.plan_type,
                 "goal": plan.goal.description if plan.goal else None,
                 "start_date": plan.start_date.isoformat(),
                 "end_date": plan.end_date.isoformat(),
@@ -189,6 +301,7 @@ async def get_training_plan(
             "user_id": plan.user_id,
             "title": plan.title,
             "sport": plan.sport,
+            "plan_type": plan.plan_type,
             "goal_id": plan.goal_id,
             "goal": {
                 "id": plan.goal.id,
@@ -293,3 +406,17 @@ async def get_plan_adherence(
     except Exception as e:
         logger.error("Error retrieving adherence for plan %s for athlete=%d: %s", plan_id, athlete.id, e, exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{plan_id}/deactivate", summary="Deactivate (abandon) a training plan")
+async def deactivate_training_plan(
+    plan_id: str,
+    athlete: Athlete = Depends(get_current_athlete),
+    db: Session = Depends(get_db),
+):
+    """Set a plan's status to 'abandoned' so a new compatible plan can be created."""
+    found = deactivate_plan(plan_id, athlete.id, db)
+    if not found:
+        raise HTTPException(status_code=404, detail=f"Plan {plan_id} not found or access denied")
+    logger.info("Deactivated plan %s for athlete=%d", plan_id, athlete.id)
+    return {"ok": True}

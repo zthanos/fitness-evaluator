@@ -9,6 +9,7 @@ import { MetricsChart }      from '/js/metrics-chart.js';
 import { MetricsList }       from '/js/metrics-list.js';
 import { CoachChat }         from '/js/coach-chat.js';
 import { TrainingPlansList } from '/js/training-plans-list.js';
+import { GoalsManager }       from '/js/goals.js';
 import { SettingsManager }    from '/js/settings.js';
 import { AppSettingsManager } from '/js/app-settings.js';
 import { getWeekStart }      from '/js/utils.js';
@@ -284,7 +285,7 @@ class DashboardPage {
         container.innerHTML = `
           <div class="text-center py-6 text-base-content/60">
             <p class="mb-2">No sport profiles yet.</p>
-            <a href="/settings" class="btn btn-sm btn-primary">Build Profiles in Profile Settings</a>
+            <a href="/profile" class="btn btn-sm btn-primary">Build Profiles in Profile</a>
           </div>`;
         return;
       }
@@ -1011,64 +1012,110 @@ class TrainingPlanDetailPage {
     document.getElementById('pd-adh-bar').value = adh;
     document.getElementById('pd-adh-detail').textContent = `${done} of ${total} sessions completed`;
 
-    // ── Weeks ─────────────────────────────────────────────────────────────────
+    // ── Week tabs ─────────────────────────────────────────────────────────────
     const phaseColors     = { base: 'badge-ghost', specific: 'badge-primary', taper: 'badge-secondary' };
     const intensityColors = { recovery: 'text-base-content/40', easy: 'text-success', moderate: 'text-warning', hard: 'text-error', max: 'text-error font-bold' };
     const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const weeks = plan.weeks || [];
 
-    document.getElementById('pd-weeks').innerHTML = (plan.weeks || []).map(week => {
+    // Determine which week to show by default (current week for active plans)
+    let defaultIdx = 0;
+    if (plan.status === 'active' && plan.start_date) {
+      const msPerWeek = 7 * 24 * 60 * 60 * 1000;
+      const elapsed = Math.floor((Date.now() - new Date(plan.start_date)) / msPerWeek);
+      defaultIdx = Math.max(0, Math.min(elapsed, weeks.length - 1));
+    }
+
+    const tabsEl   = document.getElementById('pd-week-tabs');
+    const panelsEl = document.getElementById('pd-week-panels');
+
+    tabsEl.innerHTML = weeks.map((week, i) => {
+      const allDone = (week.sessions || []).filter(s => s.session_type !== 'rest').every(s => s.completed);
+      const anyDone = (week.sessions || []).some(s => s.completed);
+      const dot = allDone
+        ? '<span class="w-1.5 h-1.5 rounded-full bg-success inline-block ml-1"></span>'
+        : anyDone
+          ? '<span class="w-1.5 h-1.5 rounded-full bg-warning inline-block ml-1"></span>'
+          : '';
+      const isActive = i === defaultIdx;
+      return `<button
+        class="pd-week-tab px-4 py-2.5 text-sm font-medium border-b-2 transition-colors shrink-0
+               ${isActive ? 'border-primary text-primary' : 'border-transparent text-base-content/50 hover:text-base-content hover:border-base-300'}"
+        data-idx="${i}">Week ${week.week_number}${dot}</button>`;
+    }).join('');
+
+    panelsEl.innerHTML = weeks.map((week, i) => {
       const sessions = (week.sessions || []).filter(s => s.session_type !== 'rest');
       const phaseBadge = week.phase
         ? `<span class="badge badge-xs ${phaseColors[week.phase] || 'badge-ghost'} uppercase">${week.phase}</span>`
         : '';
       const distTarget = week.distance_target_km
-        ? `<span class="text-xs text-base-content/50 shrink-0">target ${week.distance_target_km.toFixed(0)} km</span>`
+        ? `<span class="text-xs text-base-content/50">${week.distance_target_km.toFixed(0)} km target</span>`
         : '';
       const volTarget = week.volume_target
-        ? `<span class="text-xs text-base-content/40 shrink-0">${week.volume_target}h</span>`
+        ? `<span class="text-xs text-base-content/40">${week.volume_target}h</span>`
         : '';
 
-      return `
-        <div class="card bg-base-100 shadow-sm">
-          <div class="card-body p-4">
-            <div class="flex items-start gap-2 mb-3">
-              <div class="flex items-center gap-2 flex-1 min-w-0 flex-wrap">
-                <span class="font-semibold text-sm shrink-0">Week ${week.week_number}</span>
-                ${phaseBadge}
-                ${week.focus ? `<span class="text-xs text-base-content/60 leading-snug">${week.focus}</span>` : ''}
-              </div>
-              <div class="flex flex-col items-end gap-0.5 shrink-0">
-                ${distTarget}
-                ${volTarget}
-              </div>
-            </div>
-            ${sessions.length === 0
-              ? '<p class="text-xs text-base-content/40">Rest week</p>'
-              : `<div class="space-y-0">
-                  ${sessions.map(s => {
-                    // Split description at the route connection "→" marker
-                    const parts = (s.description || '').split(/\s*→\s*/);
-                    const main  = parts[0] || '';
-                    const why   = parts.slice(1).join(' → ');
-                    return `
-                      <div class="py-2 border-b border-base-200 last:border-0">
-                        <div class="flex items-center gap-2 flex-wrap">
-                          <span class="text-xs text-base-content/40 w-8 shrink-0">${days[(s.day_of_week - 1) % 7]}</span>
-                          <span class="text-xs font-semibold">${s.session_type.replace(/_/g, ' ')}</span>
-                          <span class="text-xs ${intensityColors[s.intensity] || ''}">${s.intensity}</span>
-                          ${s.duration_minutes ? `<span class="text-xs text-base-content/40">${s.duration_minutes} min</span>` : ''}
-                          ${s.completed ? '<span class="badge badge-success badge-xs">done</span>' : ''}
-                        </div>
-                        ${main ? `<p class="text-xs text-base-content/70 mt-0.5 ml-10 leading-snug">${main}</p>` : ''}
-                        ${why  ? `<p class="text-xs text-primary/70 mt-0.5 ml-10 leading-snug italic">→ ${why}</p>` : ''}
-                      </div>`;
-                  }).join('')}
-                </div>`
-            }
+      return `<div class="pd-week-panel ${i !== defaultIdx ? 'hidden' : ''}" data-idx="${i}">
+        <div class="flex items-start justify-between gap-2 mb-4">
+          <div class="flex items-center gap-2 flex-wrap">
+            ${phaseBadge}
+            ${week.focus ? `<span class="text-sm text-base-content/70 leading-snug">${week.focus}</span>` : ''}
           </div>
-        </div>`;
+          <div class="flex items-center gap-2 shrink-0">${distTarget}${volTarget}</div>
+        </div>
+        ${sessions.length === 0
+          ? '<p class="text-sm text-base-content/40 text-center py-6">Rest week</p>'
+          : `<div class="space-y-0">
+              ${sessions.map(s => {
+                const parts = (s.description || '').split(/\s*→\s*/);
+                const main  = parts[0] || '';
+                const why   = parts.slice(1).join(' → ');
+                return `
+                  <div class="py-2.5 border-b border-base-200 last:border-0">
+                    <div class="flex items-center gap-2 flex-wrap">
+                      <span class="text-xs text-base-content/40 w-8 shrink-0">${days[(s.day_of_week - 1) % 7]}</span>
+                      <span class="text-sm font-semibold">${s.session_type.replace(/_/g, ' ')}</span>
+                      <span class="text-xs ${intensityColors[s.intensity] || ''}">${s.intensity}</span>
+                      ${s.duration_minutes ? `<span class="text-xs text-base-content/40">${s.duration_minutes} min</span>` : ''}
+                      ${s.completed ? '<span class="badge badge-success badge-xs">done</span>' : ''}
+                    </div>
+                    ${main ? `<p class="text-xs text-base-content/70 mt-0.5 ml-10 leading-snug">${main}</p>` : ''}
+                    ${why  ? `<p class="text-xs text-primary/70 mt-0.5 ml-10 leading-snug italic">→ ${why}</p>` : ''}
+                  </div>`;
+              }).join('')}
+            </div>`
+        }
+      </div>`;
     }).join('');
+
+    // Tab click handler
+    tabsEl.addEventListener('click', e => {
+      const btn = e.target.closest('.pd-week-tab');
+      if (!btn) return;
+      const idx = parseInt(btn.dataset.idx, 10);
+      tabsEl.querySelectorAll('.pd-week-tab').forEach((t, i) => {
+        t.className = t.className
+          .replace('border-primary text-primary', 'border-transparent text-base-content/50 hover:text-base-content hover:border-base-300');
+        if (i === idx) t.className = t.className
+          .replace('border-transparent text-base-content/50 hover:text-base-content hover:border-base-300', 'border-primary text-primary');
+      });
+      panelsEl.querySelectorAll('.pd-week-panel').forEach(p => p.classList.toggle('hidden', parseInt(p.dataset.idx, 10) !== idx));
+    });
+
+    // Scroll the default tab into view
+    tabsEl.querySelector(`[data-idx="${defaultIdx}"]`)?.scrollIntoView({ inline: 'nearest', block: 'nearest' });
   }
+}
+
+// ─── GoalsPage ────────────────────────────────────────────────────────────────
+
+class GoalsPage {
+  async init(params, query) {
+    window.goalsPage = new GoalsManager();
+    await window.goalsPage.init();
+  }
+  destroy() { delete window.goalsPage; }
 }
 
 // ─── SettingsPage ─────────────────────────────────────────────────────────────
@@ -1421,6 +1468,7 @@ export {
   ChatPage,
   TrainingPlansPage,
   TrainingPlanDetailPage,
+  GoalsPage,
   SettingsPage,
   AppSettingsPage,
   EvaluationsPage,

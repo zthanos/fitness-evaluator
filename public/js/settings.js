@@ -4,17 +4,11 @@
  */
 
 class SettingsManager {
-    constructor() {
-        this.activeGoals = [];
-        this.goalHistory = [];
-    }
+    constructor() {}
 
     async init() {
         await this.loadProfile();
         await this.loadTrainingPlan();
-        await this.loadGoals();
-        this.renderActiveGoals();
-        this.renderGoalHistory();
         this.renderStravaStatus();
         this.setupEventListeners();
         await this.loadSportProfiles();
@@ -69,120 +63,6 @@ class SettingsManager {
         } catch (error) {
             console.error('Error loading training plan:', error);
         }
-    }
-
-    async loadGoals() {
-        try {
-            // Load all goals
-            const response = await api.get('/goals');
-            
-            // Separate active and historical goals
-            this.activeGoals = response.filter(goal => goal.status === 'active');
-            this.goalHistory = response.filter(goal => goal.status !== 'active');
-        } catch (error) {
-            console.error('Error loading goals:', error);
-            this.activeGoals = [];
-            this.goalHistory = [];
-        }
-    }
-
-    renderActiveGoals() {
-        const container = document.getElementById('active-goals-container');
-        
-        if (this.activeGoals.length === 0) {
-            container.innerHTML = `
-                <div class="alert">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="stroke-info shrink-0 w-6 h-6">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                    </svg>
-                    <span>No active goals yet. Click "Set New Goal with Coach" to get started!</span>
-                </div>
-            `;
-            return;
-        }
-
-        const goalsHTML = this.activeGoals.map(goal => this.renderGoalCard(goal)).join('');
-        container.innerHTML = `<div class="space-y-4">${goalsHTML}</div>`;
-    }
-
-    renderGoalCard(goal) {
-        const goalTypeEmoji = {
-            'weight_loss': '⬇️',
-            'weight_gain': '⬆️',
-            'performance': '🏃',
-            'endurance': '💪',
-            'strength': '🏋️',
-            'custom': '🎯'
-        };
-
-        const emoji = goalTypeEmoji[goal.goal_type] || '🎯';
-        const goalTypeLabel = goal.goal_type.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
-        
-        const targetInfo = [];
-        if (goal.target_value) {
-            const unit = goal.goal_type.includes('weight') ? 'kg' : '';
-            targetInfo.push(`Target: ${goal.target_value}${unit}`);
-        }
-        if (goal.target_date) {
-            const date = new Date(goal.target_date);
-            const daysRemaining = Math.ceil((date - new Date()) / (1000 * 60 * 60 * 24));
-            targetInfo.push(`Due: ${date.toLocaleDateString()} (${daysRemaining} days)`);
-        }
-
-        const statusBadge = goal.status === 'active' 
-            ? '<span class="badge badge-success">Active</span>'
-            : goal.status === 'completed'
-            ? '<span class="badge badge-info">Completed</span>'
-            : '<span class="badge badge-warning">Abandoned</span>';
-
-        return `
-            <div class="card bg-base-200">
-                <div class="card-body">
-                    <div class="flex justify-between items-start">
-                        <div class="flex-1">
-                            <h3 class="card-title text-lg">
-                                ${emoji} ${goalTypeLabel}
-                                ${statusBadge}
-                            </h3>
-                            <p class="text-sm text-base-content/70 mt-2">${goal.description}</p>
-                            ${targetInfo.length > 0 ? `
-                                <div class="flex gap-4 mt-3 text-sm">
-                                    ${targetInfo.map(info => `<span class="badge badge-outline">${info}</span>`).join('')}
-                                </div>
-                            ` : ''}
-                        </div>
-                        <div class="dropdown dropdown-end">
-                            <label tabindex="0" class="btn btn-ghost btn-sm btn-circle">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                                    <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
-                                </svg>
-                            </label>
-                            <ul tabindex="0" class="dropdown-content z-[1] menu p-2 shadow bg-base-100 rounded-box w-52">
-                                <li><a onclick="settingsPage.markGoalCompleted('${goal.id}')">✅ Mark as Completed</a></li>
-                                <li><a onclick="settingsPage.markGoalAbandoned('${goal.id}')">❌ Mark as Abandoned</a></li>
-                                <li><a onclick="settingsPage.deleteGoal('${goal.id}')" class="text-error">🗑️ Delete</a></li>
-                            </ul>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        `;
-    }
-
-    renderGoalHistory() {
-        const container = document.getElementById('goal-history-container');
-        
-        if (this.goalHistory.length === 0) {
-            container.innerHTML = `
-                <div class="text-center text-base-content/50 py-4">
-                    No goal history yet
-                </div>
-            `;
-            return;
-        }
-
-        const historyHTML = this.goalHistory.map(goal => this.renderGoalCard(goal)).join('');
-        container.innerHTML = `<div class="space-y-4">${historyHTML}</div>`;
     }
 
     renderStravaStatus() {
@@ -554,10 +434,6 @@ class SettingsManager {
     }
 
     setupEventListeners() {
-        document.getElementById('set-goal-btn')?.addEventListener('click', () => {
-            router.navigate('/chat');
-        });
-
         document.getElementById('profile-form')?.addEventListener('submit', async (e) => {
             e.preventDefault();
             await this.saveProfile();
@@ -576,55 +452,6 @@ class SettingsManager {
         document.getElementById('rebuild-profiles-btn')?.addEventListener('click', () => {
             this.rebuildSportProfiles();
         });
-    }
-
-    async markGoalCompleted(goalId) {
-        if (!confirm('Mark this goal as completed?')) return;
-        
-        try {
-            await api.put(`/goals/${goalId}`, { status: 'completed' });
-            await this.loadGoals();
-            this.renderActiveGoals();
-            this.renderGoalHistory();
-            
-            // Show success message
-            this.showToast('Goal marked as completed! 🎉', 'success');
-        } catch (error) {
-            console.error('Error updating goal:', error);
-            this.showToast('Failed to update goal', 'error');
-        }
-    }
-
-    async markGoalAbandoned(goalId) {
-        if (!confirm('Mark this goal as abandoned?')) return;
-        
-        try {
-            await api.put(`/goals/${goalId}`, { status: 'abandoned' });
-            await this.loadGoals();
-            this.renderActiveGoals();
-            this.renderGoalHistory();
-            
-            this.showToast('Goal marked as abandoned', 'info');
-        } catch (error) {
-            console.error('Error updating goal:', error);
-            this.showToast('Failed to update goal', 'error');
-        }
-    }
-
-    async deleteGoal(goalId) {
-        if (!confirm('Are you sure you want to delete this goal? This action cannot be undone.')) return;
-        
-        try {
-            await api.delete(`/goals/${goalId}`);
-            await this.loadGoals();
-            this.renderActiveGoals();
-            this.renderGoalHistory();
-            
-            this.showToast('Goal deleted', 'info');
-        } catch (error) {
-            console.error('Error deleting goal:', error);
-            this.showToast('Failed to delete goal', 'error');
-        }
     }
 
     showToast(message, type = 'info') {
