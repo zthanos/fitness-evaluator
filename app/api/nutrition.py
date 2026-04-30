@@ -26,6 +26,7 @@ from app.schemas.nutrition_schemas import (
     MealTemplateResponse,
 )
 from app.ai.skills.meal_analyzer import MealAnalyzerSkill, MealAnalysisResult
+from app.services.food_search import FoodSearchService, FoodProduct
 
 router = APIRouter()
 
@@ -251,6 +252,21 @@ async def confirm_meal_items(
     db.commit()
     db.refresh(meal)
     return _meal_to_response(meal)
+
+
+# ---------------------------------------------------------------------------
+# Product search (Open Food Facts — no API key required)
+# ---------------------------------------------------------------------------
+
+@router.get("/search", response_model=list[FoodProduct], summary="Search food products via Open Food Facts")
+async def search_food(
+    q: str,
+    athlete: Athlete = Depends(get_current_athlete),
+):
+    if len(q.strip()) < 2:
+        raise HTTPException(status_code=422, detail="Query must be at least 2 characters")
+    service = FoodSearchService()
+    return service.search(q.strip())
 
 
 # ---------------------------------------------------------------------------

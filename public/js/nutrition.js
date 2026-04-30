@@ -33,6 +33,7 @@ export class NutritionManager {
     };
 
     initPhotoAnalysis();
+    initFoodSearch();
     loadDay();
   }
 
@@ -298,6 +299,108 @@ async function confirmItem(mealId, itemId) {
     await loadDay();
   } catch (err) {
     showToast('Failed to confirm item: ' + err.message, 'error');
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Food search
+// ---------------------------------------------------------------------------
+
+function initFoodSearch() {
+  document.getElementById('search-submit-btn').addEventListener('click', handleFoodSearchWithCapture);
+  document.getElementById('search-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') handleFoodSearchWithCapture();
+  });
+  document.getElementById('search-modal').addEventListener('toggle', () => populateSearchMealSelect());
+  window._nutrition.addSearchProduct = addSearchProduct;
+}
+
+function populateSearchMealSelect() {
+  const select = document.getElementById('search-target-meal');
+  if (!dayLog?.meals?.length) {
+    select.innerHTML = '<option value="">— No meals yet (add one first) —</option>';
+    return;
+  }
+  select.innerHTML = dayLog.meals.map(m =>
+    `<option value="${m.id}">${MEAL_ICONS[m.meal_type]} ${m.meal_type}${m.name ? ' – ' + m.name : ''}</option>`
+  ).join('');
+}
+
+function renderProductCard(product, idx) {
+  const cal = product.calories_per_100g != null ? `${product.calories_per_100g} kcal` : '?';
+  const p = product.protein_per_100g != null ? `P ${product.protein_per_100g}g` : '';
+  const c = product.carbs_per_100g != null ? `C ${product.carbs_per_100g}g` : '';
+  const f = product.fat_per_100g != null ? `F ${product.fat_per_100g}g` : '';
+  return `
+    <div class="border border-base-300 rounded-lg p-3">
+      <div class="flex justify-between items-start gap-2">
+        <div class="min-w-0">
+          <div class="font-medium text-sm truncate">${escHtml(product.name)}</div>
+          ${product.brand ? `<div class="text-xs text-base-content/50">${escHtml(product.brand)}</div>` : ''}
+          <div class="text-xs text-base-content/60 mt-1">per 100g: ${cal} · ${p} · ${c} · ${f}</div>
+        </div>
+        <div class="shrink-0 flex flex-col items-end gap-1">
+          <div class="flex items-center gap-1">
+            <input type="number" class="input input-xs input-bordered w-20" placeholder="qty (g)" id="search-qty-${idx}" value="100">
+          </div>
+          <button class="btn btn-xs btn-primary" onclick="window._nutrition.addSearchProduct(${idx})">Add</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+// Store last search results so addSearchProduct can access them by index
+let _lastSearchResults = [];
+
+async function handleFoodSearchWithCapture() {
+  const q = document.getElementById('search-input').value.trim();
+  if (q.length < 2) { showToast('Enter at least 2 characters', 'warning'); return; }
+
+  const resultsEl = document.getElementById('search-results');
+  resultsEl.innerHTML = '<span class="loading loading-spinner loading-sm"></span>';
+
+  try {
+    const products = await api.searchFood(q);
+    _lastSearchResults = products;
+    if (!products.length) {
+      resultsEl.innerHTML = '<p class="text-sm text-base-content/60">No results found.</p>';
+      return;
+    }
+    resultsEl.innerHTML = products.map((p, idx) => renderProductCard(p, idx)).join('');
+  } catch (err) {
+    resultsEl.innerHTML = `<p class="text-sm text-error">Search failed: ${escHtml(err.message)}</p>`;
+  }
+}
+
+async function addSearchProduct(productIdx) {
+  const product = _lastSearchResults[productIdx];
+  if (!product) return;
+
+  const mealId = document.getElementById('search-target-meal').value;
+  if (!mealId) { showToast('Select a meal first', 'warning'); return; }
+
+  const qty = parseFloat(document.getElementById(`search-qty-${productIdx}`)?.value || '100');
+  const scale = qty / 100;
+
+  const item = {
+    name: product.name + (product.brand ? ` (${product.brand})` : ''),
+    quantity: qty,
+    unit: 'g',
+    calories: product.calories_per_100g != null ? Math.round(product.calories_per_100g * scale) : null,
+    protein_g: product.protein_per_100g != null ? Math.round(product.protein_per_100g * scale * 10) / 10 : null,
+    carbs_g: product.carbs_per_100g != null ? Math.round(product.carbs_per_100g * scale * 10) / 10 : null,
+    fat_g: product.fat_per_100g != null ? Math.round(product.fat_per_100g * scale * 10) / 10 : null,
+    source: 'product_search',
+    confidence: 1.0,
+    source_ref: product.source_url,
+  };
+
+  try {
+    await api.addMealItem(mealId, item);
+    showToast(`Added ${product.name}`, 'success');
+    await loadDay();
+  } catch (err) {
+    showToast('Failed to add product: ' + err.message, 'error');
   }
 }
 
