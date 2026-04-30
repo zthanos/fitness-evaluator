@@ -1,5 +1,6 @@
 import { api }               from '/js/api.js';
 import { router }            from '/js/router.js';
+import { NutritionManager }  from '/js/nutrition.js';
 import { ActivityList }      from '/js/components/activity-list.js';
 import { ActivityDetail }    from '/js/components/activity-detail.js';
 import { DailyLogForm }      from '/js/daily-log-form.js';
@@ -1263,6 +1264,16 @@ class EvaluationDetailPage {
   destroy() {}
 }
 
+// ─── NutritionPage ────────────────────────────────────────────────────────────
+
+class NutritionPage {
+  async init(params, query) {
+    this._manager = new NutritionManager();
+    this._manager.init();
+  }
+  destroy() { this._manager?.destroy(); }
+}
+
 // ─── EvaluationsPage ──────────────────────────────────────────────────────────
 
 class EvaluationsPage {
@@ -1473,4 +1484,5 @@ export {
   AppSettingsPage,
   EvaluationsPage,
   EvaluationDetailPage,
+  NutritionPage,
 };

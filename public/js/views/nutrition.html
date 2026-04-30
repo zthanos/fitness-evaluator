@@ -1,0 +1,196 @@
+<div class="p-6 flex-1 flex flex-col overflow-auto">
+
+  <!-- Header -->
+  <div class="flex justify-between items-center mb-6 flex-shrink-0">
+    <h1 class="text-4xl font-bold">🥗 Nutrition</h1>
+    <div class="flex gap-2">
+      <button class="btn btn-outline gap-2" onclick="document.getElementById('photo-modal').showModal()">
+        📷 Photo
+      </button>
+      <button class="btn btn-outline gap-2" onclick="document.getElementById('search-modal').showModal()">
+        🔍 Search Food
+      </button>
+      <button class="btn btn-outline gap-2" onclick="document.getElementById('templates-modal').showModal()">
+        📋 Templates
+      </button>
+    </div>
+  </div>
+
+  <!-- Date navigation -->
+  <div class="flex items-center gap-3 mb-6 flex-shrink-0">
+    <button id="prev-day" class="btn btn-sm btn-ghost">‹</button>
+    <input id="date-picker" type="date" class="input input-bordered input-sm">
+    <button id="next-day" class="btn btn-sm btn-ghost">›</button>
+    <span id="loading-indicator" class="loading loading-spinner loading-sm hidden"></span>
+  </div>
+
+  <!-- Day totals -->
+  <div class="card bg-base-100 shadow-xl mb-6 flex-shrink-0">
+    <div class="card-body py-4">
+      <h2 class="card-title text-base mb-2">Day Summary</h2>
+      <div class="grid grid-cols-3 md:grid-cols-6 gap-4">
+        <div class="stat p-0">
+          <div class="stat-title text-xs">Calories</div>
+          <div class="stat-value text-lg text-primary" id="total-calories">0</div>
+          <div class="stat-desc">kcal</div>
+        </div>
+        <div class="stat p-0">
+          <div class="stat-title text-xs">Protein</div>
+          <div class="stat-value text-lg text-success" id="total-protein">0g</div>
+        </div>
+        <div class="stat p-0">
+          <div class="stat-title text-xs">Carbs</div>
+          <div class="stat-value text-lg text-warning" id="total-carbs">0g</div>
+        </div>
+        <div class="stat p-0">
+          <div class="stat-title text-xs">Fat</div>
+          <div class="stat-value text-lg text-error" id="total-fat">0g</div>
+        </div>
+        <div class="stat p-0">
+          <div class="stat-title text-xs">Meals</div>
+          <div class="stat-value text-lg" id="total-meals">0</div>
+        </div>
+        <div class="stat p-0">
+          <div class="stat-title text-xs">Confidence</div>
+          <div class="stat-value text-lg" id="confidence-score">—</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Meal sections -->
+  <div id="meals-container" class="flex-1"></div>
+</div>
+
+<!-- ─────────────────────── Add Meal Modal ─────────────────────── -->
+<dialog id="add-meal-modal" class="modal">
+  <div class="modal-box">
+    <h3 class="font-bold text-lg mb-4">Add Meal</h3>
+    <form id="add-meal-form">
+      <input type="hidden" id="modal-meal-type">
+      <div class="form-control mb-4">
+        <label class="label"><span class="label-text">Name (optional)</span></label>
+        <input id="modal-meal-name" type="text" placeholder="e.g. Oatmeal with berries" class="input input-bordered">
+      </div>
+      <div class="modal-action">
+        <button type="button" class="btn btn-ghost" onclick="this.closest('dialog').close()">Cancel</button>
+        <button type="submit" class="btn btn-primary">Add</button>
+      </div>
+    </form>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+
+<!-- ─────────────────────── Add / Edit Item Modal ─────────────────────── -->
+<dialog id="item-modal" class="modal">
+  <div class="modal-box w-11/12 max-w-lg">
+    <h3 class="font-bold text-lg mb-4" id="item-modal-title">Add Item</h3>
+    <form id="item-form">
+      <input type="hidden" id="item-meal-id">
+      <div class="grid grid-cols-2 gap-3">
+        <div class="form-control col-span-2">
+          <label class="label"><span class="label-text">Food name *</span></label>
+          <input id="item-name" type="text" required placeholder="e.g. Chicken breast" class="input input-bordered">
+        </div>
+        <div class="form-control">
+          <label class="label"><span class="label-text">Quantity</span></label>
+          <input id="item-quantity" type="number" step="any" min="0" placeholder="e.g. 150" class="input input-bordered">
+        </div>
+        <div class="form-control">
+          <label class="label"><span class="label-text">Unit</span></label>
+          <input id="item-unit" type="text" placeholder="g, ml, cup…" class="input input-bordered">
+        </div>
+        <div class="form-control">
+          <label class="label"><span class="label-text">Calories (kcal)</span></label>
+          <input id="item-calories" type="number" step="any" min="0" class="input input-bordered">
+        </div>
+        <div class="form-control">
+          <label class="label"><span class="label-text">Protein (g)</span></label>
+          <input id="item-protein" type="number" step="any" min="0" class="input input-bordered">
+        </div>
+        <div class="form-control">
+          <label class="label"><span class="label-text">Carbs (g)</span></label>
+          <input id="item-carbs" type="number" step="any" min="0" class="input input-bordered">
+        </div>
+        <div class="form-control">
+          <label class="label"><span class="label-text">Fat (g)</span></label>
+          <input id="item-fat" type="number" step="any" min="0" class="input input-bordered">
+        </div>
+      </div>
+      <div class="modal-action mt-4">
+        <button type="button" class="btn btn-ghost" onclick="this.closest('dialog').close()">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save</button>
+      </div>
+    </form>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+
+<!-- ─────────────────────── Photo Modal (wired in commit 3) ─────────────────────── -->
+<dialog id="photo-modal" class="modal">
+  <div class="modal-box">
+    <h3 class="font-bold text-lg mb-4">📷 Analyse Meal Photo</h3>
+    <div id="photo-form-area">
+      <div class="form-control mb-4">
+        <label class="label"><span class="label-text">Select meal photo</span></label>
+        <input id="photo-file-input" type="file" accept="image/*" class="file-input file-input-bordered w-full">
+      </div>
+      <div class="form-control mb-4">
+        <label class="label"><span class="label-text">Meal type</span></label>
+        <select id="photo-meal-type" class="select select-bordered">
+          <option value="breakfast">Breakfast</option>
+          <option value="lunch" selected>Lunch</option>
+          <option value="dinner">Dinner</option>
+          <option value="snack">Snack</option>
+        </select>
+      </div>
+      <div class="modal-action">
+        <button type="button" class="btn btn-ghost" onclick="this.closest('dialog').close()">Cancel</button>
+        <button type="button" class="btn btn-primary" id="analyze-photo-btn">Analyze</button>
+      </div>
+    </div>
+    <div id="photo-results-area" class="hidden">
+      <p class="text-sm text-base-content/60 mb-3">Review detected items before adding to your log:</p>
+      <div id="photo-items-list" class="space-y-2 mb-4"></div>
+      <div class="modal-action">
+        <button type="button" class="btn btn-ghost" id="photo-back-btn">Back</button>
+        <button type="button" class="btn btn-primary" id="confirm-photo-btn">Add to Log</button>
+      </div>
+    </div>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+
+<!-- ─────────────────────── Search Modal (wired in commit 4) ─────────────────────── -->
+<dialog id="search-modal" class="modal">
+  <div class="modal-box w-11/12 max-w-xl">
+    <h3 class="font-bold text-lg mb-4">🔍 Search Food</h3>
+    <div class="flex gap-2 mb-4">
+      <input id="search-input" type="text" placeholder="Search food or product…" class="input input-bordered flex-1">
+      <button type="button" class="btn btn-primary" id="search-submit-btn">Search</button>
+    </div>
+    <div class="form-control mb-4">
+      <label class="label"><span class="label-text">Add to meal</span></label>
+      <select id="search-target-meal" class="select select-bordered"></select>
+    </div>
+    <div id="search-results" class="space-y-2 max-h-80 overflow-y-auto"></div>
+    <div class="modal-action">
+      <button type="button" class="btn btn-ghost" onclick="this.closest('dialog').close()">Close</button>
+    </div>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+
+<!-- ─────────────────────── Templates Modal (wired in commit 5) ─────────────────────── -->
+<dialog id="templates-modal" class="modal">
+  <div class="modal-box w-11/12 max-w-xl">
+    <h3 class="font-bold text-lg mb-4">📋 Meal Templates</h3>
+    <div id="templates-list" class="space-y-2 mb-4 max-h-80 overflow-y-auto">
+      <p class="text-sm text-base-content/40 italic">No templates saved yet.</p>
+    </div>
+    <div class="modal-action">
+      <button type="button" class="btn btn-ghost" onclick="this.closest('dialog').close()">Close</button>
+    </div>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>

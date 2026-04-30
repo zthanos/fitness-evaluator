@@ -218,6 +218,13 @@ router
   .on('/activities.html',       () => router.replace('/activities'))
   .on('/evaluations-list.html', () => router.replace('/evaluations'))
 
+  .on('/nutrition', async (params, query) => {
+    const { NutritionPage } = await getPages();
+    const page = await mountPage('/nutrition', '/js/views/nutrition.html', NutritionPage);
+    await page.init(params, query);
+    return page;
+  })
+
   .on('/telemetry', () => { window.location.href = '/telemetry'; })
   .on('/llm-cost',  () => { window.location.href = '/llm-cost'; })
 
