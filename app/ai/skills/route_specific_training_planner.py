@@ -257,12 +257,12 @@ class RouteSpecificTrainingPlanner(TrainingPlanner):
         from app.models.training_plan import TrainingPlan
         from app.models.training_plan_week import TrainingPlanWeek
         from app.models.training_plan_session import TrainingPlanSession
+        from app.services.plan_coordinator import sport_plan_type
 
         today = date.today()
         duration = len(data.get("weeks", []))
         end_date = today + timedelta(weeks=max(duration, 1))
 
-        # Collect LLM-generated metadata (performance target + rationale) into JSON
         plan_metadata = {}
         if data.get("performance_target"):
             plan_metadata["performance_target"] = data["performance_target"]
@@ -274,6 +274,7 @@ class RouteSpecificTrainingPlanner(TrainingPlanner):
             user_id=self.athlete_id,
             title=data.get("title", "Route Training Plan")[:255],
             sport=data.get("sport", "other"),
+            plan_type=sport_plan_type(data.get("sport", "other")),
             goal_id=goal_id,
             route_profile_id=route_profile_id,
             plan_metadata=plan_metadata or None,

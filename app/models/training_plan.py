@@ -36,6 +36,9 @@ class TrainingPlan(Base, TimestampMixin):
     user_id = Column(Integer, ForeignKey('athletes.id', ondelete='CASCADE'), nullable=False, index=True)
     title = Column(String(255), nullable=False)
     sport = Column(String(50), nullable=False)
+    # primary = sport-specific training (one active per sport at a time)
+    # complementary = nutrition, strength, recovery (can coexist with primary)
+    plan_type = Column(String(20), nullable=False, default='primary')
     goal_id = Column(String(36), ForeignKey('athlete_goals.id', ondelete='SET NULL'), nullable=True)
     route_profile_id = Column(Integer, ForeignKey('route_profiles.id', ondelete='SET NULL'), nullable=True)
     plan_metadata = Column(JSON, nullable=True)  # performance_target, plan_rationale from LLM

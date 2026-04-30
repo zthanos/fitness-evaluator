@@ -60,7 +60,7 @@ class TrainingPlansList {
     }
 
     this.container.innerHTML = `
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         ${this.plans.map(plan => this.renderPlanCard(plan)).join('')}
       </div>
     `;
@@ -73,16 +73,14 @@ class TrainingPlansList {
    */
   renderEmptyState() {
     this.container.innerHTML = `
-      <div class="card bg-base-100 shadow-xl">
-        <div class="card-body text-center py-12">
-          <div class="text-6xl mb-4">🎯</div>
-          <h2 class="text-2xl font-bold mb-2">No Training Plans Yet</h2>
-          <p class="text-base-content/60 mb-6">
-            Start by chatting with your AI coach to create a personalized training plan.
-          </p>
-          <a href="/chat.html" class="btn btn-primary">
-            💬 Chat with Coach
-          </a>
+      <div class="card bg-base-100 shadow-sm border border-base-200">
+        <div class="card-body items-center text-center py-12 gap-3">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-10 h-10 text-base-content/20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z"/>
+          </svg>
+          <p class="font-semibold text-base-content/70">No training plans yet</p>
+          <p class="text-sm text-base-content/40 max-w-xs">Create a plan from a goal, a route, or by chatting with your coach.</p>
+          <button onclick="document.getElementById('btn-new-plan').click()" class="btn btn-sm btn-primary mt-1">Create a plan</button>
         </div>
       </div>
     `;
@@ -98,56 +96,40 @@ class TrainingPlansList {
     const startDate = this.formatDate(plan.start_date);
     const endDate = this.formatDate(plan.end_date);
     
+    const adherencePct = Math.min(100, Math.max(0, plan.adherence_percentage));
+    const bgColor = adherencePct >= 80 ? 'bg-success' : adherencePct >= 60 ? 'bg-warning' : 'bg-error';
+
     return `
-      <div class="card bg-base-100 shadow-xl hover:shadow-2xl transition-shadow cursor-pointer" 
+      <div class="card bg-base-100 shadow-sm hover:shadow-md border border-base-200 hover:border-primary/30 transition-all cursor-pointer"
            data-plan-id="${plan.id}">
-        <div class="card-body">
-          <!-- Header -->
-          <div class="flex justify-between items-start mb-3">
-            <h2 class="card-title text-lg">${this.escapeHtml(plan.title)}</h2>
+        <div class="card-body p-4 gap-3">
+          <!-- Header row -->
+          <div class="flex items-start justify-between gap-2">
+            <h2 class="font-semibold text-sm leading-snug line-clamp-2 flex-1">${this.escapeHtml(plan.title)}</h2>
             ${statusBadge}
           </div>
-          
-          <!-- Plan Details -->
-          <div class="space-y-2 text-sm">
-            <div class="flex items-center gap-2">
-              <span class="text-base-content/60">Sport:</span>
-              <span class="badge badge-outline">${this.escapeHtml(plan.sport)}</span>
-            </div>
-            
-            ${plan.goal ? `
-              <div class="flex items-center gap-2">
-                <span class="text-base-content/60">Goal:</span>
-                <span class="font-medium">${this.escapeHtml(plan.goal)}</span>
-              </div>
-            ` : ''}
-            
-            <div class="flex items-center gap-2">
-              <span class="text-base-content/60">Duration:</span>
-              <span>${startDate} - ${endDate}</span>
-            </div>
+
+          <!-- Meta chips -->
+          <div class="flex flex-wrap gap-1.5">
+            <span class="badge badge-outline badge-sm">${this.escapeHtml(plan.sport)}</span>
+            ${plan.plan_type && plan.plan_type !== 'primary' ? `<span class="badge badge-ghost badge-sm">${this.escapeHtml(plan.plan_type)}</span>` : ''}
           </div>
-          
-          <!-- Progress Section -->
-          <div class="mt-4">
-            <div class="flex justify-between items-center mb-2">
-              <span class="text-sm font-medium">Adherence</span>
-              <span class="text-sm font-bold ${adherenceColor}">
-                ${plan.adherence_percentage.toFixed(1)}%
-              </span>
+
+          ${plan.goal ? `<p class="text-xs text-base-content/60 leading-snug line-clamp-2">${this.escapeHtml(plan.goal)}</p>` : ''}
+
+          <!-- Dates -->
+          <p class="text-xs text-base-content/50">${startDate} → ${endDate}</p>
+
+          <!-- Adherence bar -->
+          <div>
+            <div class="flex justify-between items-center mb-1">
+              <span class="text-xs text-base-content/60">Adherence</span>
+              <span class="text-xs font-semibold ${adherenceColor}">${adherencePct.toFixed(1)}%</span>
             </div>
-            
-            <!-- Progress Bar -->
-            <div class="w-full bg-base-300 rounded-full h-3">
-              <div class="${adherenceColor} h-3 rounded-full transition-all duration-300" 
-                   style="width: ${plan.adherence_percentage}%">
-              </div>
+            <div class="w-full bg-base-300 rounded-full h-1.5">
+              <div class="${bgColor} h-1.5 rounded-full transition-all duration-300" style="width: ${adherencePct}%"></div>
             </div>
-            
-            <!-- Session Stats -->
-            <div class="text-xs text-base-content/60 mt-2">
-              ${plan.completed_sessions} of ${plan.total_sessions} sessions completed
-            </div>
+            <p class="text-xs text-base-content/40 mt-1">${plan.completed_sessions} / ${plan.total_sessions} sessions</p>
           </div>
         </div>
       </div>

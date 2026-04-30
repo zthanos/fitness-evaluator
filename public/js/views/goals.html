@@ -1,0 +1,145 @@
+<div class="p-6">
+    <!-- Header -->
+    <div class="flex justify-between items-center mb-6">
+        <div>
+            <h1 class="text-4xl font-bold">Goals</h1>
+            <p class="text-base-content/70 mt-1">Track what you're working toward</p>
+        </div>
+        <button id="btn-new-goal" class="btn btn-primary gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/>
+            </svg>
+            New Goal
+        </button>
+    </div>
+
+    <!-- Active Goals -->
+    <div class="mb-8">
+        <h2 class="text-sm font-semibold uppercase tracking-wide text-base-content/50 mb-3">Active</h2>
+        <div id="goals-active-container">
+            <div class="flex justify-center py-8">
+                <span class="loading loading-spinner loading-md"></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Goal History -->
+    <div>
+        <h2 class="text-sm font-semibold uppercase tracking-wide text-base-content/50 mb-3">History</h2>
+        <div id="goals-history-container"></div>
+    </div>
+</div>
+
+<!-- ── New Goal Modal ──────────────────────────────────────────────────────── -->
+<dialog id="new-goal-modal" class="modal">
+  <div class="modal-box w-11/12 max-w-lg">
+    <h3 class="font-bold text-xl mb-1">New Goal</h3>
+    <p class="text-sm text-base-content/60 mb-5">Define what you want to achieve and by when</p>
+
+    <form id="new-goal-form" class="space-y-4">
+
+      <div class="form-control">
+        <label class="label pt-0"><span class="label-text font-semibold">Goal type</span></label>
+        <div class="grid grid-cols-2 gap-2">
+          <label class="cursor-pointer flex items-center gap-2 p-3 rounded-lg border border-base-300 hover:border-primary/50">
+            <input type="radio" name="goal-type" value="performance" class="radio radio-primary radio-xs" checked>
+            <span class="text-sm">Performance</span>
+          </label>
+          <label class="cursor-pointer flex items-center gap-2 p-3 rounded-lg border border-base-300 hover:border-primary/50">
+            <input type="radio" name="goal-type" value="endurance" class="radio radio-primary radio-xs">
+            <span class="text-sm">Endurance</span>
+          </label>
+          <label class="cursor-pointer flex items-center gap-2 p-3 rounded-lg border border-base-300 hover:border-primary/50">
+            <input type="radio" name="goal-type" value="weight_loss" class="radio radio-primary radio-xs">
+            <span class="text-sm">Weight loss</span>
+          </label>
+          <label class="cursor-pointer flex items-center gap-2 p-3 rounded-lg border border-base-300 hover:border-primary/50">
+            <input type="radio" name="goal-type" value="strength" class="radio radio-primary radio-xs">
+            <span class="text-sm">Strength</span>
+          </label>
+          <label class="cursor-pointer flex items-center gap-2 p-3 rounded-lg border border-base-300 hover:border-primary/50">
+            <input type="radio" name="goal-type" value="custom" class="radio radio-primary radio-xs">
+            <span class="text-sm">Custom</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="form-control">
+        <label class="label pt-0"><span class="label-text font-semibold">Description</span></label>
+        <textarea id="goal-description" rows="3" placeholder="Describe your goal in your own words…"
+                  class="textarea textarea-bordered resize-none" required></textarea>
+      </div>
+
+      <div class="grid grid-cols-2 gap-4">
+        <div class="form-control">
+          <label class="label pt-0"><span class="label-text font-semibold">Target date</span></label>
+          <input type="date" id="goal-target-date" class="input input-bordered input-sm">
+        </div>
+        <div class="form-control">
+          <label class="label pt-0"><span class="label-text font-semibold">Target value <span class="font-normal text-base-content/50">(optional)</span></span></label>
+          <input type="number" id="goal-target-value" placeholder="e.g. 75" step="0.1" min="0"
+                 class="input input-bordered input-sm">
+        </div>
+      </div>
+
+      <!-- ── Generate Training Plan toggle ── -->
+      <div class="divider text-xs text-base-content/40 my-1">Training Plan</div>
+
+      <div class="form-control">
+        <label class="cursor-pointer flex items-start gap-3">
+          <input type="checkbox" id="goal-gen-plan" class="checkbox checkbox-primary mt-0.5">
+          <div>
+            <span class="font-semibold text-sm">Generate a training plan for this goal</span>
+            <p class="text-xs text-base-content/60 mt-0.5">The system will create a personalised plan aligned with this goal.</p>
+          </div>
+        </label>
+      </div>
+
+      <!-- Plan options — hidden until toggle is checked -->
+      <div id="goal-plan-options" class="hidden space-y-3 pl-7">
+        <div class="grid grid-cols-2 gap-3">
+          <div class="form-control">
+            <label class="label pt-0"><span class="label-text text-sm font-semibold">Sport</span></label>
+            <select id="goal-plan-sport" class="select select-bordered select-sm">
+              <option value="running">Running</option>
+              <option value="cycling">Cycling</option>
+              <option value="swimming">Swimming</option>
+            </select>
+          </div>
+          <div class="form-control">
+            <label class="label pt-0">
+              <span class="label-text text-sm font-semibold">Duration</span>
+              <span id="goal-plan-duration-label" class="label-text-alt text-primary font-semibold">8 weeks</span>
+            </label>
+            <input type="range" id="goal-plan-duration" min="4" max="24" value="8" step="2"
+                   class="range range-primary range-xs mt-2">
+          </div>
+        </div>
+
+        <!-- Conflict alert — shown if a conflicting plan exists -->
+        <div id="goal-plan-conflict" class="hidden">
+          <div class="alert alert-warning p-3 gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/>
+            </svg>
+            <div class="flex-1 min-w-0">
+              <p class="text-sm font-semibold">Conflicting active plan</p>
+              <p id="goal-plan-conflict-detail" class="text-xs mt-0.5"></p>
+            </div>
+          </div>
+          <label class="cursor-pointer flex items-center gap-2 mt-2 text-sm">
+            <input type="checkbox" id="goal-deactivate-conflict" class="checkbox checkbox-warning checkbox-sm">
+            <span>Deactivate the current plan and replace it with the new one</span>
+          </label>
+        </div>
+      </div>
+
+    </form>
+
+    <div class="modal-action mt-6">
+      <button onclick="document.getElementById('new-goal-modal').close()" class="btn btn-ghost">Cancel</button>
+      <button id="btn-save-goal" class="btn btn-primary">Save Goal</button>
+    </div>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>

@@ -167,9 +167,18 @@ router
     return page;
   })
 
-  .on('/settings', async (params, query) => {
+  .on('/goals', async (params, query) => {
+    const { GoalsPage } = await getPages();
+    const page = await mountPage('/goals', '/js/views/goals.html', GoalsPage, [
+      '/js/goals.js',
+    ]);
+    await page.init(params, query);
+    return page;
+  })
+
+  .on('/profile', async (params, query) => {
     const { SettingsPage } = await getPages();
-    const page = await mountPage('/settings', '/js/views/settings.html', SettingsPage, [
+    const page = await mountPage('/profile', '/js/views/settings.html', SettingsPage, [
       '/js/settings.js',
     ]);
     await page.init(params, query);
@@ -200,7 +209,8 @@ router
   })
 
   // Legacy redirects
-  .on('/settings.html',         () => router.replace('/settings'))
+  .on('/settings',              () => router.replace('/profile'))
+  .on('/settings.html',         () => router.replace('/profile'))
   .on('/chat.html',             () => router.replace('/chat'))
   .on('/logs.html',             () => router.replace('/logs'))
   .on('/metrics.html',          () => router.replace('/metrics'))
