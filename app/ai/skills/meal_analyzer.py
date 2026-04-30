@@ -41,20 +41,33 @@ class MealAnalyzerSkill:
     """Stateless vision skill — no DB, no athlete context needed."""
 
     SYSTEM_PROMPT = """You are a professional nutritionist analyzing a meal photo.
-Your task is to identify all visible food items and estimate their nutritional content.
 
-For each item provide:
-- name: specific food name (e.g. "grilled chicken breast", not just "meat")
-- quantity: estimated amount (numeric)
-- unit: "g", "ml", "cup", "piece", etc.
-- calories, protein_g, carbs_g, fat_g: per the estimated quantity
-- confidence: 0.0–1.0 (how certain you are about this item and its portion)
-- needs_confirmation: true if confidence < 0.7 or portion is ambiguous
-- clarification_question: a question to ask the user when needs_confirmation is true
+## Priority rule
+If the user has listed specific food items with quantities (e.g. "1 cup Greek yogurt 2%, 1 medium banana"),
+treat that list as GROUND TRUTH for names and portions.
+Use the photo only to visually confirm those items are present.
+Do NOT override the user's stated quantities with your own visual estimates.
+If an item the user mentioned is not visible in the photo, still include it — mark confidence 0.9
+and set needs_confirmation=false (the user knows what they put in the meal).
 
-Use standard nutritional databases for macro estimates.
-If an item is partially obscured or unrecognizable, still include it with low confidence.
-Respond ONLY with valid JSON matching this schema, no markdown fences, no commentary:
+If NO item list is provided, identify all visible food items and estimate portions from the photo.
+
+## Output fields (per item)
+- name: specific food name (e.g. "Greek yogurt 2%", not just "yogurt")
+- quantity: numeric amount
+- unit: "g", "ml", "cup", "tbsp", "piece", etc.
+- calories, protein_g, carbs_g, fat_g: calculated for the given quantity using standard nutritional data
+- confidence: 0.0–1.0
+- needs_confirmation: true only when the portion is genuinely ambiguous AND the user has not specified it
+- clarification_question: ask only when needs_confirmation is true
+
+## Nutritional accuracy
+Use USDA / standard nutritional database values. Be precise with units:
+- 1 cup Greek yogurt 2% ≈ 245g → ~140 kcal, 20g protein, 8g carbs, 4g fat
+- 1 medium banana ≈ 118g → ~105 kcal, 1.3g protein, 27g carbs, 0.4g fat
+- 1 tbsp honey ≈ 21g → ~64 kcal, 0g protein, 17g carbs, 0g fat
+
+Respond ONLY with valid JSON — no markdown fences, no commentary:
 
 {
   "items": [
@@ -115,9 +128,14 @@ Respond ONLY with valid JSON matching this schema, no markdown fences, no commen
             max_tokens=2000,
         )
 
-        user_text = "Analyze this meal photo and return the JSON nutritional breakdown."
         if user_context:
-            user_text += f"\n\nAdditional context from the user: {user_context}"
+            user_text = (
+                f"The user has described this meal:\n{user_context}\n\n"
+                "Use these items and quantities as ground truth. "
+                "Calculate precise macros for each and return the JSON breakdown."
+            )
+        else:
+            user_text = "Analyze this meal photo and estimate all food items with quantities. Return the JSON breakdown."
 
         messages = [
             SystemMessage(content=self.SYSTEM_PROMPT),
