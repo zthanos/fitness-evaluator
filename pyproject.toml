@@ -30,4 +30,5 @@ dependencies = [
     "httpx>=0.28.1", # Already present; used for JWKS fetch
     "python-multipart>=0.0.27",
     "langchain-ollama>=1.1.0",
+    "gpxpy>=1.6.2", # GPX file parsing for route analysis
 ]

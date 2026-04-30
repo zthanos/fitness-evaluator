@@ -29,6 +29,12 @@ class Settings(BaseSettings):
     OLLAMA_ENDPOINT: str = ""
     OLLAMA_MODEL: str = "mistral"
 
+    # Tool-calling subagent — a separate model used only for the ReAct tool loop.
+    # Should be a model with reliable function-calling support (e.g. Llama 3.1 8B).
+    # If empty, falls back to the primary LLM (LM_STUDIO_MODEL / OLLAMA_MODEL).
+    TOOL_AGENT_MODEL: str = ""
+    TOOL_AGENT_ENDPOINT: str = ""  # defaults to LM_STUDIO_ENDPOINT / OLLAMA_ENDPOINT
+
     # Embedding Configuration
     # Options: "ollama" or "lm-studio" (defaults to same as LLM_TYPE)
     EMBEDDING_TYPE: str = ""  # If empty, uses LLM_TYPE
@@ -90,6 +96,18 @@ class Settings(BaseSettings):
     @property
     def is_ollama(self) -> bool:
         return self.LLM_TYPE.lower() == "ollama"
+
+    @property
+    def tool_agent_base_url(self) -> str:
+        """Endpoint for the tool-calling subagent (falls back to primary endpoint)."""
+        return self.TOOL_AGENT_ENDPOINT or self.llm_base_url
+
+    @property
+    def tool_agent_model(self) -> str:
+        """Model name for the tool-calling subagent (falls back to primary model)."""
+        if self.TOOL_AGENT_MODEL:
+            return self.TOOL_AGENT_MODEL
+        return self.LM_STUDIO_MODEL if not self.is_ollama else self.OLLAMA_MODEL
 
     @property
     def pilot_user_ids_set(self) -> set:

@@ -75,8 +75,8 @@ async def execute_tool(
             return await _save_athlete_goal(parameters, user_id, db)
         elif tool_name == "get_my_goals":
             return await _get_my_goals(parameters, user_id, db)
-        elif tool_name == "get_my_recent_activities":
-            return await _get_my_recent_activities(parameters, user_id, db)
+        elif tool_name in ("get_my_recent_activities", "query_activities"):
+            return await _query_activities(parameters, user_id, db)
         elif tool_name == "get_my_weekly_metrics":
             return await _get_my_weekly_metrics(parameters, user_id, db)
         elif tool_name == "save_training_plan":
@@ -95,6 +95,8 @@ async def execute_tool(
             return await _evaluate_progress(parameters, user_id, db)
         elif tool_name == "generate_plan":
             return await _generate_plan(parameters, user_id, db)
+        elif tool_name == "evaluate_performance_goal":
+            return await _evaluate_performance_goal(parameters, user_id, db)
         else:
             raise ToolExecutionError(f"Unknown tool: {tool_name}")
     
@@ -158,53 +160,173 @@ async def _get_my_goals(
     return result
 
 
-async def _get_my_recent_activities(
+# ── query_activities engine ───────────────────────────────────────────────────
+
+from sqlalchemy import func as _func
+
+_QA_FIELDS = {
+    "sport_type":    StravaActivity.sport_type,
+    "activity_type": StravaActivity.activity_type,
+    "distance_m":    StravaActivity.distance_m,
+    "moving_time_s": StravaActivity.moving_time_s,
+    "elevation_m":   StravaActivity.elevation_m,
+    "start_date":    StravaActivity.start_date,
+    "avg_hr":        StravaActivity.avg_hr,
+    "max_hr":        StravaActivity.max_hr,
+    "calories":      StravaActivity.calories,
+    "avg_watts":     StravaActivity.avg_watts,
+    "avg_cadence":   StravaActivity.avg_cadence,
+    "suffer_score":  StravaActivity.suffer_score,
+    "trainer":       StravaActivity.trainer,
+}
+
+_QA_AGG_FUNCS = {
+    "count":  _func.count,
+    "sum":    _func.sum,
+    "avg":    _func.avg,
+    "max":    _func.max,
+    "min":    _func.min,
+}
+
+
+def _qa_apply_filter(query, col, op: str, value):
+    """Apply a single filter condition to a SQLAlchemy query."""
+    if op == "eq":     return query.filter(col == value)
+    if op == "ne":     return query.filter(col != value)
+    if op == "gt":     return query.filter(col > value)
+    if op == "gte":    return query.filter(col >= value)
+    if op == "lt":     return query.filter(col < value)
+    if op == "lte":    return query.filter(col <= value)
+    if op == "in":     return query.filter(col.in_(value))
+    if op == "not_in": return query.filter(col.notin_(value))
+    raise ValueError(f"Unknown operator: {op}")
+
+
+_QA_NUMERIC_FIELDS = {
+    "distance_m", "moving_time_s", "elevation_m",
+    "avg_hr", "max_hr", "calories", "avg_watts", "avg_cadence", "suffer_score",
+}
+
+
+def _qa_parse_value(field: str, value):
+    """Coerce filter values to the correct Python type."""
+    if field == "start_date" and isinstance(value, str):
+        from dateutil.parser import parse as _dp
+        return _dp(value)
+    # LLMs sometimes emit numeric values as strings — cast them
+    if field in _QA_NUMERIC_FIELDS and isinstance(value, str):
+        try:
+            return float(value)
+        except (ValueError, TypeError):
+            pass
+    return value
+
+
+async def _query_activities(
     parameters: Dict[str, Any],
     user_id: int,
-    db: Session
+    db: Session,
 ) -> Dict[str, Any]:
     """
-    Retrieve recent Strava activities.
-    
-    Requirements: 6.3
+    Flexible activity query engine.
+
+    Supports arbitrary filters, sort, limit, and aggregate metrics.
+    Always scoped to the requesting athlete.
     """
-    days = parameters.get('days', 28)
-    
-    # Calculate cutoff date
-    cutoff_date = datetime.now() - timedelta(days=days)
-    
-    # Query activities with user_id scoping
-    activities = db.query(StravaActivity)\
-        .filter(StravaActivity.athlete_id == user_id)\
-        .filter(StravaActivity.start_date >= cutoff_date)\
-        .order_by(StravaActivity.start_date.desc())\
-        .all()
-    
-    # Format activities
-    formatted_activities = []
-    for activity in activities:
-        formatted_activities.append({
-            'id': activity.id,
-            'strava_id': activity.strava_id,
-            'activity_type': activity.activity_type,
-            'start_date': activity.start_date.isoformat(),
-            'moving_time_s': activity.moving_time_s,
-            'distance_m': activity.distance_m,
-            'elevation_m': activity.elevation_m,
-            'avg_hr': activity.avg_hr,
-            'max_hr': activity.max_hr,
-            'calories': activity.calories
-        })
-    
-    result = {
-        'success': True,
-        'activities': formatted_activities,
-        'count': len(formatted_activities),
-        'days': days
+    filters   = parameters.get("filters", [])
+    sort      = parameters.get("sort", [{"field": "start_date", "dir": "desc"}])
+    limit     = min(int(parameters.get("limit", 20)), 100)
+    aggregate = parameters.get("aggregate")  # optional dict with "metrics" list
+
+    # ── Base query (always athlete-scoped) ──────────────────────────────────
+    query = db.query(StravaActivity).filter(StravaActivity.athlete_id == user_id)
+
+    # ── Filters ─────────────────────────────────────────────────────────────
+    for f in filters:
+        # Accept "key"/"name" as aliases for "field"
+        field = f.get("field") or f.get("key") or f.get("name", "")
+        op    = f.get("op") or f.get("operator", "eq")
+        value = f.get("value")
+        col   = _QA_FIELDS.get(field)
+        if col is None:
+            return {"success": False, "error": f"Unknown filter field: {field!r}. "
+                    f"Available: {list(_QA_FIELDS)}"}
+        value = _qa_parse_value(field, value)
+        try:
+            query = _qa_apply_filter(query, col, op, value)
+        except ValueError as exc:
+            return {"success": False, "error": str(exc)}
+
+    # ── Aggregation path ────────────────────────────────────────────────────
+    if aggregate:
+        metrics_raw = aggregate.get("metrics", ["count"])
+        select_exprs = []
+        labels = []
+        for metric in metrics_raw:
+            if ":" in metric:
+                agg_name, field_name = metric.split(":", 1)
+            else:
+                agg_name, field_name = metric, "start_date"  # count(*) uses any col
+            agg_fn = _QA_AGG_FUNCS.get(agg_name)
+            col    = _QA_FIELDS.get(field_name)
+            if agg_fn is None or col is None:
+                return {"success": False, "error": f"Invalid aggregate: {metric!r}"}
+            label = metric.replace(":", "_")
+            select_exprs.append(agg_fn(col).label(label))
+            labels.append(label)
+
+        row = db.query(*select_exprs).filter(StravaActivity.athlete_id == user_id)
+        for f in filters:
+            col = _QA_FIELDS.get(f["field"])
+            if col:
+                row = _qa_apply_filter(row, col, f["op"],
+                                       _qa_parse_value(f["field"], f["value"]))
+        row = row.one()
+        results = {label: getattr(row, label) for label in labels}
+        # Round floats for readability
+        for k, v in results.items():
+            if isinstance(v, float):
+                results[k] = round(v, 2)
+        logger.info("query_activities aggregate: %s (user=%d)", results, user_id)
+        return {"success": True, "aggregate": results, "filters_applied": len(filters)}
+
+    # ── Sort ────────────────────────────────────────────────────────────────
+    for s in sort:
+        # Accept "key" as an alias for "field" (some models use alternate naming)
+        field = s.get("field") or s.get("key", "start_date")
+        direction = (s.get("dir") or s.get("order", "desc")).lower()
+        col = _QA_FIELDS.get(field)
+        if col is None:
+            return {"success": False, "error": f"Unknown sort field: {field!r}"}
+        order_expr = col.desc().nullslast() if direction == "desc" else col.asc().nullsfirst()
+        query = query.order_by(order_expr)
+
+    # ── Limit & format ──────────────────────────────────────────────────────
+    activities = query.limit(limit).all()
+
+    formatted = [
+        {
+            "strava_id":     a.strava_id,
+            "sport_type":    a.sport_type or a.activity_type,
+            "start_date":    a.start_date.strftime("%Y-%m-%d") if a.start_date else None,
+            "distance_km":   round(a.distance_m / 1000, 2) if a.distance_m else None,
+            "moving_time_s": a.moving_time_s,
+            "elevation_m":   a.elevation_m,
+            "avg_hr":        a.avg_hr,
+            "avg_watts":     a.avg_watts,
+            "avg_cadence":   a.avg_cadence,
+            "suffer_score":  a.suffer_score,
+            "calories":      a.calories,
+        }
+        for a in activities
+    ]
+
+    logger.info("query_activities: %d results (user=%d filters=%d)", len(formatted), user_id, len(filters))
+    return {
+        "success":    True,
+        "activities": formatted,
+        "count":      len(formatted),
     }
-    
-    logger.info(f"Retrieved {len(formatted_activities)} activities for user_id={user_id} (last {days} days)")
-    return result
 
 
 async def _get_my_weekly_metrics(
@@ -457,12 +579,52 @@ async def _analyze_recent_workout(
     state_builder = FitnessStateBuilder(db, user_id)
     fitness_state = await state_builder.run(FitnessStateInput(lookback_days=28))
 
-    # 3. Synthesise coaching response
+    # 3. Load per-sport profile for the analysed activity's sport group
+    sport_profile_dict: Optional[dict] = None
+    if latest:
+        _SPORT_GROUP_MAP = {
+            "Ride": "ride", "VirtualRide": "ride", "MountainBikeRide": "ride",
+            "GravelRide": "ride", "EBikeRide": "ride",
+            "Run": "run", "VirtualRun": "run", "TrailRun": "run",
+            "Swim": "swim", "OpenWaterSwim": "swim",
+        }
+        sport = latest.sport_type or latest.activity_type or ""
+        sport_group = _SPORT_GROUP_MAP.get(sport)
+        if sport_group:
+            try:
+                from app.models.athlete_sport_profile import AthleteSportProfile
+                sp = (
+                    db.query(AthleteSportProfile)
+                    .filter_by(athlete_id=user_id, sport_group=sport_group)
+                    .first()
+                )
+                if sp:
+                    sport_profile_dict = {
+                        "sport_group":                sport_group,
+                        "typical_cadence_rpm":        sp.typical_cadence_rpm,
+                        "indoor_cadence_rpm":         sp.indoor_cadence_rpm,
+                        "outdoor_cadence_rpm":        sp.outdoor_cadence_rpm,
+                        "ftp_estimate_w":             sp.ftp_estimate_w,
+                        "ftp_confidence":             sp.ftp_confidence,
+                        "avg_power_baseline_w":       sp.avg_power_baseline_w,
+                        "max_hr_estimate":            sp.max_hr_estimate,
+                        "typical_endurance_speed_kmh": sp.typical_endurance_speed_kmh,
+                        "best_long_speed_kmh":        sp.best_long_speed_kmh,
+                        "weekly_volume_km":           sp.weekly_volume_km,
+                        "current_limiters":           sp.current_limiters,
+                        "current_strengths":          sp.current_strengths,
+                        "profile_confidence":         sp.profile_confidence,
+                    }
+            except Exception as exc:
+                logger.warning("Could not load sport profile for workout analysis: %s", exc)
+
+    # 4. Synthesise coaching response with full athlete context
     synthesizer = CoachSynthesizer(db, user_id)
     coach_response = await synthesizer.run(
         CoachInput(
             workout_analysis=latest,
             fitness_state=fitness_state,
+            sport_profile=sport_profile_dict,
             user_question=user_question,
         )
     )
@@ -496,6 +658,8 @@ async def _analyze_recent_workout(
             "current_limiter": fitness_state.current_limiter,
             "limiter_confidence": fitness_state.limiter_confidence,
             "state_confidence": fitness_state.state_confidence,
+            "fitness_score": fitness_state.fitness_score,
+            "athlete_classification": fitness_state.athlete_classification,
         }
 
     logger.info("analyze_recent_workout completed for user_id=%d", user_id)
@@ -888,6 +1052,64 @@ async def _fetch_strava_activity_detail(
 
 # Tool Definitions for LLM
 
+async def _evaluate_performance_goal(
+    parameters: Dict[str, Any],
+    user_id: int,
+    db: Session,
+) -> Dict[str, Any]:
+    """
+    Estimate what a goal requires and how far the athlete is from it.
+
+    Uses PerformanceEstimator (grounded in AthleteSportProfile) then
+    CoachSynthesizer to produce a coaching response.
+
+    Guardrail: never emits target_watts, W/kg, or FTP-derived targets.
+    Only speed, distance, duration, and gap — all from real activities.
+    """
+    from app.ai.skills.performance_estimator import PerformanceEstimator
+    from app.ai.skills.coach_synthesizer import CoachSynthesizer
+    from app.ai.skills.schemas import PerformanceGoalInput, CoachInput
+
+    goal_description = parameters.get("goal_description", "")
+    sport_group      = parameters.get("sport_group")       # optional override
+    user_question    = parameters.get("user_question", goal_description)
+
+    estimate = await PerformanceEstimator(db, user_id).run(
+        PerformanceGoalInput(query=goal_description, sport_group=sport_group)
+    )
+
+    coach_response = await CoachSynthesizer(db, user_id).run(
+        CoachInput(
+            performance_estimate=estimate,
+            user_question=user_question,
+        )
+    )
+
+    logger.info("evaluate_performance_goal completed for user_id=%d", user_id)
+    return {
+        "success": True,
+        "headline":     coach_response.headline,
+        "body":         coach_response.body,
+        "next_action":  coach_response.next_action,
+        "confidence":   coach_response.confidence,
+        "evidence_refs": coach_response.evidence_refs,
+        "performance_estimate": {
+            "sport_group":                       estimate.sport_group,
+            "target_distance_km":                estimate.target_distance_km,
+            "target_duration_min":               estimate.target_duration_min,
+            "target_speed_kmh":                  estimate.target_speed_kmh,
+            "current_best_comparable_speed_kmh": estimate.current_best_comparable_speed_kmh,
+            "speed_gap_kmh":                     estimate.speed_gap_kmh,
+            "speed_gap_percent":                 estimate.speed_gap_percent,
+            "comparable_basis":                  estimate.comparable_basis,
+            "current_limiters":                  estimate.current_limiters,
+            "data_basis":                        estimate.data_basis,
+            "confidence":                        estimate.confidence,
+            "parse_success":                     estimate.parse_success,
+        },
+    }
+
+
 def get_tool_definitions() -> List[Dict[str, Any]]:
     """
     Get all tool definitions for LLM function calling.
@@ -946,18 +1168,72 @@ def get_tool_definitions() -> List[Dict[str, Any]]:
         {
             'type': 'function',
             'function': {
-                'name': 'get_my_recent_activities',
-                'description': 'Retrieve recent Strava activities for the athlete',
+                'name': 'query_activities',
+                'description': (
+                    'Run a flexible query against the athlete\'s activity database. '
+                    'Use for ANY question about activities: listing, ranking, filtering, counting, or computing stats. '
+                    'Today\'s date is available in your context — use it to compute date ranges. '
+                    'Call this tool immediately; do not ask the athlete for clarification first.'
+                ),
                 'parameters': {
                     'type': 'object',
                     'properties': {
-                        'days': {
+                        'filters': {
+                            'type': 'array',
+                            'description': (
+                                'Filter conditions. Each filter: {field, op, value}. '
+                                'Fields: sport_type, activity_type, distance_m, moving_time_s, '
+                                'elevation_m, start_date (ISO 8601), avg_hr, max_hr, '
+                                'calories, avg_watts, avg_cadence, suffer_score, trainer. '
+                                'Ops: eq, ne, gt, gte, lt, lte, in, not_in.'
+                            ),
+                            'items': {
+                                'type': 'object',
+                                'properties': {
+                                    'field': {'type': 'string'},
+                                    'op':    {'type': 'string'},
+                                    'value': {},
+                                },
+                                'required': ['field', 'op', 'value'],
+                            },
+                        },
+                        'sort': {
+                            'type': 'array',
+                            'description': (
+                                'Sort order. Each entry: {field, dir}. '
+                                'dir is "asc" or "desc". '
+                                'Example: [{"field": "distance_m", "dir": "desc"}] → longest first.'
+                            ),
+                            'items': {
+                                'type': 'object',
+                                'properties': {
+                                    'field': {'type': 'string'},
+                                    'dir':   {'type': 'string'},
+                                },
+                                'required': ['field'],
+                            },
+                        },
+                        'limit': {
                             'type': 'integer',
-                            'description': 'Number of days to look back (default: 28)',
-                            'default': 28
-                        }
+                            'description': 'Max activities to return (default 20, max 100).',
+                            'default': 20,
+                        },
+                        'aggregate': {
+                            'type': 'object',
+                            'description': (
+                                'Return aggregate stats instead of individual records. '
+                                'metrics is a list of "fn:field" strings. '
+                                'fn: count, sum, avg, max, min. '
+                                'field: distance_m, moving_time_s, elevation_m, avg_hr, calories, avg_watts. '
+                                'Example: {"metrics": ["count", "sum:distance_m", "max:distance_m"]}'
+                            ),
+                            'properties': {
+                                'metrics': {'type': 'array', 'items': {'type': 'string'}},
+                            },
+                            'required': ['metrics'],
+                        },
                     },
-                    'required': []
+                    'required': [],
                 }
             }
         },
@@ -1186,6 +1462,43 @@ def get_tool_definitions() -> List[Dict[str, Any]]:
                         }
                     },
                     'required': ['strava_activity_id']
+                }
+            }
+        },
+        {
+            'type': 'function',
+            'function': {
+                'name': 'evaluate_performance_goal',
+                'description': (
+                    'Estimate what a specific performance goal requires and how far the athlete '
+                    'currently is from achieving it. Use when the athlete asks things like: '
+                    '"Can I ride 70 km in 3 hours?", "Am I ready for a marathon?", '
+                    '"How much faster do I need to be?", "What do I need to achieve my goal?". '
+                    'Returns target speed, current comparable speed, the gap, and coaching guidance. '
+                    'Only uses grounded metrics from real activities — never predicts watts or FTP targets.'
+                ),
+                'parameters': {
+                    'type': 'object',
+                    'properties': {
+                        'goal_description': {
+                            'type': 'string',
+                            'description': (
+                                'The athlete\'s goal in natural language. '
+                                'Examples: "ride 70 km in 3 hours", "run a marathon in 4 hours", '
+                                '"complete a century ride", "run 10 km in under 50 minutes".'
+                            )
+                        },
+                        'sport_group': {
+                            'type': 'string',
+                            'enum': ['ride', 'run', 'swim', 'strength'],
+                            'description': 'Optional: override sport detection if ambiguous.'
+                        },
+                        'user_question': {
+                            'type': 'string',
+                            'description': 'The athlete\'s original question to guide coaching tone.'
+                        }
+                    },
+                    'required': ['goal_description']
                 }
             }
         }

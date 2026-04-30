@@ -348,6 +348,12 @@ class ToolOrchestrator:
                 except (json.JSONDecodeError, KeyError):
                     raw_args = {}
 
+                # Small LLMs often double-encode arrays/objects as JSON strings
+                # or emit integers as strings. Coerce before validating so the
+                # format mismatch doesn't burn a retry iteration.
+                raw_args = self._coerce_tool_params(raw_args, tool_schemas, tool_name)
+                tool_call["function"]["arguments"] = json.dumps(raw_args)
+
                 validation_error = self._validate_tool_params(
                     tool_name, raw_args, tool_schemas
                 )
@@ -776,6 +782,49 @@ class ToolOrchestrator:
             is_retryable=is_retryable,
             failure_detail=failure,
         )
+
+    @staticmethod
+    def _coerce_tool_params(
+        arguments: Dict[str, Any],
+        tool_schemas: Dict[str, Dict[str, Any]],
+        tool_name: str,
+    ) -> Dict[str, Any]:
+        """Coerce string-encoded parameters to the type declared in the schema.
+
+        Small LLMs frequently double-encode structured parameters (arrays,
+        objects) as JSON strings, or emit numeric values as strings.  This
+        step normalises them before validation so a fixable format issue does
+        not consume a retry iteration.
+        """
+        schema = tool_schemas.get(tool_name)
+        if not schema:
+            return arguments
+
+        properties = schema.get("properties", {})
+        coerced = dict(arguments)
+
+        for param_name, param_value in arguments.items():
+            prop_schema = properties.get(param_name)
+            if not prop_schema or not isinstance(param_value, str):
+                continue
+            expected_type = prop_schema.get("type")
+            if expected_type in ("array", "object"):
+                try:
+                    coerced[param_name] = json.loads(param_value)
+                except (json.JSONDecodeError, ValueError):
+                    pass
+            elif expected_type == "integer":
+                try:
+                    coerced[param_name] = int(param_value)
+                except (ValueError, TypeError):
+                    pass
+            elif expected_type == "number":
+                try:
+                    coerced[param_name] = float(param_value)
+                except (ValueError, TypeError):
+                    pass
+
+        return coerced
 
     @staticmethod
     def _validate_tool_params(

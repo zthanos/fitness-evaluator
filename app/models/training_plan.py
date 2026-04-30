@@ -4,7 +4,7 @@ Represents a structured multi-week training program with scheduled sessions.
 Supports AI-generated plans with activity-aware recommendations.
 """
 from datetime import date
-from sqlalchemy import Column, String, Integer, Date, ForeignKey, Index
+from sqlalchemy import Column, String, Integer, Date, ForeignKey, Index, JSON
 from sqlalchemy.orm import relationship
 from app.models.base import Base, TimestampMixin
 import uuid
@@ -37,6 +37,8 @@ class TrainingPlan(Base, TimestampMixin):
     title = Column(String(255), nullable=False)
     sport = Column(String(50), nullable=False)
     goal_id = Column(String(36), ForeignKey('athlete_goals.id', ondelete='SET NULL'), nullable=True)
+    route_profile_id = Column(Integer, ForeignKey('route_profiles.id', ondelete='SET NULL'), nullable=True)
+    plan_metadata = Column(JSON, nullable=True)  # performance_target, plan_rationale from LLM
     start_date = Column(Date, nullable=False)
     end_date = Column(Date, nullable=False)
     status = Column(String(20), nullable=False, default='draft')

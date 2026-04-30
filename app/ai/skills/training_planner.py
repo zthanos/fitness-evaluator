@@ -88,7 +88,7 @@ class TrainingPlanner(BaseSkill[TrainingPlannerInput, TrainingPlannerOutput]):
 
     async def run(self, input: TrainingPlannerInput) -> TrainingPlannerOutput:
         context_str = json.dumps(input.context, default=str)
-        raw = await self._llm_reason(_SYSTEM_PROMPT, context_str)
+        raw = await self._llm_reason(_SYSTEM_PROMPT, context_str, max_tokens=6000)
 
         plan_data = self._parse_plan(raw, input.duration_weeks)
         plan_id = self._save_plan(plan_data, input.goal_id)

@@ -76,6 +76,25 @@ class APIClient {
     return this.request('DELETE', endpoint);
   }
 
+  // Multipart upload (file + form fields) — does NOT set Content-Type so the
+  // browser adds the correct multipart boundary automatically.
+  async upload(endpoint, formData) {
+    const url = `${this.baseUrl}${endpoint}`;
+    const headers = {};
+    const token = getToken();
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const response = await fetch(url, { method: 'POST', headers, body: formData });
+    if (response.status === 401) { logout(); return; }
+    if (!response.ok) {
+      let message = `HTTP ${response.status}`;
+      try { const d = await response.json(); message = d.detail || message; } catch {}
+      throw new Error(message);
+    }
+    const ct = response.headers.get('content-type') || '';
+    if (!ct.includes('application/json')) return null;
+    return response.json();
+  }
+
   // Daily Logs
   async createDailyLog(log) {
     return this.request('POST', '/logs/daily', log);

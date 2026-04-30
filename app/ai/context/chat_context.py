@@ -43,6 +43,9 @@ class ChatContextBuilder(ContextBuilder):
         self.last_n_turns = last_n_turns
         self.relevance_threshold = relevance_threshold
 
+        # Last classified intent — set by gather_data(), read by ChatAgent
+        self.last_intent = None
+
         # Layer-by-layer token tracking
         self._layer_tokens: Dict[str, int] = {
             "system_instructions": 0,
@@ -57,7 +60,8 @@ class ChatContextBuilder(ContextBuilder):
         self,
         query: str,
         athlete_id: int,
-        conversation_history: Optional[List[Dict[str, str]]] = None
+        conversation_history: Optional[List[Dict[str, str]]] = None,
+        intent=None,
     ) -> 'ChatContextBuilder':
         """
         Gather data for chat response using intent-aware retrieval.
@@ -71,8 +75,10 @@ class ChatContextBuilder(ContextBuilder):
         Returns:
             Self for method chaining
         """
-        # Classify query intent
-        intent = self.intent_router.classify(query)
+        # Accept a pre-classified intent (LLM-based) or fall back to keyword matching
+        if intent is None:
+            intent = self.intent_router.classify(query)
+        self.last_intent = intent
 
         # Retrieve relevant data using intent-specific policy
         retrieved_data = self.rag_retriever.retrieve(

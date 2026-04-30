@@ -33,7 +33,7 @@ class BaseSkill(ABC, Generic[InputT, OutputT]):
 
     # ── Shared LLM helper ────────────────────────────────────────────────────
 
-    async def _llm_reason(self, system: str, user_content: str) -> str:
+    async def _llm_reason(self, system: str, user_content: str, max_tokens: int = 1024) -> str:
         """
         Single-turn LLM call with a focused system prompt.
         Returns the raw text response.
@@ -45,7 +45,7 @@ class BaseSkill(ABC, Generic[InputT, OutputT]):
             {"role": "user",   "content": user_content},
         ]
         try:
-            result = await client.chat_completion(messages, max_tokens=1024, temperature=0.3)
+            result = await client.chat_completion(messages, max_tokens=max_tokens, temperature=0.3)
             return result.get("content") or ""
         except Exception as exc:
             logger.warning("%s LLM call failed: %s", self.__class__.__name__, exc)

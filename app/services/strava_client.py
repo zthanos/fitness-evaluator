@@ -4,6 +4,7 @@ StravaClient service for OAuth integration and activity syncing.
 Implements Requirements 20 (Strava OAuth Integration) and 30 (Security).
 """
 import httpx
+import json
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional
 from sqlalchemy.orm import Session
@@ -361,7 +362,7 @@ class StravaClient:
             "kilojoules":        d.get("kilojoules"),
             "suffer_score":      d.get("suffer_score"),
             "trainer":           int(bool(d.get("trainer"))),
-            "raw_json":          str(d),
+            "raw_json":          json.dumps(d, default=str),
         }
     
     def disconnect(self, athlete_id: int) -> bool:

@@ -436,23 +436,32 @@ class SettingsManager {
                 if (p.max_hr_estimate)     secondaryChips.push(`Max HR ${p.max_hr_estimate}`);
 
             } else if (p.sport_group === 'run') {
-                if (p.typical_endurance_speed_kmh) {
+                if (p.easy_pace_min_per_km) {
+                    const paceLabel = p.hr_classified ? 'Easy pace (Z2)' : 'Avg pace';
+                    primaryMetrics += `
+                        <div class="flex-1 text-center">
+                            <div class="text-3xl font-bold text-primary">${fmt(p.easy_pace_min_per_km)}<span class="text-base font-normal text-base-content/60 ml-1">min/km</span></div>
+                            <div class="text-xs text-base-content/50 mt-0.5">${paceLabel}</div>
+                        </div>`;
+                } else if (p.typical_endurance_speed_kmh) {
                     const pace = (60 / p.typical_endurance_speed_kmh).toFixed(1);
                     primaryMetrics += `
                         <div class="flex-1 text-center">
                             <div class="text-3xl font-bold text-primary">${pace}<span class="text-base font-normal text-base-content/60 ml-1">min/km</span></div>
-                            <div class="text-xs text-base-content/50 mt-0.5">Typical pace</div>
+                            <div class="text-xs text-base-content/50 mt-0.5">Avg pace</div>
                         </div>`;
                 }
-                if (p.best_60min_distance_km) {
+                if (p.typical_run_km) {
                     primaryMetrics += `
                         <div class="flex-1 text-center">
-                            <div class="text-3xl font-bold">${fmt(p.best_60min_distance_km)}<span class="text-base font-normal text-base-content/60 ml-1">km</span></div>
-                            <div class="text-xs text-base-content/50 mt-0.5">60-min best</div>
+                            <div class="text-3xl font-bold">${fmt(p.typical_run_km)}<span class="text-base font-normal text-base-content/60 ml-1">km</span></div>
+                            <div class="text-xs text-base-content/50 mt-0.5">Typical run</div>
                         </div>`;
                 }
-                if (p.weekly_volume_km)    secondaryChips.push(`${fmt(p.weekly_volume_km)} km/wk <span class="opacity-50 text-[10px]">4-wk avg</span>`);
-                if (p.max_hr_estimate)     secondaryChips.push(`Max HR ${p.max_hr_estimate}`);
+                if (p.longest_run_km)            secondaryChips.push(`Longest ${fmt(p.longest_run_km)} km`);
+                if (p.threshold_pace_min_per_km) secondaryChips.push(`Threshold ~${fmt(p.threshold_pace_min_per_km)} min/km`);
+                if (p.weekly_volume_km)          secondaryChips.push(`${fmt(p.weekly_volume_km)} km/wk <span class="opacity-50 text-[10px]">active-wk avg</span>`);
+                if (p.max_hr_estimate)           secondaryChips.push(`Max HR ${p.max_hr_estimate}`);
 
             } else if (p.sport_group === 'strength') {
                 const sessionsPerWk = p.weekly_training_time_min

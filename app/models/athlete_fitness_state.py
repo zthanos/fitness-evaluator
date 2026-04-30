@@ -34,3 +34,7 @@ class AthleteFitnessState(Base, TimestampMixin):
 
     # Generated view (not primary truth — derived from the structured fields above)
     summary_text: str              = Column(Text, nullable=True)
+
+    # Composite score (0-100) and activity-based classification
+    fitness_score: float           = Column(Float, nullable=True)
+    athlete_classification: str    = Column(String(100), nullable=True)

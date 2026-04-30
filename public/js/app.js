@@ -160,6 +160,13 @@ router
     return page;
   })
 
+  .on('/training-plans/:id', async (params, query) => {
+    const { TrainingPlanDetailPage } = await getPages();
+    const page = await mountPage('/training-plans', '/js/views/training-plan-detail.html', TrainingPlanDetailPage);
+    await page.init(params, query);
+    return page;
+  })
+
   .on('/settings', async (params, query) => {
     const { SettingsPage } = await getPages();
     const page = await mountPage('/settings', '/js/views/settings.html', SettingsPage, [

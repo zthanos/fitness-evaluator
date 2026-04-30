@@ -212,7 +212,7 @@ class TrainingPlansList {
         if (this.onPlanClick) {
           this.onPlanClick(planId);
         } else {
-          window.location.href = `/training-plan-detail.html?id=${planId}`;
+          window.location.href = `/training-plans/${planId}`;
         }
       });
     });

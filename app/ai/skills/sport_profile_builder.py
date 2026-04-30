@@ -130,13 +130,23 @@ class SportProfileBuilder:
         max_hr = self._estimate_max_hr(activities)
         hr_zones = self._build_hr_zone_model(max_hr) if max_hr else None
 
+        # ── Running extras (HR-classified pace + distances) ──────────────
+        running_extras = None
+        if sport_group == "run":
+            running_extras = self._running_extras(activities, max_hr)
+            if running_extras.get("easy_speed_kmh"):
+                typical_speed = running_extras["easy_speed_kmh"]
+            if running_extras.get("longest_run_km"):
+                longest_km = running_extras["longest_run_km"]
+
         # ── Pace zones (running) ────────────────────────────────────────
-        pace_zones = (self._build_pace_zone_model(best_60, activities)
+        pace_zones = (self._build_pace_zone_model(best_60, activities, running_extras)
                       if sport_group == "run" else None)
 
         # ── Coaching insights ────────────────────────────────────────────
         strengths, limiters = self._derive_insights(
-            sport_group, longest_km, typical_speed, ftp_w, typical_cad, weekly_km
+            sport_group, longest_km, typical_speed, ftp_w, typical_cad, weekly_km,
+            running_extras=running_extras,
         )
 
         confidence = self._profile_confidence(
@@ -223,20 +233,75 @@ class SportProfileBuilder:
         now = datetime.now(_tz.utc)
         cutoff = now - timedelta(weeks=weeks)
         recent = []
+        active_week_indices: set[int] = set()
         for a in activities:
             sd = a.start_date
             if sd is None:
                 continue
-            # Normalise to UTC-aware so naive and aware datetimes compare safely
             if sd.tzinfo is None:
                 sd = sd.replace(tzinfo=_tz.utc)
             if sd >= cutoff:
                 recent.append(a)
+                # bucket by which week ago (0 = this week, 1 = last week, …)
+                days_ago = (now - sd).days
+                active_week_indices.add(days_ago // 7)
         if not recent:
             return None, None
+        active_weeks = len(active_week_indices)  # 1–weeks (weeks that had ≥1 activity)
         total_km  = sum(a.distance_m / 1000 for a in recent if a.distance_m)
         total_min = sum(a.moving_time_s / 60 for a in recent if a.moving_time_s)
-        return total_km / weeks, total_min / weeks
+        return total_km / active_weeks, total_min / active_weeks
+
+    # ------------------------------------------------------------------
+    # Running HR-classification helpers
+    # ------------------------------------------------------------------
+
+    def _running_extras(
+        self, activities: list, max_hr: Optional[int]
+    ) -> dict:
+        """Classify runs by HR to derive physiologically meaningful pace metrics."""
+        easy_speeds: list[float] = []
+        all_distances: list[float] = []
+        all_hr_pcts: list[float] = []
+
+        for a in activities:
+            if not a.distance_m or not a.moving_time_s:
+                continue
+            if a.moving_time_s / 60.0 < 15:
+                continue
+            speed_kmh = (a.distance_m / 1000.0) / (a.moving_time_s / 3600.0)
+            all_distances.append(a.distance_m / 1000.0)
+
+            if max_hr and a.avg_hr:
+                hr_pct = a.avg_hr / max_hr
+                all_hr_pcts.append(hr_pct)
+                if hr_pct < 0.75:
+                    easy_speeds.append(speed_kmh)
+            else:
+                easy_speeds.append(speed_kmh)
+
+        easy_speed = statistics.median(easy_speeds) if easy_speeds else None
+        # threshold is faster than easy: easy_pace × 0.85 → threshold_speed = easy_speed / 0.85
+        threshold_speed = (easy_speed / 0.85) if easy_speed else None
+
+        # Median cardiac load across all runs — key indicator for pace-HR mismatch
+        median_hr_pct = statistics.median(all_hr_pcts) if all_hr_pcts else None
+
+        typical_run = (
+            statistics.median(all_distances) if len(all_distances) >= 2
+            else (all_distances[0] if all_distances else None)
+        )
+        longest_run = max(all_distances) if all_distances else None
+        hr_classified = bool(max_hr and any(a.avg_hr for a in activities))
+
+        return {
+            "easy_speed_kmh":      easy_speed,
+            "threshold_speed_kmh": threshold_speed,
+            "median_hr_pct":       median_hr_pct,
+            "typical_run_km":      typical_run,
+            "longest_run_km":      longest_run,
+            "hr_classified":       hr_classified,
+        }
 
     # ------------------------------------------------------------------
     # Cadence helpers
@@ -331,12 +396,17 @@ class SportProfileBuilder:
     # ------------------------------------------------------------------
 
     def _build_pace_zone_model(
-        self, threshold_km: Optional[float], activities: list
+        self, threshold_km: Optional[float], activities: list,
+        running_extras: Optional[dict] = None,
     ) -> Optional[dict]:
-        """Build running pace zones from best 60-min distance (≈ threshold speed)."""
-        if not threshold_km:
+        """Build running pace zones, preferring HR-derived threshold when available."""
+        # Prefer HR-classified threshold speed; fall back to best-60-min projection
+        if running_extras and running_extras.get("threshold_speed_kmh"):
+            threshold_kmh = running_extras["threshold_speed_kmh"]
+        elif threshold_km:
+            threshold_kmh = threshold_km
+        else:
             return None
-        threshold_kmh = threshold_km  # km in 1 hour = km/h
 
         zones = {
             "Z1": {"label": "Recovery",  "pct_of_threshold": (0.0,  0.70)},
@@ -350,9 +420,8 @@ class SportProfileBuilder:
             lo_pct, hi_pct = meta["pct_of_threshold"]
             lo_kmh = threshold_kmh * lo_pct
             hi_kmh = threshold_kmh * hi_pct
-            # Convert to min/km pace for display (lower pace = faster)
-            lo_pace = (60 / hi_kmh) if hi_kmh else None  # fastest edge of zone
-            hi_pace = (60 / lo_kmh) if lo_kmh else None  # slowest edge of zone
+            lo_pace = (60 / hi_kmh) if hi_kmh else None
+            hi_pace = (60 / lo_kmh) if lo_kmh else None
             result["zones"][name] = {
                 "label":         meta["label"],
                 "min_kmh":       round(lo_kmh, 2),
@@ -360,6 +429,19 @@ class SportProfileBuilder:
                 "fast_pace_min_per_km": round(lo_pace, 2) if lo_pace else None,
                 "slow_pace_min_per_km": round(hi_pace, 2) if hi_pace else None,
             }
+
+        # Embed running extras so profile_to_dict can surface them without extra queries
+        if running_extras:
+            easy_spd = running_extras.get("easy_speed_kmh")
+            result["easy_speed_kmh"]            = round(easy_spd, 2) if easy_spd else None
+            result["easy_pace_min_per_km"]      = round(60 / easy_spd, 2) if easy_spd else None
+            result["threshold_pace_min_per_km"] = round(60 / threshold_kmh, 2)
+            result["typical_run_km"]            = running_extras.get("typical_run_km")
+            result["longest_run_km"]            = running_extras.get("longest_run_km")
+            result["hr_classified"]             = running_extras.get("hr_classified", False)
+            mhr = running_extras.get("median_hr_pct")
+            result["median_hr_pct"]             = round(mhr, 3) if mhr else None
+
         return result
 
     # ------------------------------------------------------------------
@@ -374,6 +456,7 @@ class SportProfileBuilder:
         ftp_w: Optional[float],
         typical_cadence: Optional[float],
         weekly_km: Optional[float],
+        running_extras: Optional[dict] = None,
     ) -> tuple[list[str], list[str]]:
         strengths, limiters = [], []
 
@@ -398,23 +481,59 @@ class SportProfileBuilder:
                 )
 
         elif sport_group == "run":
+            rx = running_extras or {}
+            median_hr_pct = rx.get("median_hr_pct")  # cardiac load at typical pace
+
+            # ── Distance: completion range, not arbitrary race labels ──────
             if longest_km and longest_km >= 21:
-                strengths.append(f"Half-marathon+ distance capability ({longest_km:.0f} km)")
-            if typical_speed and typical_speed >= 12:
-                strengths.append(f"Strong running pace ({typical_speed:.1f} km/h typical)")
-            elif typical_speed and typical_speed < 9:
+                strengths.append(f"Solid endurance (runs up to {longest_km:.0f} km)")
+            elif longest_km and longest_km >= 10:
+                strengths.append(f"Solid endurance (up to {longest_km:.0f} km)")
+            elif longest_km and longest_km >= 5:
+                strengths.append(f"Building endurance ({longest_km:.0f} km longest run)")
+
+            # ── Race readiness: separate from completion capability ────────
+            # Can cover the distance but pace too slow to race it
+            if longest_km and longest_km >= 10 and typical_speed and typical_speed < 7.5:
+                easy_pace = 60 / typical_speed
                 limiters.append(
-                    "Low running pace → aerobic base underdeveloped"
-                    " → limits race performance at all distances"
+                    f"Can complete 10k but race readiness is low (easy pace ~{easy_pace:.1f} min/km)"
+                    " → aerobic base needs development before targeting race times"
                 )
 
-        if weekly_km is not None and weekly_km < 20 and sport_group in ("ride", "run"):
+            # ── Pace-HR mismatch (aerobic efficiency) ─────────────────────
+            elif typical_speed and typical_speed < 8:
+                easy_pace = 60 / typical_speed
+                if median_hr_pct and median_hr_pct > 0.70:
+                    limiters.append(
+                        f"Easy pace (~{easy_pace:.1f} min/km) at ~{median_hr_pct:.0%} max HR"
+                        " → pace-HR mismatch indicates low aerobic efficiency"
+                        " → limits ability to sustain faster race pace"
+                    )
+                else:
+                    limiters.append(
+                        f"Easy pace building (~{easy_pace:.1f} min/km)"
+                        " → aerobic base developing → add Z2 runs to build efficiency"
+                    )
+            elif typical_speed and typical_speed >= 10:
+                easy_pace = 60 / typical_speed
+                strengths.append(f"Good aerobic base (easy pace ~{easy_pace:.1f} min/km)")
+
+        # ── Volume ────────────────────────────────────────────────────────
+        if sport_group == "ride" and weekly_km is not None:
+            if weekly_km < 20:
+                limiters.append(
+                    f"Low weekly volume ({weekly_km:.0f} km/wk) → insufficient aerobic stimulus"
+                    " → slows fitness progression"
+                )
+            elif weekly_km >= 60:
+                strengths.append(f"High weekly training volume ({weekly_km:.0f} km/week)")
+
+        elif sport_group == "run" and weekly_km is not None and weekly_km < 15:
             limiters.append(
-                f"Low weekly volume ({weekly_km:.0f} km/wk) → insufficient aerobic stimulus"
-                " → slows fitness progression"
+                f"Low weekly volume (~{weekly_km:.0f} km/wk) → insufficient aerobic stimulus"
+                " → slows pace progression"
             )
-        elif weekly_km and weekly_km >= 60 and sport_group == "ride":
-            strengths.append(f"High weekly training volume ({weekly_km:.0f} km/week)")
 
         return strengths, limiters
 
@@ -526,6 +645,24 @@ def profile_to_dict(p: "AthleteSportProfile") -> dict:
         "current_strengths": p.current_strengths or [],
         "current_limiters": p.current_limiters or [],
     }
+
+    # Running-specific fields extracted from pace_zone_model JSON
+    if p.sport_group == "run" and p.pace_zone_model:
+        pz = p.pace_zone_model
+        d["easy_pace_min_per_km"]       = pz.get("easy_pace_min_per_km")
+        d["threshold_pace_min_per_km"]  = pz.get("threshold_pace_min_per_km")
+        d["typical_run_km"]             = pz.get("typical_run_km")
+        d["longest_run_km"]             = pz.get("longest_run_km")
+        d["hr_classified"]              = pz.get("hr_classified", False)
+        d["median_hr_pct"]              = pz.get("median_hr_pct")
+    else:
+        d["easy_pace_min_per_km"]       = None
+        d["threshold_pace_min_per_km"]  = None
+        d["typical_run_km"]             = None
+        d["longest_run_km"]             = None
+        d["hr_classified"]              = False
+        d["median_hr_pct"]              = None
+
     d["next_focus"] = compute_next_focus(p.sport_group, d)
     return d
 
@@ -558,14 +695,22 @@ def compute_next_focus(sport_group: str, d: dict) -> Optional[str]:
                 "Consistent volume is the fastest route to aerobic improvement."
             )
         if sport_group == "run":
+            current_vol = d.get("weekly_volume_km") or 0
+            target_lo = max(12, round((current_vol * 1.7) / 5) * 5)
+            target_hi = target_lo + 5
             return (
-                "Add one easy 30–40 min run per week. "
-                "Target 3 sessions minimum before adding intensity."
+                f"Add 2 runs/week: one easy Z2 run (45–60 min) and one longer run (60–75 min). "
+                f"Target: increase weekly volume to ~{target_lo}–{target_hi} km."
             )
-    if "pace" in top or "aerobic" in top or "running" in top:
+    if "race readiness" in top or "mismatch" in top or "efficiency" in top:
         return (
-            "Build aerobic base: 1× weekly easy long run (60+ min) keeping HR in Z2. "
-            "Patience with easy effort delivers the biggest long-term pace gains."
+            "Add 2 runs/week: one easy Z2 run (45–60 min) and one longer run (60–75 min). "
+            "Run easy enough to hold a conversation — this is how aerobic efficiency is built."
+        )
+    if "pace" in top or "aerobic" in top or "building" in top:
+        return (
+            "Build aerobic base: 1–2 easy Z2 runs per week (45–60 min each). "
+            "Keep HR below 75% max — pace will improve naturally as the engine develops."
         )
     return None
 

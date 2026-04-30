@@ -11,6 +11,8 @@ class Intent(Enum):
     PROGRESS_CHECK    = "progress_check"      # → evaluate_progress
     PLAN_GENERATION   = "plan_generation"     # → generate_plan
     NUTRITION_CHECK   = "nutrition_check"     # → NutritionEvaluator (via evaluate_progress)
+    ACTIVITY_LIST     = "activity_list"       # → query_activities
+    PERFORMANCE_GOAL  = "performance_goal"    # → evaluate_performance_goal
     RECENT_PERFORMANCE = "recent_performance"
     TREND_ANALYSIS    = "trend_analysis"
     GOAL_PROGRESS     = "goal_progress"
@@ -30,6 +32,8 @@ INTENT_TOOL_HINT: dict[Intent, str] = {
     Intent.GOAL_PROGRESS:     "evaluate_progress",
     Intent.RECOVERY_STATUS:   "evaluate_recovery",
     Intent.TRAINING_PLAN:     "generate_plan",
+    Intent.ACTIVITY_LIST:     "query_activities",
+    Intent.PERFORMANCE_GOAL:  "evaluate_performance_goal",
 }
 
 
@@ -39,6 +43,26 @@ class IntentRouter:
     # Keyword mappings — checked top-to-bottom; first match wins.
     INTENT_KEYWORDS: dict[Intent, list[str]] = {
         # Skill-pipeline intents (checked first — more specific)
+        Intent.PERFORMANCE_GOAL: [
+            "can i ride", "can i run", "can i complete", "can i do",
+            "am i ready for", "am i ready to", "ready for a",
+            "want to ride", "want to run", "want to complete",
+            "planning to ride", "planning to run", "planning to do",
+            "goal of riding", "goal of running",
+            "finish a marathon", "finish a half", "finish a century",
+            "in 3 hours", "in 4 hours", "in 2 hours", "in 1 hour",
+            "in x hours", "within 3h", "within 4h",
+            "how far am i", "how much faster", "what do i need",
+            "achieve my goal", "hit my goal", "reach my goal",
+        ],
+        Intent.ACTIVITY_LIST: [
+            "longest", "shortest", "biggest", "list my", "show me my",
+            "which are my", "what are my", "my rides", "my runs", "my workouts",
+            "my activities", "all my", "best ride", "best run", "fastest",
+            "slowest", "top ride", "top run", "furthest", "farthest",
+            "most elevation", "most distance", "how many rides", "how many runs",
+            "how many activities", "my sessions", "past rides", "past runs",
+        ],
         Intent.WORKOUT_ANALYSIS: [
             "analyse my", "analyze my", "last ride", "last run", "last workout",
             "last session", "how was my ride", "how was my run", "how did my ride",
@@ -65,6 +89,8 @@ class IntentRouter:
         Intent.NUTRITION_CHECK: [
             "nutrition", "diet", "calories", "protein", "macros", "eating",
             "fasting", "food", "meal", "intake", "deficit", "surplus",
+            "eat", "eating", "what should i eat", "fuelling", "fueling",
+            "carbs", "fat intake", "calorie",
         ],
         # Legacy intents (broader fallbacks)
         Intent.RECENT_PERFORMANCE: [
