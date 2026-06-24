@@ -85,6 +85,8 @@ async def execute_tool(
             return await _get_training_plan(parameters, user_id, db)
         elif tool_name == "search_web":
             return await _search_web(parameters, user_id, db)
+        elif tool_name == "suggest_meal_recipe":
+            return await _suggest_meal_recipe(parameters, user_id, db)
         elif tool_name == "analyze_recent_workout":
             return await _analyze_recent_workout(parameters, user_id, db)
         elif tool_name == "fetch_strava_activity_detail":
@@ -542,6 +544,264 @@ async def _search_web(
     
     logger.info(f"Web search completed for user_id={user_id}: {query}")
     return result
+
+
+async def _suggest_meal_recipe(
+    parameters: Dict[str, Any],
+    user_id: int,
+    db: Session,
+) -> Dict[str, Any]:
+    """
+    Suggest a recipe aligned with the athlete's current nutrition targets.
+
+    The tool combines persisted nutrition targets, today's logged intake, and
+    optional web recipe search results. It does not persist a meal; the user can
+    review the recommendation before logging it.
+    """
+    from app.models.meal import Meal
+    from app.models.plan_targets import PlanTargets
+
+    today = date.today()
+    user_question = parameters.get("user_question") or ""
+    recipe_type = (parameters.get("recipe_type") or "").strip()
+    meal_type = (parameters.get("meal_type") or "").lower().strip()
+    if meal_type not in {"breakfast", "lunch", "dinner", "snack"}:
+        q = user_question.lower()
+        if "breakfast" in q:
+            meal_type = "breakfast"
+        elif "lunch" in q:
+            meal_type = "lunch"
+        elif "snack" in q:
+            meal_type = "snack"
+        else:
+            meal_type = "dinner"
+
+    preferences = parameters.get("dietary_preferences") or []
+    if isinstance(preferences, str):
+        preferences = [preferences]
+    available_ingredients = parameters.get("available_ingredients") or []
+    if isinstance(available_ingredients, str):
+        available_ingredients = [available_ingredients]
+    cuisine = parameters.get("cuisine")
+
+    targets = (
+        db.query(PlanTargets)
+        .filter(PlanTargets.athlete_id == user_id)
+        .filter(PlanTargets.effective_from <= today)
+        .order_by(PlanTargets.effective_from.desc())
+        .first()
+    )
+
+    meals_today = (
+        db.query(Meal)
+        .filter(Meal.athlete_id == user_id, Meal.log_date == today)
+        .all()
+    )
+    consumed_calories = 0.0
+    consumed_protein = 0.0
+    for meal in meals_today:
+        for item in meal.items:
+            consumed_calories += item.calories or 0
+            consumed_protein += item.protein_g or 0
+
+    requested_meal_calories = parameters.get("target_calories")
+    requested_meal_protein = parameters.get("target_protein_g")
+    target_calories = targets.target_calories if targets else None
+    target_protein = targets.target_protein_g if targets else None
+
+    remaining_calories = (
+        max(float(target_calories) - consumed_calories, 0.0)
+        if target_calories is not None else None
+    )
+    remaining_protein = (
+        max(float(target_protein) - consumed_protein, 0.0)
+        if target_protein is not None else None
+    )
+
+    if requested_meal_calories is not None:
+        meal_calorie_target = float(requested_meal_calories)
+    elif remaining_calories is not None:
+        divisor = 2 if meal_type in {"lunch", "dinner"} else 4
+        meal_calorie_target = max(300.0, min(850.0, remaining_calories / divisor))
+    else:
+        meal_calorie_target = 550.0 if meal_type in {"lunch", "dinner"} else 350.0
+
+    if requested_meal_protein is not None:
+        meal_protein_target = float(requested_meal_protein)
+    elif remaining_protein is not None:
+        divisor = 2 if meal_type in {"lunch", "dinner"} else 4
+        meal_protein_target = max(20.0, min(60.0, remaining_protein / divisor))
+    else:
+        meal_protein_target = 35.0 if meal_type in {"lunch", "dinner"} else 20.0
+
+    q_lower = user_question.lower()
+    if not recipe_type and "overnight oat" in q_lower:
+        recipe_type = "overnight oats"
+    elif not recipe_type and "smoothie" in q_lower:
+        recipe_type = "smoothie"
+    elif not recipe_type and "porridge" in q_lower:
+        recipe_type = "porridge"
+
+    preference_text = " ".join(str(p) for p in preferences if p)
+    ingredient_text = " ".join(str(i) for i in available_ingredients if i)
+    cuisine_text = f"{cuisine} " if cuisine else ""
+    recipe_text = f"{recipe_type} " if recipe_type else ""
+    query = (
+        f"{cuisine_text}high protein {recipe_text}{meal_type} recipe "
+        f"around {round(meal_calorie_target)} calories "
+        f"{round(meal_protein_target)}g protein {ingredient_text} {preference_text}"
+    ).strip()
+
+    web_result: Dict[str, Any]
+    try:
+        web_result = await _search_web({"query": query}, user_id, db)
+    except Exception as exc:
+        web_result = {
+            "success": False,
+            "query": query,
+            "error": str(exc),
+            "results": [],
+            "sources": [],
+        }
+
+    def _pick_ingredients(keywords: set[str], fallback_count: int = 4) -> list[str]:
+        if not available_ingredients:
+            return []
+        selected = [
+            ingredient for ingredient in available_ingredients
+            if any(k in str(ingredient).lower() for k in keywords)
+        ]
+        if not selected:
+            selected = available_ingredients[:fallback_count]
+        return selected[:6]
+
+    def _option(name: str, combo: list[str], focus: str, prep_note: str) -> dict:
+        return {
+            "name": name,
+            "ingredients": combo,
+            "target_calories": round(meal_calorie_target),
+            "target_protein_g": round(meal_protein_target, 1),
+            "why_it_fits": focus,
+            "steps": [
+                prep_note,
+                "Adjust portions to stay close to the calorie and protein targets.",
+                "Keep one optional topping back if the meal is already calorie-dense.",
+            ],
+        }
+
+    recipe_name = f"High-protein {recipe_type or meal_type}".strip()
+    if recipe_type.lower() == "overnight oats":
+        default_oats = [
+            "Rolled oats",
+            "Greek yogurt or high-protein yogurt",
+            "Milk or unsweetened plant milk",
+            "Fruit such as banana or berries",
+            "Optional chia seeds, cinnamon, or nut butter",
+        ]
+        base = _pick_ingredients({"oat", "βρώμη", "yogurt", "γιαούρ", "milk", "γάλα"}, 3)
+        fruit = _pick_ingredients({"banana", "μπανά", "berry", "berries", "straw", "blue", "apple", "μήλο"}, 2)
+        fats = _pick_ingredients({"butter", "peanut", "φυστικ", "almond", "nut", "chia", "seed", "tahini", "ταχίν"}, 2)
+        sweet = _pick_ingredients({"honey", "μέλι", "cocoa", "κακάο", "cinnamon", "κανέλα", "vanilla"}, 2)
+
+        option_inputs = available_ingredients or default_oats
+        recipe_options = [
+            _option(
+                "Protein overnight oats",
+                (base or option_inputs[:3]) + fruit[:1],
+                "Best default choice when you want protein and steady carbs without making the bowl too heavy.",
+                "Mix the oat base with yogurt/milk, fold in the fruit, and chill overnight.",
+            ),
+            _option(
+                "Creamy recovery oats",
+                (base or option_inputs[:3]) + fats[:1] + fruit[:1],
+                "Better after training when you can use a little extra energy from fats and carbs.",
+                "Mix the base first, then swirl in the fat source so the portion stays controlled.",
+            ),
+            _option(
+                "Light sweet oats",
+                (base or option_inputs[:3]) + sweet[:1] + fruit[:1],
+                "Best when calories are tighter but you still want flavor and volume.",
+                "Use more yogurt/milk for volume, add the sweet flavoring lightly, and chill.",
+            ),
+        ]
+        seen_options = set()
+        recipe_options = [
+            opt for opt in recipe_options
+            if opt["ingredients"] and not (
+                tuple(opt["ingredients"]) in seen_options
+                or seen_options.add(tuple(opt["ingredients"]))
+            )
+        ]
+        ingredients = recipe_options[0]["ingredients"] if recipe_options else default_oats
+        steps = [
+            "Mix oats, yogurt, and milk until the texture is loose but spoonable.",
+            "Stir in fruit and optional flavorings.",
+            "Refrigerate overnight or at least 4 hours.",
+            "Adjust in the morning with a splash of milk or extra yogurt to hit the protein target.",
+        ]
+    else:
+        ingredients = available_ingredients[:6] or [
+            "Lean protein source such as chicken, turkey, eggs, tofu, or Greek yogurt",
+            "Slow-digesting carbohydrate such as rice, potato, oats, or whole-grain bread",
+            "Colorful vegetables or fruit",
+            "Small serving of healthy fat such as olive oil, avocado, nuts, or seeds",
+        ]
+        recipe_options = [
+            _option(
+                f"Balanced {meal_type}",
+                ingredients[:4],
+                "Best balanced option from the ingredients provided.",
+                "Combine protein, carb, produce, and a measured fat source.",
+            )
+        ]
+        steps = [
+            "Build the plate around the protein target first.",
+            "Add enough carbohydrate to match the planned training and remaining calories.",
+            "Add vegetables or fruit for fiber and micronutrients.",
+            "Keep added fats measured so the meal stays near the calorie target.",
+        ]
+
+    first_result = (web_result.get("results") or [None])[0]
+    if isinstance(first_result, dict):
+        recipe_name = first_result.get("title") or recipe_name
+
+    return {
+        "success": True,
+        "meal_type": meal_type,
+        "recipe_type": recipe_type or None,
+        "available_ingredients": available_ingredients,
+        "recipe": {
+            "name": recipe_name,
+            "target_calories": round(meal_calorie_target),
+            "target_protein_g": round(meal_protein_target, 1),
+            "ingredients": ingredients,
+            "steps": steps,
+            "notes": (
+                "Prefer the option whose ingredient combination best fits the athlete's "
+                "training timing, appetite, and remaining calories. Do not force every "
+                "available ingredient into one recipe."
+            ),
+        },
+        "recipe_options": recipe_options,
+        "nutrition_context": {
+            "date": today.isoformat(),
+            "daily_target_calories": target_calories,
+            "daily_target_protein_g": target_protein,
+            "consumed_calories": round(consumed_calories, 1),
+            "consumed_protein_g": round(consumed_protein, 1),
+            "remaining_calories": round(remaining_calories, 1) if remaining_calories is not None else None,
+            "remaining_protein_g": round(remaining_protein, 1) if remaining_protein is not None else None,
+            "meals_logged_today": len(meals_today),
+        },
+        "web_search": {
+            "query": web_result.get("query", query),
+            "available": bool(web_result.get("success")),
+            "answer": web_result.get("answer"),
+            "results": web_result.get("results", []),
+            "sources": web_result.get("sources", []),
+            "error": web_result.get("error"),
+        },
+    }
 
 
 async def _analyze_recent_workout(
@@ -1289,6 +1549,62 @@ def get_tool_definitions() -> List[Dict[str, Any]]:
                         }
                     },
                     'required': ['plan_id']
+                }
+            }
+        },
+        {
+            'type': 'function',
+            'function': {
+                'name': 'suggest_meal_recipe',
+                'description': (
+                    'Suggest a meal or recipe aligned with the athlete\'s current nutrition '
+                    'targets and today\'s logged intake. Use this when the athlete asks what '
+                    'to eat, asks for a recipe, or wants a meal idea for breakfast, lunch, '
+                    'dinner, snack, pre-workout, or post-workout. The tool may use web search '
+                    'for recipe inspiration and returns sources when available. If the athlete '
+                    'provides ingredients, propose different best-fit combinations instead of '
+                    'forcing every ingredient into one recipe.'
+                ),
+                'parameters': {
+                    'type': 'object',
+                    'properties': {
+                        'meal_type': {
+                            'type': 'string',
+                            'enum': ['breakfast', 'lunch', 'dinner', 'snack'],
+                            'description': 'The meal slot to suggest for. Infer from the user question when possible.'
+                        },
+                        'dietary_preferences': {
+                            'type': 'array',
+                            'items': {'type': 'string'},
+                            'description': 'Optional dietary preferences or constraints such as vegetarian, low lactose, Greek, quick, budget.'
+                        },
+                        'available_ingredients': {
+                            'type': 'array',
+                            'items': {'type': 'string'},
+                            'description': 'Ingredients the athlete says they already have. Use these to make the search and recommendation specific; group them into sensible combinations rather than using all of them at once.'
+                        },
+                        'recipe_type': {
+                            'type': 'string',
+                            'description': 'Optional requested recipe format, such as overnight oats, smoothie, bowl, salad, wrap, omelette, pasta.'
+                        },
+                        'cuisine': {
+                            'type': 'string',
+                            'description': 'Optional cuisine style requested by the athlete.'
+                        },
+                        'target_calories': {
+                            'type': 'number',
+                            'description': 'Optional per-meal calorie target. Omit to derive from the daily plan.'
+                        },
+                        'target_protein_g': {
+                            'type': 'number',
+                            'description': 'Optional per-meal protein target in grams. Omit to derive from the daily plan.'
+                        },
+                        'user_question': {
+                            'type': 'string',
+                            'description': 'The athlete\'s original question to guide recipe choice and coaching tone.'
+                        }
+                    },
+                    'required': []
                 }
             }
         },

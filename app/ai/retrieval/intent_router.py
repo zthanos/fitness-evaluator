@@ -6,6 +6,8 @@ from enum import Enum
 class Intent(Enum):
     """Query intent types for targeted data retrieval."""
 
+    MEAL_RECIPE       = "meal_recipe"         # -> suggest_meal_recipe
+
     WORKOUT_ANALYSIS  = "workout_analysis"    # → analyze_recent_workout
     RECOVERY_CHECK    = "recovery_check"      # → evaluate_recovery
     PROGRESS_CHECK    = "progress_check"      # → evaluate_progress
@@ -24,6 +26,7 @@ class Intent(Enum):
 
 # Maps Intent → preferred tool name (hint only; LLM still decides)
 INTENT_TOOL_HINT: dict[Intent, str] = {
+    Intent.MEAL_RECIPE:       "suggest_meal_recipe",
     Intent.WORKOUT_ANALYSIS:  "analyze_recent_workout",
     Intent.RECOVERY_CHECK:    "evaluate_recovery",
     Intent.PROGRESS_CHECK:    "evaluate_progress",
@@ -43,6 +46,18 @@ class IntentRouter:
     # Keyword mappings — checked top-to-bottom; first match wins.
     INTENT_KEYWORDS: dict[Intent, list[str]] = {
         # Skill-pipeline intents (checked first — more specific)
+        Intent.MEAL_RECIPE: [
+            "recipe", "meal idea", "meal suggestion", "suggest a meal",
+            "suggest me a meal", "recommend a meal", "what should i eat",
+            "what can i eat", "what to eat", "post-workout meal",
+            "post workout meal", "pre-workout meal", "pre workout meal",
+            "breakfast idea", "lunch idea", "dinner idea", "snack idea",
+            "for breakfast", "for lunch", "for dinner", "for a snack",
+            "healthy dinner", "healthy lunch", "high protein meal",
+            "i have these ingredients", "i have ingredients", "with these ingredients",
+            "using these ingredients", "what can i make", "overnight oats",
+            "oatmeal", "porridge", "smoothie bowl",
+        ],
         Intent.PERFORMANCE_GOAL: [
             "can i ride", "can i run", "can i complete",
             "am i ready for", "am i ready to", "ready for a",

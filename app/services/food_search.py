@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import logging
+import re
+import unicodedata
 from typing import Optional
 
 import httpx
@@ -17,6 +19,46 @@ _FIELDS = "product_name,brands,serving_size,nutriments,image_small_url,url,code"
 
 TIMEOUT_SECONDS = 8.0
 MAX_RESULTS = 10
+
+_GREEK_FOOD_TERMS = {
+    "βρωμη": "oats",
+    "νιφαδες βρωμης": "rolled oats",
+    "γιαουρτι": "yogurt",
+    "γιαουρτι στραγγιστο": "greek yogurt",
+    "στραγγιστο γιαουρτι": "greek yogurt",
+    "γαλα": "milk",
+    "μπανανα": "banana",
+    "φραουλες": "strawberries",
+    "φραουλα": "strawberry",
+    "μηλο": "apple",
+    "μελι": "honey",
+    "κανελα": "cinnamon",
+    "κακαο": "cocoa",
+    "φυστικοβουτυρο": "peanut butter",
+    "φυστικο βουτυρο": "peanut butter",
+    "ταχινι": "tahini",
+    "αμυγδαλα": "almonds",
+    "καρυδια": "walnuts",
+    "σποροι chia": "chia seeds",
+    "σποροι τσια": "chia seeds",
+    "κοτοπουλο": "chicken",
+    "γαλοπουλα": "turkey",
+    "αυγο": "egg",
+    "αυγα": "eggs",
+    "ρυζι": "rice",
+    "πατατα": "potato",
+    "πατατες": "potatoes",
+    "ψωμι": "bread",
+    "τονος": "tuna",
+    "σολομος": "salmon",
+    "φακες": "lentils",
+    "ρεβυθια": "chickpeas",
+    "φασολια": "beans",
+    "τυρι": "cheese",
+    "φετα": "feta",
+    "ελαιολαδο": "olive oil",
+    "αβοκαντο": "avocado",
+}
 
 
 class FoodProduct(BaseModel):
@@ -37,6 +79,18 @@ class FoodSearchService:
 
     def search(self, query: str, max_results: int = MAX_RESULTS) -> list[FoodProduct]:
         """Search Open Food Facts by free text. Returns up to max_results products."""
+        products_by_key: dict[str, FoodProduct] = {}
+        for candidate in self._query_candidates(query):
+            for product in self._search_once(candidate, max_results=max_results):
+                key = product.barcode or f"{product.name}|{product.brand or ''}"
+                if key not in products_by_key:
+                    products_by_key[key] = product
+                if len(products_by_key) >= max_results:
+                    return list(products_by_key.values())[:max_results]
+        return list(products_by_key.values())[:max_results]
+
+    def _search_once(self, query: str, max_results: int = MAX_RESULTS) -> list[FoodProduct]:
+        """Run one Open Food Facts free-text search."""
         params = {
             "search_terms": query,
             "json": "1",
@@ -58,6 +112,50 @@ class FoodSearchService:
             if product:
                 products.append(product)
         return products[:max_results]
+
+    def _query_candidates(self, query: str) -> list[str]:
+        """Return search variants, translating common Greek food terms to English."""
+        cleaned = " ".join(query.strip().split())
+        if not cleaned:
+            return []
+
+        candidates = [cleaned]
+        normalized = self._normalize_text(cleaned)
+        translated = normalized
+
+        normalized_terms = [
+            (self._normalize_text(greek), english)
+            for greek, english in _GREEK_FOOD_TERMS.items()
+        ]
+        for greek, english in sorted(normalized_terms, key=lambda kv: len(kv[0]), reverse=True):
+            translated = re.sub(rf"\b{re.escape(greek)}\b", english, translated)
+
+        translated = " ".join(translated.split())
+        if translated and translated != normalized:
+            candidates.append(translated)
+
+        # If the user typed several ingredients in Greek and only some matched,
+        # the English terms alone often work better against Open Food Facts.
+        matched_terms = [
+            english for greek, english in normalized_terms
+            if re.search(rf"\b{re.escape(greek)}\b", normalized)
+        ]
+        if matched_terms:
+            english_only = " ".join(dict.fromkeys(matched_terms))
+            if english_only not in candidates:
+                candidates.append(english_only)
+
+        return list(dict.fromkeys(candidates))
+
+    @staticmethod
+    def _normalize_text(text: str) -> str:
+        text = text.lower()
+        text = "".join(
+            ch for ch in unicodedata.normalize("NFD", text)
+            if unicodedata.category(ch) != "Mn"
+        )
+        text = text.replace("ς", "σ")
+        return re.sub(r"[^\w\s]", " ", text)
 
     def _parse_product(self, raw: dict) -> Optional[FoodProduct]:
         name = raw.get("product_name", "").strip()
