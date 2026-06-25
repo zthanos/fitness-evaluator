@@ -15,3 +15,5 @@ from app.models.training_plan import TrainingPlan  # noqa: F401
 from app.models.training_plan_week import TrainingPlanWeek  # noqa: F401
 from app.models.training_plan_session import TrainingPlanSession  # noqa: F401
 from app.models.faiss_metadata import FaissMetadata  # noqa: F401
+from app.models.meal import Meal, MealItem  # noqa: F401
+from app.models.meal_template import MealTemplate  # noqa: F401

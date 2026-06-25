@@ -27,6 +27,7 @@ from app.services.telemetry_writer import persist_request_metric
 from app.api import (
     auth, logs, strava, metrics, goals,
     chat, dashboard, settings, evaluations, training_plans, routes,
+    nutrition,
 )
 from app.api import telemetry
 from app.services.metrics_collector import metrics as req_metrics
@@ -146,6 +147,7 @@ def create_app() -> FastAPI:
     app.include_router(training_plans.router, prefix="/api/training-plans", tags=["training-plans"])
     app.include_router(routes.router,         prefix="/api/routes",         tags=["routes"])
     app.include_router(telemetry.router,      prefix="/api/telemetry",      tags=["telemetry"])
+    app.include_router(nutrition.router,      prefix="/api/nutrition",      tags=["nutrition"])
 
     # ── Health check ────────────────────────────────────────────────────────
     @app.get("/health", tags=["health"])

@@ -243,6 +243,7 @@ function renderLogs(data) {
 // ── Render: traces table ───────────────────────────────────────────────────
 
 const INTENT_BADGE = {
+  meal_recipe:      'badge-accent',
   activity_list:    'badge-info',
   workout_analysis: 'badge-warning',
   recovery_check:   'badge-success',

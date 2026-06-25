@@ -35,6 +35,13 @@ class Settings(BaseSettings):
     TOOL_AGENT_MODEL: str = ""
     TOOL_AGENT_ENDPOINT: str = ""  # defaults to LM_STUDIO_ENDPOINT / OLLAMA_ENDPOINT
 
+    # Food-search utility model — used only for the lightweight JSON calls in
+    # FoodSearchService (query reformulation + macro estimation). A small, fast
+    # instruct model is ideal here; a slow "reasoning" model will time out.
+    # If empty, falls back to the tool-agent model, then the primary LLM.
+    FOOD_SEARCH_MODEL: str = ""
+    FOOD_SEARCH_ENDPOINT: str = ""  # defaults to TOOL_AGENT_ENDPOINT / primary endpoint
+
     # Embedding Configuration
     # Options: "ollama" or "lm-studio" (defaults to same as LLM_TYPE)
     EMBEDDING_TYPE: str = ""  # If empty, uses LLM_TYPE
@@ -108,6 +115,18 @@ class Settings(BaseSettings):
         if self.TOOL_AGENT_MODEL:
             return self.TOOL_AGENT_MODEL
         return self.LM_STUDIO_MODEL if not self.is_ollama else self.OLLAMA_MODEL
+
+    @property
+    def food_search_base_url(self) -> str:
+        """Endpoint for FoodSearchService LLM calls (FOOD_SEARCH → tool-agent → primary)."""
+        return self.FOOD_SEARCH_ENDPOINT or self.tool_agent_base_url
+
+    @property
+    def food_search_model(self) -> str:
+        """Model for FoodSearchService LLM calls (FOOD_SEARCH → tool-agent → primary)."""
+        if self.FOOD_SEARCH_MODEL:
+            return self.FOOD_SEARCH_MODEL
+        return self.tool_agent_model
 
     @property
     def pilot_user_ids_set(self) -> set:

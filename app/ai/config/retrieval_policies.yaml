@@ -120,6 +120,16 @@ nutrition_check:
     - activities
     - metrics
 
+# Intent: Meal Recipe
+# Use case: "What should I eat for dinner?", "Suggest a high-protein recipe"
+meal_recipe:
+  days_back: 7
+  max_records: 20
+  data_types:
+    - activities
+    - metrics
+    - logs
+
 # Intent: General
 # Use case: Fallback for queries that don't match specific intents
 general:

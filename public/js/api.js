@@ -244,6 +244,73 @@ class APIClient {
   async getActivity(activityId) {
     return this.request('GET', `/strava/activities/detail/${activityId}`);
   }
+
+  // Nutrition — Day log
+  async getDayLog(date) {
+    return this.request('GET', `/nutrition/day/${date}`);
+  }
+
+  // Nutrition — Meals
+  async createMeal(meal) {
+    return this.request('POST', '/nutrition/meals', meal);
+  }
+
+  async updateMeal(mealId, data) {
+    return this.request('PUT', `/nutrition/meals/${mealId}`, data);
+  }
+
+  async deleteMeal(mealId) {
+    return this.request('DELETE', `/nutrition/meals/${mealId}`);
+  }
+
+  // Nutrition — Meal items
+  async addMealItem(mealId, item) {
+    return this.request('POST', `/nutrition/meals/${mealId}/items`, item);
+  }
+
+  async updateMealItem(mealId, itemId, data) {
+    return this.request('PUT', `/nutrition/meals/${mealId}/items/${itemId}`, data);
+  }
+
+  async deleteMealItem(mealId, itemId) {
+    return this.request('DELETE', `/nutrition/meals/${mealId}/items/${itemId}`);
+  }
+
+  async confirmMealItems(mealId, itemIds = null) {
+    const body = itemIds ? { item_ids: itemIds } : {};
+    return this.request('POST', `/nutrition/meals/${mealId}/confirm`, body);
+  }
+
+  async resolveMealMacros(mealId) {
+    return this.request('POST', `/nutrition/meals/${mealId}/resolve-macros`, {});
+  }
+
+  async resolveItemMacros(mealId, itemId) {
+    return this.request('POST', `/nutrition/meals/${mealId}/items/${itemId}/resolve-macros`, {});
+  }
+
+  // Nutrition — Photo analysis
+  async analyzeMealPhoto(formData) {
+    return this.upload('/nutrition/analyze-photo', formData);
+  }
+
+  // Nutrition — Product search
+  async searchFood(query) {
+    return this.request('GET', `/nutrition/search?q=${encodeURIComponent(query)}`);
+  }
+
+  // Nutrition — Templates
+  async createMealTemplate(template) {
+    return this.request('POST', '/nutrition/templates', template);
+  }
+
+  async listMealTemplates() {
+    return this.request('GET', '/nutrition/templates');
+  }
+
+  async deleteMealTemplate(templateId) {
+    return this.request('DELETE', `/nutrition/templates/${templateId}`);
+  }
 }
 
 // Create global API instance

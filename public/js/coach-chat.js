@@ -127,7 +127,45 @@ class CoachChat {
             console.error('Error creating session:', error);
         }
     }
-    
+
+    async deleteSession(sessionId, event) {
+        if (event) event.stopPropagation();
+
+        const session = this.sessions.find(s => String(s.id) === String(sessionId));
+        const label = (session && session.title && session.title !== 'New Chat')
+            ? `"${session.title}"`
+            : 'this conversation';
+        if (!confirm(`Delete ${label}? This can't be undone.`)) {
+            return;
+        }
+
+        try {
+            await api.delete(`/chat/sessions/${sessionId}`);
+
+            // Drop it locally and refresh the list
+            this.sessions = this.sessions.filter(s => String(s.id) !== String(sessionId));
+
+            // If we deleted the open session, switch away from it
+            if (String(this.currentSessionId) === String(sessionId)) {
+                if (this.sessions.length > 0) {
+                    await this.loadSession(this.sessions[0].id);
+                } else {
+                    this.currentSessionId = null;
+                    this.messages = [];
+                    this.renderMessages();
+                    if (this.welcomeMessage) {
+                        this.welcomeMessage.style.display = 'flex';
+                    }
+                }
+            }
+
+            this.renderSessions();
+        } catch (error) {
+            console.error('Error deleting session:', error);
+            alert('Could not delete the conversation. Please try again.');
+        }
+    }
+
     renderSessions() {
         if (!this.sessionsListContainer) return;
         
@@ -151,16 +189,28 @@ class CoachChat {
                 : 'New chat';
             
             return `
-                <button 
-                    class="btn btn-ghost w-full justify-start text-left ${isActive ? 'btn-active' : ''}"
+                <div
+                    class="group btn btn-ghost w-full justify-start text-left gap-1 ${isActive ? 'btn-active' : ''}"
                     onclick="window._coachChat?.loadSession('${session.id}')"
+                    role="button"
+                    tabindex="0"
                 >
                     <div class="flex-1 overflow-hidden">
                         <div class="font-semibold truncate">${session.title || 'New Chat'}</div>
                         <div class="text-xs text-base-content/50 truncate">${preview}</div>
                         <div class="text-xs text-base-content/40">${dateStr} • ${session.message_count || 0} messages</div>
                     </div>
-                </button>
+                    <button
+                        class="btn btn-ghost btn-xs btn-circle opacity-0 group-hover:opacity-100 hover:bg-error/20 hover:text-error shrink-0"
+                        title="Delete conversation"
+                        aria-label="Delete conversation"
+                        onclick="event.stopPropagation(); window._coachChat?.deleteSession('${session.id}', event)"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                    </button>
+                </div>
             `;
         }).join('');
         
