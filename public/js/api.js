@@ -281,6 +281,14 @@ class APIClient {
     return this.request('POST', `/nutrition/meals/${mealId}/confirm`, body);
   }
 
+  async resolveMealMacros(mealId) {
+    return this.request('POST', `/nutrition/meals/${mealId}/resolve-macros`, {});
+  }
+
+  async resolveItemMacros(mealId, itemId) {
+    return this.request('POST', `/nutrition/meals/${mealId}/items/${itemId}/resolve-macros`, {});
+  }
+
   // Nutrition — Photo analysis
   async analyzeMealPhoto(formData) {
     return this.upload('/nutrition/analyze-photo', formData);

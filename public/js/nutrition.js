@@ -30,6 +30,9 @@ export class NutritionManager {
       deleteMeal,
       deleteItem,
       confirmItem,
+      resolveMacros,
+      retryItemMacros,
+      addCookingOil,
     };
 
     initPhotoAnalysis();
@@ -142,6 +145,8 @@ function renderMealSection(type, meals) {
 function renderMealCard(meal) {
   const t = meal.totals;
   const hasPending = meal.items.some(i => i.needs_confirmation);
+  const missingCount = meal.items.filter(i => i.calories == null).length;
+  const hasOil = meal.items.some(i => i.name === OIL_ITEM_NAME);
   return `
     <div class="border border-base-300 rounded-lg p-3" id="meal-${meal.id}">
       <div class="flex justify-between items-start mb-2">
@@ -150,6 +155,7 @@ function renderMealCard(meal) {
           ${hasPending ? '<span class="badge badge-warning badge-sm ml-2">needs review</span>' : ''}
         </div>
         <div class="flex gap-1">
+          ${missingCount > 0 ? `<button class="btn btn-xs btn-ghost text-primary" title="Συμπλήρωσε θερμίδες από βάση/εκτίμηση" onclick="window._nutrition.resolveMacros('${meal.id}', this)">🔍 Θερμίδες (${missingCount})</button>` : ''}
           <button class="btn btn-xs btn-ghost" onclick="window._nutrition.openAddItemModal('${meal.id}')">+ Item</button>
           <button class="btn btn-xs btn-ghost" onclick="window._nutrition.saveAsTemplate('${meal.id}')">💾</button>
           <button class="btn btn-xs btn-ghost text-error" onclick="window._nutrition.deleteMeal('${meal.id}')">✕</button>
@@ -159,12 +165,12 @@ function renderMealCard(meal) {
         ${Math.round(t.calories)} kcal · P ${t.protein_g.toFixed(1)}g · C ${t.carbs_g.toFixed(1)}g · F ${t.fat_g.toFixed(1)}g
       </div>
       <div class="space-y-1">
-        ${meal.items.map(i => renderItemRow(meal.id, i)).join('')}
+        ${meal.items.map(i => renderItemRow(meal.id, i, hasOil)).join('')}
       </div>
     </div>`;
 }
 
-function renderItemRow(mealId, item) {
+function renderItemRow(mealId, item, hasOil = false) {
   const srcBadge = item.source !== 'manual'
     ? `<span class="badge badge-sm badge-outline">${item.source}</span>`
     : '';
@@ -174,18 +180,22 @@ function renderItemRow(mealId, item) {
   const lowConf = item.confidence < 0.7
     ? `<span class="badge badge-sm badge-error">${Math.round(item.confidence * 100)}%</span>`
     : '';
+  const oilChip = (!hasOil && isOilAbsorbing(item.name))
+    ? `<button class="btn btn-xs btn-ghost text-warning px-1" title="Τηγανισμένο; πρόσθεσε λάδι" onclick="window._nutrition.addCookingOil('${mealId}','${item.id}')">🍳 +λάδι</button>`
+    : '';
   return `
     <div class="flex justify-between items-center py-1 border-b border-base-200 last:border-0 text-sm" id="item-${item.id}">
       <div class="flex-1 min-w-0">
         <span>${escHtml(item.name)}</span>
         ${item.quantity ? `<span class="text-base-content/50 ml-1">${item.quantity}${item.unit ? ' ' + item.unit : ''}</span>` : ''}
-        ${srcBadge} ${confBadge} ${lowConf}
+        ${srcBadge} ${confBadge} ${lowConf} ${oilChip}
       </div>
       <div class="text-right text-base-content/60 mr-3 shrink-0">
         ${item.calories != null ? Math.round(item.calories) + ' kcal' : ''}
       </div>
       <div class="flex gap-1 shrink-0">
-        ${item.needs_confirmation ? `<button class="btn btn-xs btn-success" onclick="window._nutrition.confirmItem('${mealId}','${item.id}')">✓</button>` : ''}
+        ${item.needs_confirmation ? `<button class="btn btn-xs btn-success" title="Επιβεβαίωση" onclick="window._nutrition.confirmItem('${mealId}','${item.id}')">✓</button>` : ''}
+        ${item.needs_confirmation ? `<button class="btn btn-xs btn-ghost" title="Ξαναδοκίμασε ανάλυση" onclick="window._nutrition.retryItemMacros('${mealId}','${item.id}', this)">↻</button>` : ''}
         <button class="btn btn-xs btn-ghost" onclick="window._nutrition.openEditItemModal('${mealId}','${item.id}')">Edit</button>
         <button class="btn btn-xs btn-ghost text-error" onclick="window._nutrition.deleteItem('${mealId}','${item.id}')">✕</button>
       </div>
@@ -301,6 +311,115 @@ async function confirmItem(mealId, itemId) {
     await loadDay();
   } catch (err) {
     showToast('Failed to confirm item: ' + err.message, 'error');
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Resolve macros for description-only items
+// ---------------------------------------------------------------------------
+async function resolveMacros(mealId, btn) {
+  if (btn) {
+    btn.disabled = true;
+    btn.dataset.label = btn.innerHTML;
+    btn.innerHTML = '<span class="loading loading-spinner loading-xs"></span>';
+  }
+  try {
+    const r = await api.resolveMealMacros(mealId);
+    const found = r.resolved.length + r.estimated.length;
+    if (found === 0 && r.unresolved.length) {
+      // Nothing matched in OFF and the LLM estimate returned nothing
+      showToast('Δεν βρέθηκαν θερμίδες — έλεγξε ότι τρέχει το LLM (και τη σύνδεση στο OFF)', 'warning');
+    } else {
+      const parts = [];
+      if (r.resolved.length) parts.push(`${r.resolved.length} από βάση`);
+      if (r.estimated.length) parts.push(`${r.estimated.length} εκτιμήσεις`);
+      if (r.unresolved.length) parts.push(`${r.unresolved.length} άλυτα`);
+      showToast(
+        parts.length ? parts.join(' · ') : 'Όλα τα items έχουν ήδη θερμίδες',
+        r.unresolved.length ? 'warning' : 'success'
+      );
+    }
+    await loadDay();  // re-renders the meal card (button recreated)
+  } catch (err) {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = btn.dataset.label || '🔍 Θερμίδες';
+    }
+    showToast('Αποτυχία: ' + err.message, 'error');
+  }
+}
+
+async function retryItemMacros(mealId, itemId, btn) {
+  if (btn) {
+    btn.disabled = true;
+    btn.dataset.label = btn.innerHTML;
+    btn.innerHTML = '<span class="loading loading-spinner loading-xs"></span>';
+  }
+  try {
+    await api.resolveItemMacros(mealId, itemId);
+    showToast('Ανανεώθηκε', 'success');
+    await loadDay();  // re-renders the row
+  } catch (err) {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = btn.dataset.label || '↻';
+    }
+    showToast(err.message || 'Δεν βρέθηκαν θερμίδες', 'error');
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Cooking-oil affordance (oil-absorbing items only)
+// ---------------------------------------------------------------------------
+const OIL_ITEM_NAME = 'Ελαιόλαδο (τηγάνισμα)';
+const OIL_ABSORBING_KEYWORDS = [
+  'πανε', 'σνιτσελ', 'schnitzel', 'breaded', 'milanese', 'cordon bleu',
+  'nuggets', 'κροκετ', 'croquette', 'κεφτεδ', 'tenders', 'fingers',
+  'τηγανητ', 'τηγανισμεν', 'fried', 'french fries',
+];
+
+function _normalizeFood(text) {
+  return (text || '')
+    .toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/ς/g, 'σ');
+}
+
+function isOilAbsorbing(name) {
+  const n = _normalizeFood(name);
+  if (n === _normalizeFood(OIL_ITEM_NAME)) return false;
+  return OIL_ABSORBING_KEYWORDS.some(k => n.includes(_normalizeFood(k)));
+}
+
+function oilGramsFor(name) {
+  const n = _normalizeFood(name);
+  if (/(πανε|σνιτσελ|schnitzel|breaded|milanese|cordon)/.test(n)) return 15;
+  if (/(nuggets|κροκετ|croquette|κεφτεδ|tenders|fingers)/.test(n)) return 12;
+  if (/(τηγανητ|fried|french fries)/.test(n)) return 10;
+  return 12;
+}
+
+async function addCookingOil(mealId, itemId) {
+  const meal = dayLog.meals.find(m => m.id === mealId);
+  const item = meal?.items.find(i => i.id === itemId);
+  const grams = oilGramsFor(item?.name || '');
+  const oilItem = {
+    name: OIL_ITEM_NAME,
+    quantity: grams,
+    unit: 'g',
+    calories: Math.round(8.84 * grams),
+    protein_g: 0,
+    carbs_g: 0,
+    fat_g: Math.round(grams * 10) / 10,
+    source: 'manual',
+    confidence: 1.0,
+  };
+  try {
+    await api.addMealItem(mealId, oilItem);
+    showToast(`Προστέθηκε λάδι (${grams}g)`, 'success');
+    await loadDay();
+  } catch (err) {
+    showToast('Αποτυχία: ' + err.message, 'error');
   }
 }
 

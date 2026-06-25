@@ -313,7 +313,161 @@ async def search_food(
     if len(q.strip()) < 2:
         raise HTTPException(status_code=422, detail="Query must be at least 2 characters")
     service = FoodSearchService()
-    return service.search(q.strip())
+    return await service.search_with_llm(q.strip())
+
+
+# ---------------------------------------------------------------------------
+# Resolve macros for description-only items (OFF + LLM-estimate fallback)
+# ---------------------------------------------------------------------------
+
+class _ResolveMacrosResult(BaseModel):
+    resolved: list[str] = []   # filled from Open Food Facts (structured)
+    estimated: list[str] = []  # filled from LLM estimate (low confidence)
+    unresolved: list[str] = []  # no match found
+
+
+# Units whose per-100 OFF values we can scale by directly (weight/volume).
+_WEIGHT_UNITS = {"g", "gr", "γρ", "γραμ", "ml"}
+
+
+def _portion_description(item: MealItem) -> str:
+    """Portion string for LLM estimation, e.g. '1 scoop Warrior Whey Isolate'."""
+    name = (item.name or "").strip()
+    qty = item.quantity
+    unit = (item.unit or "").strip()
+    if qty and unit:
+        q = int(qty) if float(qty).is_integer() else round(qty, 2)
+        return f"{q} {unit} {name}".strip()
+    return name
+
+
+async def _resolve_item_macros(item: MealItem, service: FoodSearchService) -> str:
+    """Fill an item's macros from Open Food Facts (preferred) or an LLM estimate.
+
+    Mutates the item in place and returns the outcome: ``"resolved"`` (OFF),
+    ``"estimated"`` (LLM fallback, low confidence), or ``"unresolved"``.
+    Does not commit. Always overwrites — callers decide whether to skip items
+    that already have values.
+
+    Open Food Facts is per-100 g/ml, so it is only used when the item's unit is a
+    weight/volume we can scale by. For portion units (scoop, piece, slice, …) we
+    ask the LLM to estimate the exact portion as written, avoiding the bug where a
+    "1 scoop" item would otherwise inherit the full per-100 g values.
+    """
+    name = (item.name or "").strip()
+    if not name:
+        return "unresolved"
+
+    unit = (item.unit or "").strip().lower()
+    qty = item.quantity
+    weight_based = unit in _WEIGHT_UNITS
+
+    # 1) Open Food Facts — only when the unit is a weight/volume we can scale by.
+    if weight_based:
+        products = await service.search_with_llm(name, max_results=1)
+        if products and products[0].calories_per_100g is not None:
+            p = products[0]
+            scale = (qty or 100) / 100
+            item.calories = round(p.calories_per_100g * scale)
+            item.protein_g = round((p.protein_per_100g or 0) * scale, 1)
+            item.carbs_g = round((p.carbs_per_100g or 0) * scale, 1)
+            item.fat_g = round((p.fat_per_100g or 0) * scale, 1)
+            item.source = "product_search"
+            item.confidence = 0.8
+            item.needs_confirmation = True
+            item.source_ref = p.source_url
+            return "resolved"
+
+    # 2) LLM estimate for the exact portion as written (handles scoop/piece/etc.)
+    est = await service.estimate_macros(_portion_description(item))
+    if est:
+        # per_portion already covers the whole amount; only per_100g needs scaling
+        if est["basis"] == "per_100g" and weight_based:
+            scale = (qty or 100) / 100
+        else:
+            scale = 1.0
+        item.calories = round(est["calories"] * scale)
+        item.protein_g = round(est["protein_g"] * scale, 1)
+        item.carbs_g = round(est["carbs_g"] * scale, 1)
+        item.fat_g = round(est["fat_g"] * scale, 1)
+        item.source = "ai"
+        item.confidence = 0.4
+        item.needs_confirmation = True
+        return "estimated"
+
+    return "unresolved"
+
+
+@router.post(
+    "/meals/{meal_id}/resolve-macros",
+    response_model=_ResolveMacrosResult,
+    summary="Fill calories/macros for description-only items (OFF, then LLM estimate)",
+)
+async def resolve_meal_macros(
+    meal_id: str,
+    db: Session = Depends(get_db),
+    athlete: Athlete = Depends(get_current_athlete),
+):
+    """For each item in the meal that has no calories, look up macros.
+
+    Primary source is Open Food Facts (structured, scaled by quantity); if there
+    is no match, fall back to an LLM estimate flagged with low confidence and
+    ``needs_confirmation=True`` so the UI marks it clearly. Items that already
+    have calories are left untouched.
+    """
+    meal = _get_meal_or_404(meal_id, athlete.id, db)
+    service = FoodSearchService()
+    resolved: list[str] = []
+    estimated: list[str] = []
+    unresolved: list[str] = []
+
+    for item in meal.items:
+        if item.calories is not None:
+            continue
+        label = (item.name or "").strip() or item.id
+        outcome = await _resolve_item_macros(item, service)
+        if outcome == "resolved":
+            resolved.append(label)
+        elif outcome == "estimated":
+            estimated.append(label)
+        else:
+            unresolved.append(label)
+
+    db.commit()
+    _sync_daily_log(athlete.id, meal.log_date, db)
+    return _ResolveMacrosResult(
+        resolved=resolved, estimated=estimated, unresolved=unresolved
+    )
+
+
+@router.post(
+    "/meals/{meal_id}/items/{item_id}/resolve-macros",
+    response_model=MealItemResponse,
+    summary="Re-resolve macros for a single item (retry — overwrites existing values)",
+)
+async def resolve_item_macros(
+    meal_id: str,
+    item_id: str,
+    db: Session = Depends(get_db),
+    athlete: Athlete = Depends(get_current_athlete),
+):
+    """Retry macro resolution for one item, overwriting whatever it has now.
+
+    Useful when an auto-filled estimate looks wrong: re-runs OFF + LLM estimate
+    for just this item. Raises 422 if nothing could be found.
+    """
+    meal = _get_meal_or_404(meal_id, athlete.id, db)
+    item = _get_item_or_404(item_id, meal, db)
+    service = FoodSearchService()
+    outcome = await _resolve_item_macros(item, service)
+    if outcome == "unresolved":
+        raise HTTPException(
+            status_code=422, detail="Δεν βρέθηκαν θερμίδες για αυτό το item"
+        )
+    db.commit()
+    db.refresh(item)
+    _sync_daily_log(athlete.id, meal.log_date, db)
+    return MealItemResponse.model_validate(item)
 
 
 # ---------------------------------------------------------------------------

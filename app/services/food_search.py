@@ -1,6 +1,8 @@
 """Open Food Facts product search — free, no API key required."""
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
 import re
 import unicodedata
@@ -19,6 +21,42 @@ _FIELDS = "product_name,brands,serving_size,nutriments,image_small_url,url,code"
 
 TIMEOUT_SECONDS = 8.0
 MAX_RESULTS = 10
+
+# LLM query reformulation — translates/normalizes (often Greek) free text into
+# English Open Food Facts search terms. The LLM never produces nutrition values;
+# Open Food Facts remains the single source of macros.
+LLM_TIMEOUT_SECONDS = 10.0
+_REFORMULATE_SYSTEM = (
+    "You normalize food search queries for the Open Food Facts product database. "
+    "The query may be in Greek or English and may contain typos, dish names, "
+    "brand names, or several ingredients. Return the best search terms "
+    "(English or Latin-script) to find these foods in a product database.\n"
+    "Rules:\n"
+    "- TRANSLATE food words to English — do NOT phonetically transliterate them "
+    "(e.g. Σνίτσελ Κοτόπουλου Πανέ -> breaded chicken schnitzel, γιαούρτι -> yogurt, "
+    "πατάτες -> potatoes).\n"
+    "- Transliterate to Latin ONLY brand names, keeping their official spelling "
+    "(e.g. ΦΑΓΕ->FAGE, Γιώτης->Jotis, Μέλισσα->Melissa, Παυλίδης->Pavlidis, "
+    "Μεβγάλ->Mevgal, ΔΕΛΤΑ->Delta). When the query has a brand, put the "
+    "brand+translated-product term first, then a generic brand-free fallback.\n"
+    "- For a prepared dish, return its main ingredients/components.\n"
+    "- Keep each term short (1-4 words); most specific first, generic last.\n"
+    'Respond ONLY with JSON: {"terms": ["term1", "term2", ...]} — up to 5 terms. '
+    "No commentary."
+)
+
+# Macro estimation — used only as a fallback when Open Food Facts has no match.
+# Produces an explicitly low-confidence estimate, flagged in the UI.
+_ESTIMATE_SYSTEM = (
+    "You estimate the nutrition of a described food using common, standard values. "
+    "The description may be in Greek or English. "
+    'Respond ONLY with JSON: {"calories": <kcal number>, "protein_g": <g>, '
+    '"carbs_g": <g>, "fat_g": <g>, "basis": "per_100g" | "per_portion"}. '
+    "If the description includes an explicit quantity or unit (e.g. '1 scoop', "
+    "'2 slices', '30 g', '200 ml'), estimate the totals for THAT exact amount and "
+    'set basis="per_portion". Otherwise prefer per_100g for generic foods. '
+    "Numbers only — no ranges, no commentary."
+)
 
 _GREEK_FOOD_TERMS = {
     "βρωμη": "oats",
@@ -77,10 +115,78 @@ class FoodProduct(BaseModel):
 
 class FoodSearchService:
 
-    def search(self, query: str, max_results: int = MAX_RESULTS) -> list[FoodProduct]:
-        """Search Open Food Facts by free text. Returns up to max_results products."""
+    def __init__(self, llm_client=None):
+        """
+        Args:
+            llm_client: Optional async LLM client exposing ``chat_completion``.
+                When omitted, one is created lazily on first reformulation.
+                Used only to translate/normalize the query — never to produce
+                nutrition values.
+        """
+        self._llm_client = llm_client
+
+    def _get_client(self):
+        """Lazily build the LLM client for food-search calls.
+
+        Uses the dedicated FOOD_SEARCH_* settings (which fall back to the
+        tool-agent model, then the primary LLM) so these lightweight JSON calls
+        can target a small, fast instruct model instead of a slow reasoner.
+        Returns None if a client cannot be created.
+        """
+        if self._llm_client is not None:
+            return self._llm_client
+        try:
+            from app.services.llm_client import LLMClient
+            from app.config import get_settings
+            settings = get_settings()
+            logger.info(
+                "Food search LLM: model=%s endpoint=%s",
+                settings.food_search_model,
+                settings.food_search_base_url,
+            )
+            self._llm_client = LLMClient(
+                base_url=settings.food_search_base_url,
+                model_name=settings.food_search_model,
+            )
+            return self._llm_client
+        except Exception as exc:
+            logger.warning("Food search: could not init LLM client: %s", exc)
+            return None
+
+    async def search_with_llm(
+        self, query: str, max_results: int = MAX_RESULTS
+    ) -> list[FoodProduct]:
+        """LLM-reformulated search: translate/normalize the query, then query OFF.
+
+        The LLM only widens the search terms; macros still come from Open Food
+        Facts. Falls back to the deterministic path if the LLM is unavailable.
+        """
+        llm_terms = await self.reformulate_query(query)
+        return self.search(query, max_results=max_results, extra_candidates=llm_terms)
+
+    def search(
+        self,
+        query: str,
+        max_results: int = MAX_RESULTS,
+        extra_candidates: Optional[list[str]] = None,
+    ) -> list[FoodProduct]:
+        """Search Open Food Facts by free text. Returns up to max_results products.
+
+        ``extra_candidates`` (e.g. LLM-translated terms) are tried first, then the
+        deterministic dictionary-based candidates, deduplicated.
+        """
         products_by_key: dict[str, FoodProduct] = {}
-        for candidate in self._query_candidates(query):
+
+        candidates: list[str] = []
+        for cand in (extra_candidates or []):
+            cleaned = " ".join((cand or "").split())
+            if cleaned and cleaned not in candidates:
+                candidates.append(cleaned)
+        for cand in self._query_candidates(query):
+            if cand and cand not in candidates:
+                candidates.append(cand)
+
+        for candidate in candidates:
             for product in self._search_once(candidate, max_results=max_results):
                 key = product.barcode or f"{product.name}|{product.brand or ''}"
                 if key not in products_by_key:
@@ -88,6 +194,123 @@ class FoodSearchService:
                 if len(products_by_key) >= max_results:
                     return list(products_by_key.values())[:max_results]
         return list(products_by_key.values())[:max_results]
+
+    async def reformulate_query(self, query: str) -> list[str]:
+        """Use the LLM to translate/normalize the query into English search terms.
+
+        Returns an empty list on any failure or timeout, so the caller can fall
+        back to the deterministic candidates. Never raises.
+        """
+        cleaned = " ".join((query or "").split())
+        if not cleaned:
+            return []
+
+        client = self._get_client()
+        if client is None:
+            return []
+
+        try:
+            resp = await asyncio.wait_for(
+                client.chat_completion(
+                    messages=[
+                        {"role": "system", "content": _REFORMULATE_SYSTEM},
+                        {"role": "user", "content": cleaned},
+                    ],
+                    max_tokens=120,
+                    temperature=0.0,
+                    source="food_search_reformulate",
+                ),
+                timeout=LLM_TIMEOUT_SECONDS,
+            )
+        except Exception as exc:
+            logger.warning("Food search: LLM reformulation failed: %s", exc)
+            return []
+
+        content = (resp or {}).get("content") or ""
+        content = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()
+        content = (
+            content.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+        )
+        try:
+            data = json.loads(content)
+            raw_terms = data.get("terms", []) if isinstance(data, dict) else []
+        except (json.JSONDecodeError, AttributeError):
+            logger.warning("Food search: could not parse LLM terms from %r", content[:200])
+            return []
+
+        terms: list[str] = []
+        for term in raw_terms:
+            if isinstance(term, str):
+                norm = " ".join(term.split())
+                if norm and norm.lower() not in {t.lower() for t in terms}:
+                    terms.append(norm)
+        return terms[:5]
+
+    async def estimate_macros(self, name: str) -> Optional[dict]:
+        """LLM fallback: estimate macros for a free-text food description.
+
+        Returns ``{"calories", "protein_g", "carbs_g", "fat_g", "basis"}`` where
+        ``basis`` is ``"per_100g"`` or ``"per_portion"``, or ``None`` on any
+        failure/timeout. Never raises. Used only when Open Food Facts has no match;
+        the caller must flag the result as a low-confidence estimate.
+        """
+        cleaned = " ".join((name or "").split())
+        if not cleaned:
+            return None
+
+        client = self._get_client()
+        if client is None:
+            return None
+
+        try:
+            resp = await asyncio.wait_for(
+                client.chat_completion(
+                    messages=[
+                        {"role": "system", "content": _ESTIMATE_SYSTEM},
+                        {"role": "user", "content": cleaned},
+                    ],
+                    max_tokens=120,
+                    temperature=0.0,
+                    source="food_macro_estimate",
+                ),
+                timeout=LLM_TIMEOUT_SECONDS,
+            )
+        except Exception as exc:
+            logger.warning("Food search: LLM macro estimate failed: %s", exc)
+            return None
+
+        content = (resp or {}).get("content") or ""
+        content = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()
+        content = (
+            content.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+        )
+        try:
+            data = json.loads(content)
+        except (json.JSONDecodeError, TypeError):
+            logger.warning("Food search: could not parse macro estimate from %r", content[:200])
+            return None
+        if not isinstance(data, dict):
+            return None
+
+        def _num(val) -> Optional[float]:
+            try:
+                return max(0.0, float(val))
+            except (TypeError, ValueError):
+                return None
+
+        calories = _num(data.get("calories"))
+        if calories is None:
+            return None
+        basis = data.get("basis")
+        if basis not in ("per_100g", "per_portion"):
+            basis = "per_100g"
+        return {
+            "calories": calories,
+            "protein_g": _num(data.get("protein_g")) or 0.0,
+            "carbs_g": _num(data.get("carbs_g")) or 0.0,
+            "fat_g": _num(data.get("fat_g")) or 0.0,
+            "basis": basis,
+        }
 
     def _search_once(self, query: str, max_results: int = MAX_RESULTS) -> list[FoodProduct]:
         """Run one Open Food Facts free-text search."""
