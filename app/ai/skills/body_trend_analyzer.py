@@ -40,17 +40,24 @@ class BodyTrendAnalyzer(BaseSkill[BodyTrendInput, BodyTrend]):
         plateau        = self._detect_plateau(rows)
         confidence     = self._compute_confidence(rows)
 
-        user_content = (
-            f"weeks={len(rows)}, "
-            f"weight_slope_kg_per_week={weight_slope}, "
-            f"body_fat_trend={body_fat_trend}, "
-            f"waist_trend={waist_trend}, "
-            f"rhr_trend={rhr_trend}, "
-            f"plateau_detected={plateau}"
-        )
-        assessment = await self._llm_reason(_SYSTEM_PROMPT, user_content)
-        if not assessment:
+        # With too few data points there is no real trend — do NOT let the LLM
+        # invent one (its prompt asks for "actual numbers", so given None values
+        # it fabricates a slope). Use the deterministic assessment instead.
+        has_trend = any(t is not None for t in (weight_slope, body_fat_trend, waist_trend, rhr_trend))
+        if len(rows) < 2 or not has_trend:
             assessment = self._fallback_assessment(weight_slope, plateau)
+        else:
+            user_content = (
+                f"weeks={len(rows)}, "
+                f"weight_slope_kg_per_week={weight_slope}, "
+                f"body_fat_trend={body_fat_trend}, "
+                f"waist_trend={waist_trend}, "
+                f"rhr_trend={rhr_trend}, "
+                f"plateau_detected={plateau}"
+            )
+            assessment = await self._llm_reason(_SYSTEM_PROMPT, user_content)
+            if not assessment:
+                assessment = self._fallback_assessment(weight_slope, plateau)
 
         return BodyTrend(
             weeks_analysed=len(rows),

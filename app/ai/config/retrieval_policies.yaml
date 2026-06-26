@@ -93,6 +93,15 @@ progress_check:
     - goals
     - metrics
 
+# Intent: Goal Setting
+# Use case: "I want to reach 85kg by August", "my goal is to lose 5 kg"
+goal_setting:
+  days_back: null  # All-time — existing goals + latest metrics for context
+  max_records: 20
+  data_types:
+    - goals
+    - metrics
+
 # Intent: Plan Generation
 # Use case: "Create a training plan", "What should I do this week?"
 plan_generation:

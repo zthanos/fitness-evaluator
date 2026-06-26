@@ -226,6 +226,23 @@ class ChatAgent:
                 )
                 return response
 
+            # --- Step 2.5: Deterministic activity-list fast-path ---
+            # "show/list my activities" doesn't need the small subagent to build
+            # query args (it often malforms `filters` and the request fails).
+            # Query directly with sane defaults, then synthesise.
+            if self._is_activity_list_request(
+                user_message, getattr(self.context_builder, "last_intent", None)
+            ):
+                fast = await self._activity_list_fastpath(
+                    user_message=user_message,
+                    user_id=user_id,
+                    session_id=session_id,
+                    context=context,
+                    start_time=start_time,
+                )
+                if fast is not None:
+                    return fast
+
             # --- Step 3: Fallback to ToolOrchestrator path ---
             # Save the full CE system prompt for the primary-model synthesis step.
             # The tool-calling subagent gets a lean prompt only — it has a small
@@ -249,6 +266,8 @@ class ChatAgent:
 
             # Lean conversation for the tool-calling subagent.
             # Keep this short — the model has a small context window.
+            from datetime import date as _date
+            _today = _date.today().isoformat()
             conversation = [
                 {
                     "role": "system",
@@ -256,6 +275,8 @@ class ChatAgent:
                         "You are a fitness data retrieval assistant. "
                         "Call the correct tool to answer the user's question, including nutrition and recipe tools when relevant. "
                         "Rules you MUST follow:\n"
+                        f"- Today's date is {_today}. For any date the user gives without a year "
+                        "(e.g. '3 of August'), use the NEXT future occurrence relative to today.\n"
                         "- NEVER ask for clarification. Make a reasonable assumption and call the tool immediately.\n"
                         "- ALL distance values are in METERS (e.g. 55 km = 55000, 10 km = 10000).\n"
                         "- ALL duration values are in SECONDS (e.g. 1 hour = 3600).\n"
@@ -414,7 +435,11 @@ class ChatAgent:
         self._ensure_loaders()
 
         if not system_instructions:
-            system_instructions = self._system_loader.load(version="1.0.0")
+            # Use the tool-aware, anti-fabrication chat prompt (not the generic
+            # persona used by evaluations).
+            system_instructions = self._system_loader.load(
+                version="1.0.0", variant="coach_chat"
+            )
         if not task_instructions:
             task_instructions = self._task_loader.load(
                 operation="chat_response",
@@ -464,6 +489,11 @@ class ChatAgent:
             fitness_snapshot = self._fitness_state_snapshot(user_id)
             if fitness_snapshot:
                 enhanced_system = f"{enhanced_system}\n\n## Current Fitness State\n{fitness_snapshot}"
+            # Pinned, grounded state (date anchor + current weight/body-fat +
+            # known-fields + anti-fabrication guard) — added on every turn.
+            state_block = self._athlete_state_block(user_id)
+            if state_block:
+                enhanced_system = f"{enhanced_system}\n\n{state_block}"
             self.context_builder.add_system_instructions(enhanced_system)
 
         if task_instructions:
@@ -481,6 +511,117 @@ class ChatAgent:
         )
 
         return self.context_builder.build()
+
+    def _athlete_state_block(self, user_id: int) -> str:
+        """Pinned, grounded athlete state added to the system prompt every turn.
+
+        Includes a date anchor, the actual latest body metrics (so the model
+        never guesses the weight), an explicit weight-trend line that refuses to
+        infer a slope from a single measurement, active goals, and grounding
+        rules (known fields + anti-fabrication). This is the deterministic
+        backbone that keeps answers consistent across turns.
+        """
+        from datetime import date
+
+        today = date.today().isoformat()
+        lines = [f"## Athlete State (as of {today})"]
+
+        try:
+            from app.models.weekly_measurement import WeeklyMeasurement
+            measurements = (
+                self.db.query(WeeklyMeasurement)
+                .filter(WeeklyMeasurement.athlete_id == user_id)
+                .order_by(WeeklyMeasurement.week_start.desc())
+                .limit(8)
+                .all()
+            )
+        except Exception:
+            measurements = []
+
+        if measurements:
+            latest = measurements[0]
+            if latest.weight_kg is not None:
+                lines.append(
+                    f"- Current weight: {latest.weight_kg} kg "
+                    f"(measured {latest.week_start.isoformat()})"
+                )
+            if latest.body_fat_pct is not None:
+                lines.append(f"- Body fat: {latest.body_fat_pct}%")
+            if latest.rhr_bpm is not None:
+                lines.append(f"- Resting HR: {latest.rhr_bpm} bpm")
+
+            weighed = [m for m in measurements if m.weight_kg is not None]
+            if len(weighed) >= 2:
+                newest, oldest = weighed[0], weighed[-1]
+                weeks = max((newest.week_start - oldest.week_start).days / 7, 1)
+                slope = (newest.weight_kg - oldest.weight_kg) / weeks
+                lines.append(
+                    f"- Weight trend: {slope:+.2f} kg/week over "
+                    f"{len(weighed)} measurements"
+                )
+            else:
+                lines.append(
+                    "- Weight trend: insufficient data (1 measurement) — do NOT "
+                    "infer a slope or a multi-week trend"
+                )
+        else:
+            lines.append(
+                "- No body measurements logged yet — do NOT state a weight, "
+                "body fat, or trend"
+            )
+
+        try:
+            from app.models.athlete_goal import AthleteGoal
+            goals = (
+                self.db.query(AthleteGoal)
+                .filter(AthleteGoal.status == "active")
+                .all()
+            )
+            goals = [
+                g for g in goals
+                if g.athlete_id is None or str(g.athlete_id) == str(user_id)
+            ]
+            if goals:
+                gtxt = "; ".join(
+                    (
+                        f"{g.goal_type} {g.target_value or ''} by "
+                        f"{g.target_date.isoformat() if g.target_date else 'n/a'}"
+                    ).strip()
+                    for g in goals[:3]
+                )
+                lines.append(f"- Active goals: {gtxt}")
+        except Exception:
+            pass
+
+        lines.append("")
+        lines.append("Grounding rules:")
+        lines.append(
+            f"- Today is {today}. Compute every date, deadline and timeframe "
+            "relative to this date."
+        )
+        lines.append(
+            "- The only body metrics tracked are weight (kg), body fat (%), "
+            "resting HR (bpm), sleep and energy. There is NO 'lean mass' or "
+            "'suffer score' field — never cite them. Base protein and calorie "
+            "targets on body weight (kg), NOT on 'lean mass' / 'lean body mass' "
+            "(which is not tracked and the athlete does not know)."
+        )
+        lines.append(
+            "- Do NOT state any number, trend or date that is not in this Athlete "
+            "State or the retrieved evidence. If a value is not shown, say you "
+            "don't track it rather than estimating."
+        )
+        lines.append(
+            "- When the athlete sets or discusses a body-weight goal, explicitly "
+            "state their current weight and the remaining gap to the target "
+            "(e.g. \"you're at X kg, about Y kg from your target\")."
+        )
+        lines.append(
+            "- NEVER output placeholder text such as \"[insert ...]\", "
+            "\"[your data here]\" or bracketed fill-in instructions. If you lack a "
+            "specific value, omit that sentence entirely."
+        )
+        return "\n".join(lines)
 
     def _fitness_state_snapshot(self, user_id: int) -> str:
         """Return a one-line fitness state summary from the persisted AthleteFitnessState, or ''."""
@@ -507,6 +648,99 @@ class ChatAgent:
             return " | ".join(parts) if parts else ""
         except Exception:
             return ""
+
+    @staticmethod
+    def _is_activity_list_request(user_message: str, llm_intent: Any = None) -> bool:
+        """True when the athlete is asking to see/list their activities.
+
+        The LLM intent classifier is unreliable for plain "can you see my
+        activities?" phrasings, so we also match keywords and the deterministic
+        keyword IntentRouter. Kept narrow so analysis requests ("how was my last
+        ride?") still go through the full pipeline.
+        """
+        from app.ai.retrieval.intent_router import Intent, IntentRouter
+
+        if llm_intent == Intent.ACTIVITY_LIST:
+            return True
+
+        text = (user_message or "").lower()
+        keywords = (
+            "see my activit", "show my activit", "see my workout", "show my workout",
+            "see my ride", "show my ride", "see my run", "show my run",
+            "my activities", "my rides", "my runs", "my workouts", "my sessions",
+            "list my", "what activities", "any activities", "recent activities",
+            "recent rides", "see my session",
+        )
+        if any(k in text for k in keywords):
+            return True
+
+        try:
+            return IntentRouter().classify(user_message) == Intent.ACTIVITY_LIST
+        except Exception:
+            return False
+
+    async def _activity_list_fastpath(
+        self,
+        user_message: str,
+        user_id: int,
+        session_id: int,
+        context: Any,
+        start_time: float,
+    ) -> Optional[Dict[str, Any]]:
+        """Answer 'show/list my activities' deterministically (no subagent).
+
+        Calls ``query_activities`` directly with recent-first defaults, then hands
+        the result to the primary model for synthesis. Returns an AgentResult dict
+        on success, or ``None`` to fall through to the normal tool path.
+        """
+        from types import SimpleNamespace
+        from app.services.chat_tools import _query_activities
+
+        try:
+            result = await _query_activities(
+                {"sort": [{"field": "start_date", "dir": "desc"}], "limit": 10},
+                user_id=user_id,
+                db=self.db,
+            )
+        except Exception as exc:
+            logger.warning("Activity fast-path query failed: %s", exc)
+            return None
+
+        if not result or not result.get("success") or not result.get("activities"):
+            return None  # nothing to show → let the normal path handle it
+
+        full_messages = context.to_messages()
+        system_msg = (
+            full_messages[0]["content"]
+            if full_messages and full_messages[0].get("role") == "system"
+            else ""
+        )
+        rec = SimpleNamespace(success=True, result=result, tool_name="query_activities")
+        synth = await self._synthesize_with_primary(
+            system_message=system_msg,
+            user_message=user_message,
+            tool_results=[rec],
+        )
+        if not synth:
+            return None
+
+        latency_ms = (time.time() - start_time) * 1000
+        response = {
+            "content": synth,
+            "tool_calls_made": 1,
+            "iterations": 1,
+            "latency_ms": latency_ms,
+            "model_used": "fastpath+primary",
+            "context_token_count": context.token_count,
+            "response_token_count": 0,
+            "intent": "activity_list",
+            "evidence_cards": [],
+            "retrieval_latency_ms": 0,
+            "model_latency_ms": None,
+            "total_latency_ms": latency_ms,
+        }
+        self._log_completion(response, user_id, session_id, latency_ms)
+        return response
 
     async def _synthesize_with_primary(
         self,
