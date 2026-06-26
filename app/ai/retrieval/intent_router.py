@@ -15,6 +15,7 @@ class Intent(Enum):
     NUTRITION_CHECK   = "nutrition_check"     # → NutritionEvaluator (via evaluate_progress)
     ACTIVITY_LIST     = "activity_list"       # → query_activities
     PERFORMANCE_GOAL  = "performance_goal"    # → evaluate_performance_goal
+    GOAL_SETTING      = "goal_setting"        # → save_athlete_goal
     RECENT_PERFORMANCE = "recent_performance"
     TREND_ANALYSIS    = "trend_analysis"
     GOAL_PROGRESS     = "goal_progress"
@@ -37,6 +38,7 @@ INTENT_TOOL_HINT: dict[Intent, str] = {
     Intent.TRAINING_PLAN:     "generate_plan",
     Intent.ACTIVITY_LIST:     "query_activities",
     Intent.PERFORMANCE_GOAL:  "evaluate_performance_goal",
+    Intent.GOAL_SETTING:      "save_athlete_goal",
 }
 
 
@@ -69,6 +71,15 @@ class IntentRouter:
             "in x hours", "within 3h", "within 4h",
             "how far am i from", "how much faster do i need", "what do i need to achieve",
             "achieve my goal", "hit my goal", "reach my goal",
+        ],
+        # Declaring/setting a body-weight or body-composition goal → save it.
+        # Checked after PERFORMANCE_GOAL so "want to ride 70km" stays a perf goal.
+        Intent.GOAL_SETTING: [
+            "i want to reach", "i want to lose", "i want to gain",
+            "i want to weigh", "i want to get to", "i want to be at",
+            "i want to hit", "want to get to", "want to weigh",
+            "my goal is", "my target is", "set a goal", "set my goal",
+            "goal weight", "target weight", "lose weight to", "reach my target weight",
         ],
         Intent.ACTIVITY_LIST: [
             "longest", "shortest", "biggest", "list my", "show me my",

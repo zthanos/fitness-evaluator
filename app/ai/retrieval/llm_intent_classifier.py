@@ -17,6 +17,7 @@ meal_recipe        - asking what to eat, requesting a meal idea or recipe, or as
 workout_analysis   – asking about a specific workout or training session (effort, cadence, HR, performance)
 recovery_check     – asking about recovery, fatigue, or whether to train today
 progress_check     – asking about progress toward goals or body composition trends
+goal_setting       – DECLARING or setting a new body-weight/body-composition goal (e.g. "I want to reach 85 kg by August", "my goal is to lose 5 kg")
 plan_generation    – requesting a training plan, programme, or schedule
 nutrition_check    – asking about diet, calories, protein, food, or fuelling
 activity_list      – listing or ranking activities (longest, fastest, biggest, most elevation, how many, etc.)
