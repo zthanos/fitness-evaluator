@@ -230,8 +230,9 @@ class ChatAgent:
             # "show/list my activities" doesn't need the small subagent to build
             # query args (it often malforms `filters` and the request fails).
             # Query directly with sane defaults, then synthesise.
-            from app.ai.retrieval.intent_router import Intent as _Intent
-            if getattr(self.context_builder, "last_intent", None) == _Intent.ACTIVITY_LIST:
+            if self._is_activity_list_request(
+                user_message, getattr(self.context_builder, "last_intent", None)
+            ):
                 fast = await self._activity_list_fastpath(
                     user_message=user_message,
                     user_id=user_id,
@@ -601,7 +602,9 @@ class ChatAgent:
         lines.append(
             "- The only body metrics tracked are weight (kg), body fat (%), "
             "resting HR (bpm), sleep and energy. There is NO 'lean mass' or "
-            "'suffer score' field — never cite them."
+            "'suffer score' field — never cite them. Base protein and calorie "
+            "targets on body weight (kg), NOT on 'lean mass' / 'lean body mass' "
+            "(which is not tracked and the athlete does not know)."
         )
         lines.append(
             "- Do NOT state any number, trend or date that is not in this Athlete "
@@ -612,6 +615,11 @@ class ChatAgent:
             "- When the athlete sets or discusses a body-weight goal, explicitly "
             "state their current weight and the remaining gap to the target "
             "(e.g. \"you're at X kg, about Y kg from your target\")."
+        )
+        lines.append(
+            "- NEVER output placeholder text such as \"[insert ...]\", "
+            "\"[your data here]\" or bracketed fill-in instructions. If you lack a "
+            "specific value, omit that sentence entirely."
         )
         return "\n".join(lines)
 
@@ -640,6 +648,36 @@ class ChatAgent:
             return " | ".join(parts) if parts else ""
         except Exception:
             return ""
+
+    @staticmethod
+    def _is_activity_list_request(user_message: str, llm_intent: Any = None) -> bool:
+        """True when the athlete is asking to see/list their activities.
+
+        The LLM intent classifier is unreliable for plain "can you see my
+        activities?" phrasings, so we also match keywords and the deterministic
+        keyword IntentRouter. Kept narrow so analysis requests ("how was my last
+        ride?") still go through the full pipeline.
+        """
+        from app.ai.retrieval.intent_router import Intent, IntentRouter
+
+        if llm_intent == Intent.ACTIVITY_LIST:
+            return True
+
+        text = (user_message or "").lower()
+        keywords = (
+            "see my activit", "show my activit", "see my workout", "show my workout",
+            "see my ride", "show my ride", "see my run", "show my run",
+            "my activities", "my rides", "my runs", "my workouts", "my sessions",
+            "list my", "what activities", "any activities", "recent activities",
+            "recent rides", "see my session",
+        )
+        if any(k in text for k in keywords):
+            return True
+
+        try:
+            return IntentRouter().classify(user_message) == Intent.ACTIVITY_LIST
+        except Exception:
+            return False
 
     async def _activity_list_fastpath(
         self,

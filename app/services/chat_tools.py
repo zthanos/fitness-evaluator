@@ -211,10 +211,24 @@ _QA_NUMERIC_FIELDS = {
 
 
 def _qa_parse_value(field: str, value):
-    """Coerce filter values to the correct Python type."""
+    """Coerce filter values to the correct Python type.
+
+    Date parsing degrades gracefully: prefer dateutil (handles "June 5th" etc.),
+    fall back to ISO parsing, and on any failure return the original value so a
+    single bad filter never crashes the whole tool call.
+    """
     if field == "start_date" and isinstance(value, str):
-        from dateutil.parser import parse as _dp
-        return _dp(value)
+        try:
+            from dateutil.parser import parse as _dp
+            return _dp(value)
+        except ModuleNotFoundError:
+            try:
+                from datetime import datetime
+                return datetime.fromisoformat(value)
+            except (ValueError, TypeError):
+                return value
+        except (ValueError, TypeError, OverflowError):
+            return value
     # LLMs sometimes emit numeric values as strings — cast them
     if field in _QA_NUMERIC_FIELDS and isinstance(value, str):
         try:

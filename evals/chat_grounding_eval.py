@@ -61,14 +61,18 @@ MAX_WORDS = 300  # aligned with the coach_chat ~280-word hard cap (+ tolerance)
 # Each check returns (passed: bool, detail: str). `ctx` carries seeded ids/dates.
 
 def chk_no_lean_mass(answer, ctx):
-    # "lean mass" / "lean muscle" / "<n> kg of muscle" are not tracked fields.
+    # Flag only FABRICATED DATA claims about the athlete's lean mass (a value we
+    # don't track) — NOT generic, correct advice that mentions the concept
+    # ("preserve lean mass while losing fat", "body weight, not lean mass").
     patterns = [
-        r"lean\s+mass", r"lean\s+muscle",
-        r"\d+(?:\.\d+)?\s*kg\s+(?:of\s+)?(?:lean|muscle)",
-        r"(?:lost|gained)\s+\d+(?:\.\d+)?\s*kg\s+(?:of\s+)?muscle",
+        r"\d+(?:\.\d+)?\s*kg\s+(?:of\s+)?(?:lean|muscle)",     # "2.4 kg of lean/muscle"
+        r"(?:lost|gained|losing|gaining)\s+[\d.]+\s*kg[^.\n]*\b(?:lean|muscle)",
+        r"your\s+lean\s+(?:body\s+)?mass\s+(?:is|was|=|:)",    # "your lean mass is ..."
+        r"lean\s+(?:body\s+)?mass\s*(?:of|:)\s*\d",            # "lean mass of 64 kg"
+        r"\d+(?:\.\d+)?\s*%\s*lean",                           # "64% lean"
     ]
     hit = next((p for p in patterns if re.search(p, answer, re.I)), None)
-    return (hit is None, f"fabricated lean-mass claim (/{hit}/)" if hit else "ok")
+    return (hit is None, f"fabricated lean-mass DATA claim (/{hit}/)" if hit else "ok")
 
 
 def chk_no_suffer_score(answer, ctx):
