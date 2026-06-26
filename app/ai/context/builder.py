@@ -50,6 +50,20 @@ class Context:
             except TypeError:
                 return obj
         
+        def _strip_ids(obj):
+            """Drop raw DB identifiers from prompt-facing data.
+
+            Source ids exist for traceability in the response's evidence_cards,
+            but must never be shown to the model — otherwise it surfaces them to
+            the athlete (e.g. "ID: 18711181827").
+            """
+            id_keys = {"source_id", "id", "strava_id", "athlete_id", "meal_id", "session_id"}
+            if isinstance(obj, dict):
+                return {k: _strip_ids(v) for k, v in obj.items() if k not in id_keys}
+            if isinstance(obj, (list, tuple)):
+                return [_strip_ids(item) for item in obj]
+            return obj
+
         parts = [
             "# Task Instructions",
             self.task_instructions,
@@ -58,7 +72,7 @@ class Context:
             _json.dumps(_make_serializable(self.domain_knowledge), indent=2),
             "",
             "# Retrieved Data",
-            _json.dumps(_make_serializable(self.retrieved_data), indent=2)
+            _json.dumps(_strip_ids(_make_serializable(self.retrieved_data)), indent=2)
         ]
         return "\n".join(parts)
 

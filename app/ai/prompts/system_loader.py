@@ -52,39 +52,42 @@ class SystemInstructionsLoader:
             lstrip_blocks=True
         )
     
-    def load(self, version: str = "1.0.0") -> str:
+    def load(self, version: str = "1.0.0", variant: str = "coach_persona") -> str:
         """
         Load and render a system instructions template.
-        
+
         Args:
             version: Version string (e.g., "1.0.0")
-        
+            variant: Template base name. "coach_persona" (default) is the generic
+                     persona used by evaluations; "coach_chat" is the tool-aware,
+                     anti-fabrication prompt used by the chat flow.
+
         Returns:
             Rendered system instructions as a string
-        
+
         Raises:
             FileNotFoundError: If template file doesn't exist
             ValueError: If template is missing required sections
         """
-        template_name = f"coach_persona_v{version}.j2"
-        
+        template_name = f"{variant}_v{version}.j2"
+
         try:
-            template = self.env.get_template(template_name)
+            tmpl = self.env.get_template(template_name)
         except TemplateNotFound:
             raise FileNotFoundError(
                 f"System instructions template not found: {template_name} "
                 f"in directory {self.templates_dir}"
             )
-        
+
         # Load configuration variables
         config_vars = self._load_config()
-        
+
         # Render template with configuration
-        rendered = template.render(**config_vars)
-        
+        rendered = tmpl.render(**config_vars)
+
         # Validate required sections
-        self._validate_template(rendered, template_name)
-        
+        self._validate_template(rendered, template_name, variant)
+
         return rendered
     
     def list_versions(self) -> List[str]:
@@ -137,17 +140,26 @@ class SystemInstructionsLoader:
         except Exception as e:
             raise ValueError(f"Failed to load configuration from {config_file}: {e}")
     
-    def _validate_template(self, rendered: str, template_name: str) -> None:
+    def _validate_template(self, rendered: str, template_name: str, variant: str = "coach_persona") -> None:
         """
         Validate that rendered template contains required sections.
-        
+
         Args:
             rendered: Rendered template content
             template_name: Name of the template (for error messages)
-        
+            variant: Template base name. The strict persona section check only
+                     applies to "coach_persona"; other variants (e.g. the chat
+                     prompt) have a different structure and are only checked for
+                     non-empty content.
+
         Raises:
             ValueError: If required sections are missing
         """
+        if variant != "coach_persona":
+            if not rendered.strip():
+                raise ValueError(f"Template {template_name} rendered empty")
+            return
+
         required_sections = [
             "persona",
             "behavioral_constraints",
