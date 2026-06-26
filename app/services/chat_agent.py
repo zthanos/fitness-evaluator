@@ -226,6 +226,22 @@ class ChatAgent:
                 )
                 return response
 
+            # --- Step 2.5: Deterministic activity-list fast-path ---
+            # "show/list my activities" doesn't need the small subagent to build
+            # query args (it often malforms `filters` and the request fails).
+            # Query directly with sane defaults, then synthesise.
+            from app.ai.retrieval.intent_router import Intent as _Intent
+            if getattr(self.context_builder, "last_intent", None) == _Intent.ACTIVITY_LIST:
+                fast = await self._activity_list_fastpath(
+                    user_message=user_message,
+                    user_id=user_id,
+                    session_id=session_id,
+                    context=context,
+                    start_time=start_time,
+                )
+                if fast is not None:
+                    return fast
+
             # --- Step 3: Fallback to ToolOrchestrator path ---
             # Save the full CE system prompt for the primary-model synthesis step.
             # The tool-calling subagent gets a lean prompt only — it has a small
@@ -624,6 +640,69 @@ class ChatAgent:
             return " | ".join(parts) if parts else ""
         except Exception:
             return ""
+
+    async def _activity_list_fastpath(
+        self,
+        user_message: str,
+        user_id: int,
+        session_id: int,
+        context: Any,
+        start_time: float,
+    ) -> Optional[Dict[str, Any]]:
+        """Answer 'show/list my activities' deterministically (no subagent).
+
+        Calls ``query_activities`` directly with recent-first defaults, then hands
+        the result to the primary model for synthesis. Returns an AgentResult dict
+        on success, or ``None`` to fall through to the normal tool path.
+        """
+        from types import SimpleNamespace
+        from app.services.chat_tools import _query_activities
+
+        try:
+            result = await _query_activities(
+                {"sort": [{"field": "start_date", "dir": "desc"}], "limit": 10},
+                user_id=user_id,
+                db=self.db,
+            )
+        except Exception as exc:
+            logger.warning("Activity fast-path query failed: %s", exc)
+            return None
+
+        if not result or not result.get("success") or not result.get("activities"):
+            return None  # nothing to show → let the normal path handle it
+
+        full_messages = context.to_messages()
+        system_msg = (
+            full_messages[0]["content"]
+            if full_messages and full_messages[0].get("role") == "system"
+            else ""
+        )
+        rec = SimpleNamespace(success=True, result=result, tool_name="query_activities")
+        synth = await self._synthesize_with_primary(
+            system_message=system_msg,
+            user_message=user_message,
+            tool_results=[rec],
+        )
+        if not synth:
+            return None
+
+        latency_ms = (time.time() - start_time) * 1000
+        response = {
+            "content": synth,
+            "tool_calls_made": 1,
+            "iterations": 1,
+            "latency_ms": latency_ms,
+            "model_used": "fastpath+primary",
+            "context_token_count": context.token_count,
+            "response_token_count": 0,
+            "intent": "activity_list",
+            "evidence_cards": [],
+            "retrieval_latency_ms": 0,
+            "model_latency_ms": None,
+            "total_latency_ms": latency_ms,
+        }
+        self._log_completion(response, user_id, session_id, latency_ms)
+        return response
 
     async def _synthesize_with_primary(
         self,

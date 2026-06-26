@@ -791,43 +791,98 @@ class ToolOrchestrator:
         tool_schemas: Dict[str, Dict[str, Any]],
         tool_name: str,
     ) -> Dict[str, Any]:
-        """Coerce string-encoded parameters to the type declared in the schema.
+        """Coerce / clean tool parameters before validation.
 
-        Small LLMs frequently double-encode structured parameters (arrays,
-        objects) as JSON strings, or emit numeric values as strings.  This
-        step normalises them before validation so a fixable format issue does
-        not consume a retry iteration.
+        Small LLMs frequently (a) double-encode arrays/objects as JSON strings,
+        (b) emit numbers as strings, (c) add unknown/extra params, (d) pass empty
+        strings for params they have no value for, or (e) write a structured
+        ``filters`` arg as a loose "field op value" string. Normalising these
+        here keeps a fixable format issue from burning a retry iteration or
+        failing validation outright.
         """
         schema = tool_schemas.get(tool_name)
         if not schema:
             return arguments
 
         properties = schema.get("properties", {})
-        coerced = dict(arguments)
+        required = set(schema.get("required", []))
 
-        for param_name, param_value in arguments.items():
-            prop_schema = properties.get(param_name)
-            if not prop_schema or not isinstance(param_value, str):
-                continue
-            expected_type = prop_schema.get("type")
-            if expected_type in ("array", "object"):
+        def _parse_filter_dsl(text: str):
+            """Loose "field op value" (joined by and/,/;) → [{field,op,value}]."""
+            import re as _re
+            op_map = {
+                "=": "eq", "==": "eq", "eq": "eq", "is": "eq",
+                ">": "gt", "gt": "gt", ">=": "gte", "gte": "gte",
+                "<": "lt", "lt": "lt", "<=": "lte", "lte": "lte",
+                "!=": "ne", "ne": "ne",
+            }
+            out = []
+            for clause in _re.split(r"\s+and\s+|,|;", text, flags=_re.I):
+                parts = clause.strip().split()
+                if len(parts) < 3 or parts[1].lower() not in op_map:
+                    continue
+                value = " ".join(parts[2:]).strip().strip("\"'")
                 try:
-                    coerced[param_name] = json.loads(param_value)
-                except (json.JSONDecodeError, ValueError):
-                    pass
-            elif expected_type == "integer":
-                if param_value.lower() in ("null", "none", ""):
-                    coerced[param_name] = None
-                else:
+                    value = int(value)
+                except (ValueError, TypeError):
                     try:
-                        coerced[param_name] = int(param_value)
+                        value = float(value)
                     except (ValueError, TypeError):
                         pass
-            elif expected_type == "number":
-                try:
-                    coerced[param_name] = float(param_value)
-                except (ValueError, TypeError):
-                    pass
+                out.append({"field": parts[0], "op": op_map[parts[1].lower()], "value": value})
+            return out or None
+
+        coerced: Dict[str, Any] = {}
+        for param_name, param_value in arguments.items():
+            # (c) Drop unknown params — almost all tools ignore extras, so a
+            # near-miss call should still run instead of hard-failing validation.
+            if properties and param_name not in properties:
+                logger.warning(
+                    "Dropping unknown param '%s' for tool %s", param_name, tool_name
+                )
+                continue
+
+            prop_schema = properties.get(param_name, {})
+            expected_type = prop_schema.get("type")
+
+            # (d) Drop empty / null-ish strings for non-required params so the
+            # tool's own default applies (e.g. an unset enum).
+            if (
+                param_name not in required
+                and isinstance(param_value, str)
+                and param_value.strip().lower() in ("", "null", "none")
+            ):
+                continue
+
+            if isinstance(param_value, str):
+                if expected_type in ("array", "object"):
+                    try:
+                        coerced[param_name] = json.loads(param_value)
+                        continue
+                    except (json.JSONDecodeError, ValueError):
+                        # (e) loose filter DSL → structured array
+                        if expected_type == "array":
+                            parsed = _parse_filter_dsl(param_value)
+                            if parsed is not None:
+                                coerced[param_name] = parsed
+                                continue
+                elif expected_type == "integer":
+                    if param_value.strip().lower() in ("null", "none", ""):
+                        coerced[param_name] = None
+                        continue
+                    try:
+                        coerced[param_name] = int(param_value)
+                        continue
+                    except (ValueError, TypeError):
+                        pass
+                elif expected_type == "number":
+                    try:
+                        coerced[param_name] = float(param_value)
+                        continue
+                    except (ValueError, TypeError):
+                        pass
+
+            coerced[param_name] = param_value
 
         return coerced
 
